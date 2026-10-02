@@ -12,7 +12,13 @@ export async function executarBackupAutomatico(): Promise<void> {
   const ultimo = (await extras.listarBackups()).find((b) => b.nome.startsWith("dairus-"));
   const quando = ultimo ? new Date(ultimo.criado_em.replace(" ", "T")).getTime() : 0;
   if (Date.now() - quando > (INTERVALO_DIAS[frequencia] ?? 7) * DIA_MS) {
-    await extras.criarBackup();
+    const info = await extras.criarBackup();
     await extras.aplicarRetencao(manter);
+    if (await lerPreferencia<boolean>("backup_nuvem_auto")) {
+      const { enviarBackupParaNuvem } = await import("./nuvem");
+      await enviarBackupParaNuvem(info.nome).catch(() => {
+        // sem internet: o backup local já foi feito; a nuvem fica para a próxima
+      });
+    }
   }
 }

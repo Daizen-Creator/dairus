@@ -63,6 +63,8 @@ pub fn run() {
             extras::excluir_item_radar,
             extras::criar_backup,
             extras::listar_backups,
+            extras::ler_backup,
+            extras::gravar_backup_baixado,
             extras::restaurar_backup,
             extras::salvar_exportacao,
             extras::salvar_exportacao_binaria,

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import {
   ActivitySquare,
+  Cloud,
+  CloudUpload,
   BadgeCheck,
   Database,
   DatabaseBackup,
@@ -16,6 +18,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
+import { SecaoNuvem } from "./SecaoNuvem";
+import { enviarBackupParaNuvem } from "../../services/nuvem";
 import { Button } from "../../components/ui/Button";
 import { CLASSE_INPUT, Secao } from "../../components/ui/Campos";
 import { Select } from "../../components/ui/Select";
@@ -53,7 +57,7 @@ export function BackupPage() {
   const [novoPin, setNovoPin] = useState("");
   const [frase, setFrase] = useState("");
   const [mostrarReset, setMostrarReset] = useState(false);
-  const [secao, setSecao] = useAbaDaPagina<"backups" | "dados" | "pin" | "atividade" | "perigo">("backup", "backups");
+  const [secao, setSecao] = useAbaDaPagina<"backups" | "nuvem" | "dados" | "pin" | "atividade" | "perigo">("backup", "backups");
   const seg = useSegurancaStore();
 
   async function carregar() {
@@ -202,7 +206,9 @@ export function BackupPage() {
         <p className="text-sm text-texto-secundario">Seus dados ficam só neste computador. Faça cópias com frequência.</p>
       </div>
 
-      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "backups", rotulo: "Backups", icone: DatabaseBackup }, { id: "dados", rotulo: "Banco e dados", icone: Database }, { id: "pin", rotulo: "PIN e privacidade", icone: Lock }, { id: "atividade", rotulo: "Atividade", icone: ActivitySquare }, { id: "perigo", rotulo: "Zona de perigo", icone: Trash2 }]} />
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "backups", rotulo: "Backups", icone: DatabaseBackup }, { id: "nuvem", rotulo: "Nuvem", icone: Cloud }, { id: "dados", rotulo: "Banco e dados", icone: Database }, { id: "pin", rotulo: "PIN e privacidade", icone: Lock }, { id: "atividade", rotulo: "Atividade", icone: ActivitySquare }, { id: "perigo", rotulo: "Zona de perigo", icone: Trash2 }]} />
+
+      {secao === "nuvem" && <SecaoNuvem onBaixado={carregar} />}
 
       {(secao === "backups") && (<>
       <Secao
@@ -251,6 +257,7 @@ export function BackupPage() {
                 ) : (
                   <span className="flex items-center gap-1.5">
                     <Button tamanho="pequeno" variante="fantasma" onClick={() => verificarBackup(b.nome)}><BadgeCheck size={13} /> Verificar</Button>
+                    <Button tamanho="pequeno" variante="fantasma" onClick={() => executar(() => enviarBackupParaNuvem(b.nome), "Enviado para a nuvem.")} disabled={trabalhando} title="Enviar este backup para a nuvem da sua conta"><CloudUpload size={13} /> Nuvem</Button>
                     <Button tamanho="pequeno" variante="secundaria" onClick={() => setConfirmar(b.nome)}>Restaurar</Button>
                     <button onClick={() => setConfirmarExcluir(b.nome)} aria-label={`Excluir ${b.nome}`} className="rounded-md p-1.5 text-texto-secundario hover:bg-erro/15 hover:text-erro"><Trash2 size={14} /></button>
                   </span>

@@ -87,6 +87,10 @@ export const extras = {
   abrirPasta: (subpasta: "Backups" | "Exportacoes") => invoke<string>("abrir_pasta_dairus", { subpasta }),
   apagarTodosOsDados: (confirmacao: string) => invoke<InfoBackup>("apagar_todos_os_dados", { confirmacao }),
 
+  lerBackup: (nome: string) => invoke<number[]>("ler_backup", { nome }).then((b) => new Uint8Array(b)),
+  gravarBackupBaixado: (nome: string, conteudo: Uint8Array) =>
+    invoke<InfoBackup>("gravar_backup_baixado", { nome, conteudo: Array.from(conteudo) }),
+
   criarBackup: () => invoke<InfoBackup>("criar_backup"),
   listarBackups: () => invoke<InfoBackup[]>("listar_backups"),
   restaurarBackup: (nome: string) => invoke<InfoBackup>("restaurar_backup", { nome }),

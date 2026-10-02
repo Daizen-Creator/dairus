@@ -1050,6 +1050,33 @@ pub fn criar_backup(app: AppHandle, state: State<AppState>) -> Res<InfoBackup> {
     gravar_backup(&conn, &pasta, "dairus")
 }
 
+/// Lê o conteúdo de um backup local (para enviar à nuvem).
+#[tauri::command]
+pub fn ler_backup(app: AppHandle, nome: String) -> Res<Vec<u8>> {
+    let nome = nome_seguro(&nome)?;
+    let caminho = pasta_dairus(&app, "Backups")?.join(nome);
+    if !caminho.is_file() {
+        return Err("Backup não encontrado.".into());
+    }
+    std::fs::read(caminho).map_err(e)
+}
+
+/// Grava na pasta de backups um arquivo baixado da nuvem, conferindo se é um backup válido do Dairus.
+#[tauri::command]
+pub fn gravar_backup_baixado(app: AppHandle, nome: String, conteudo: Vec<u8>) -> Res<InfoBackup> {
+    let nome = nome_seguro(&nome)?;
+    if !nome.ends_with(".db") {
+        return Err("O arquivo precisa ser um backup .db do Dairus.".into());
+    }
+    let caminho = pasta_dairus(&app, "Backups")?.join(nome);
+    std::fs::write(&caminho, &conteudo).map_err(e)?;
+    if let Err(erro) = validar_arquivo_backup(&caminho) {
+        let _ = std::fs::remove_file(&caminho);
+        return Err(erro);
+    }
+    info_do_arquivo(&caminho).ok_or_else(|| "Não foi possível ler o arquivo baixado.".to_string())
+}
+
 #[tauri::command]
 pub fn listar_backups(app: AppHandle) -> Res<Vec<InfoBackup>> {
     let pasta = pasta_dairus(&app, "Backups")?;
