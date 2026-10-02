@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { Receipt } from "lucide-react";
 import { iconeDaDescricao } from "../../features/dashboard/categoriaIcone";
-import { marcaDaDescricao } from "../../features/dashboard/marcas";
+import { logoTransparente, marcaDaDescricao } from "../../features/dashboard/marcas";
 import { brilhoDeCor, degradeDeCor } from "../../services/gradientes";
 
 interface IconeCoisaProps {
@@ -20,13 +20,27 @@ export function IconeCoisa({ nome, padrao, tamanho = 28, redondo = false }: Icon
   const marca = marcaDaDescricao(nome);
 
   if (marca) {
+    // Ícones de app (com fundo próprio) preenchem o espaço todo, sem moldura branca;
+    // logos transparentes ficam sobre um fundo escuro discreto.
+    const transparente = logoTransparente(marca);
     return (
       <span
-        className={`flex shrink-0 items-center justify-center bg-white ${raio}`}
-        style={{ width: tamanho, height: tamanho, boxShadow: "0 0 10px -3px rgba(255,255,255,.5)" }}
+        className={`flex shrink-0 items-center justify-center overflow-hidden ${raio}`}
+        style={{
+          width: tamanho,
+          height: tamanho,
+          backgroundColor: transparente ? "color-mix(in srgb, var(--cor-superficie) 85%, white)" : undefined,
+          boxShadow: "0 4px 12px -4px rgba(0,0,0,.55)",
+        }}
         aria-hidden
       >
-        <img src={marca} alt="" width={Math.round(tamanho * 0.66)} height={Math.round(tamanho * 0.66)} draggable={false} />
+        <img
+          src={marca}
+          alt=""
+          draggable={false}
+          className={transparente ? "object-contain" : "h-full w-full object-cover"}
+          style={transparente ? { width: Math.round(tamanho * 0.68), height: Math.round(tamanho * 0.68) } : undefined}
+        />
       </span>
     );
   }

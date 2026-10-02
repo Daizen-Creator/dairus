@@ -325,7 +325,7 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
         </div>
       ) : (
         <Virtuoso
-          style={{ height: 560 }}
+          style={{ height: "max(360px, calc(100vh - 560px))" }}
           data={lista}
           itemContent={(_, item) => {
             if (item.tipo === "dia") {

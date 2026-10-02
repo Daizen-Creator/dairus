@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ArrowDownRight, ArrowUpRight, Download, GitCompare, Percent, Printer, Repeat, Scale } from "lucide-react";
 import { toast } from "sonner";
+import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { Button } from "../../components/ui/Button";
 import { BarraProgresso, Secao } from "../../components/ui/Campos";
 import { IconeCoisa } from "../../components/ui/IconeCoisa";
@@ -49,6 +50,7 @@ export function RelatoriosPage() {
   const hoje = dataAtualISO();
   const [periodo, setPeriodo] = useState<Periodo>(() => calcularPeriodo("este-mes", hoje));
   const [comparar, setComparar] = useState(true);
+  const [secao, setSecao] = useAbaDaPagina<"visao" | "categorias" | "tendencias" | "entradas" | "padroes" | "exportar">("relatorios", "visao");
   const cores = useThemeStore((s) => s.temaAtivo()).cores.grafico;
 
   useEffect(() => {
@@ -216,13 +218,18 @@ export function RelatoriosPage() {
         <StatCard titulo="Taxa de poupança" valor={taxa !== null ? `${taxa.toFixed(0)}%` : "—"} corValor={taxa !== null && taxa < 0 ? "erro" : "normal"} icone={Percent} corIcone="alerta" subtitulo={`Gasto médio: ${formatarCentavos(Math.round(dados.despesas / diasConsiderados))}/dia · ${formatarCentavos(Math.round((dados.despesas / diasConsiderados) * 30))}/mês`} />
       </div>
 
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "visao", rotulo: "Visão geral" }, { id: "categorias", rotulo: "Categorias e orçamento" }, { id: "tendencias", rotulo: "Tendências (12 meses)" }, { id: "entradas", rotulo: "Entradas e saídas" }, { id: "padroes", rotulo: "Padrões de gasto" }, { id: "exportar", rotulo: "Dívidas e exportação" }]} />
+
+      {(secao === "visao") && (<>
       <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
         <Secao titulo={`Fluxo de caixa mensal — ${ano}`}>
           <div className="h-64"><FluxoCaixaChart dados={dadosFluxo} mesAtual={mesAbrev} anoAtual={ano} /></div>
         </Secao>
         <DespesasDonut fatias={dados.categorias} cores={cores} mesPorExtenso="no período selecionado" />
       </div>
+      </>)}
 
+      {(secao === "categorias") && (<>
       <Secao titulo="Despesas por categoria (com comparação)">
         {dados.categorias.length === 0 ? <p className="text-sm text-texto-secundario">Sem despesas no período.</p> : (
           <div className="overflow-x-auto">
@@ -248,7 +255,9 @@ export function RelatoriosPage() {
           </div>
         )}
       </Secao>
+      </>)}
 
+      {(secao === "tendencias") && (<>
       <div className="grid gap-4 lg:grid-cols-2">
         <Secao titulo="Principais categorias nos últimos 12 meses">
           {top5.length === 0 ? <p className="text-sm text-texto-secundario">Sem dados.</p> : (
@@ -281,7 +290,9 @@ export function RelatoriosPage() {
           <p className="mt-1 text-[11px] text-texto-secundario">Meses sem receita não têm taxa. Meta de referência: 20%.</p>
         </Secao>
       </div>
+      </>)}
 
+      {(secao === "entradas") && (<>
       <div className="grid gap-4 lg:grid-cols-2">
         <Secao titulo="Receitas por fonte">
           {dados.fontes.length === 0 ? <p className="text-sm text-texto-secundario">Sem receitas no período.</p> : (
@@ -295,7 +306,9 @@ export function RelatoriosPage() {
           )}
         </Secao>
       </div>
+      </>)}
 
+      {(secao === "padroes") && (<>
       <div className="grid gap-4 lg:grid-cols-3">
         <Secao titulo="Fixas x variáveis">
           <p className="text-xs text-texto-secundario">Fixas = despesas com etiqueta Fixo, Mensalidade ou Assinatura.</p>
@@ -320,7 +333,9 @@ export function RelatoriosPage() {
           )}
         </Secao>
       </div>
+      </>)}
 
+      {(secao === "padroes") && (<>
       <div className="grid gap-4 lg:grid-cols-2">
         <Secao titulo="Gastos por dia da semana">
           <div className="flex h-28 items-end gap-2">{semana.map((v, i) => <div key={i} className="flex flex-1 flex-col items-center gap-1"><div className="flex h-20 w-full items-end"><div className="w-full rounded-t bg-gradient-to-t from-primaria/50 to-secundaria" style={{ height: `${Math.max(4, (v / maxSemana) * 100)}%`, opacity: v === 0 ? 0.25 : 1 }} title={formatarCentavos(v)} /></div><span className="text-[10px] text-texto-secundario">{DIAS[i]}</span></div>)}</div>
@@ -334,19 +349,25 @@ export function RelatoriosPage() {
           <p className="mt-2 text-[11px] text-texto-secundario">Quanto mais forte a cor, maior o gasto no dia.</p>
         </Secao>
       </div>
+      </>)}
 
+      {(secao === "categorias") && (<>
       <Secao titulo="Orçado vs. realizado">
         {comLimite.length === 0 ? <p className="text-sm text-texto-secundario">Defina limites na aba Orçamento para comparar com o que foi gasto. (O comparativo usa o limite mensal; em períodos maiores que um mês, interprete com cuidado.)</p> : (
           <ul className="space-y-3">{comLimite.map((d) => { const limite = limites.get(d.contaId)!; const pct = (d.valorCentavos / limite) * 100; const cor = pct >= 100 ? "#ff2d55" : pct >= 80 ? "var(--cor-alerta)" : "var(--cor-sucesso)"; return <li key={d.contaId}><div className="mb-1 flex justify-between text-sm"><span className="text-texto-primario">{d.nome}</span><span className="tabular-nums text-texto-secundario">{formatarCentavos(d.valorCentavos)} / {formatarCentavos(limite)}</span></div><BarraProgresso percentual={pct} cor={cor} altura={6} /></li>; })}</ul>
         )}
       </Secao>
+      </>)}
 
+      {(secao === "exportar") && (<>
       <Secao titulo="Dívidas e cartões">
         {dividas.length === 0 ? <p className="text-sm text-texto-secundario">Nenhuma dívida ou fatura em aberto.</p> : (
           <ul className="space-y-1.5 text-sm">{dividas.map((c) => <li key={c.id} className="flex justify-between"><span className="text-texto-primario">{c.nome}{cartoes.includes(c) && c.limite_centavos ? ` · limite ${formatarCentavos(c.limite_centavos)}` : ""}</span><span className="tabular-nums text-erro">{formatarCentavos(c.saldo_atual_centavos)}</span></li>)}</ul>
         )}
       </Secao>
+      </>)}
 
+      {(secao === "exportar") && (<>
       <div className="sem-impressao">
         <Secao titulo="Exportar (CSV para Excel)">
           <div className="flex flex-wrap gap-2">
@@ -357,6 +378,7 @@ export function RelatoriosPage() {
           <p className="mt-3 text-xs text-texto-secundario">Os arquivos são salvos em Documentos\Dairus\Exportacoes. Para PDF, use “Imprimir / PDF” e escolha “Salvar como PDF”. Excel nativo (.xlsx) ainda não está disponível; o CSV abre direto no Excel.</p>
         </Secao>
       </div>
+      </>)}
     </div>
   );
 }

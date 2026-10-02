@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { BellRing, Copy, Download, ExternalLink, Minus, Pencil, Radar, Search, ShoppingCart, Store, Target, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
 import { toast } from "sonner";
+import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { Button } from "../../components/ui/Button";
 import { CLASSE_INPUT, Secao } from "../../components/ui/Campos";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -74,6 +75,7 @@ export function RadarPage() {
   const [comprando, setComprando] = useState<string | null>(null);
   const [cp, setCp] = useState({ conta: "", categoria: "despesa-outras", valor: "" });
   const [confirmarExcluir, setConfirmarExcluir] = useState<string | null>(null);
+  const [secao, setSecao] = useAbaDaPagina<"produtos" | "novo">("radar", "produtos");
   const hoje = dataAtualISO();
 
   async function carregar() {
@@ -130,6 +132,7 @@ export function RadarPage() {
       await extras.criarItemRadar(nome.trim(), alvoCentavos > 0 ? alvoCentavos : null);
       setNome("");
       setAlvo("");
+      setSecao("produtos");
       await carregar();
     } catch (e) {
       toast.error(String(e));
@@ -239,6 +242,9 @@ export function RadarPage() {
         </div>
       )}
 
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "produtos", rotulo: `Acompanhando (${itens.length})`, icone: Radar, contador: noAlvoN }, { id: "novo", rotulo: "Adicionar produto", icone: ShoppingCart }]} />
+
+      {(secao === "novo") && (<>
       <Secao titulo="Novo produto">
         <form onSubmit={criar} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Notebook 16GB" aria-label="Produto" className={CLASSE_INPUT} />
@@ -246,7 +252,9 @@ export function RadarPage() {
           <Button type="submit">Acompanhar produto</Button>
         </form>
       </Secao>
+      </>)}
 
+      {(secao === "produtos") && (<>
       {itens.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-texto-secundario" /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto…" aria-label="Buscar produto" className={`${CLASSE_INPUT} w-52 pl-8`} /></div>
@@ -254,7 +262,9 @@ export function RadarPage() {
           <Select aria-label="Ordenar" value={ordem} onValueChange={(v) => setOrdem(v as Ordem)} options={[{ value: "NOME", label: "Ordem alfabética" }, { value: "PERTO_ALVO", label: "Mais perto do alvo" }, { value: "ECONOMIA", label: "Maior diferença entre lojas" }]} className="w-56" />
         </div>
       )}
+      </>)}
 
+      {(secao === "produtos") && (<>
       {lista.length === 0 ? (
         <EmptyState titulo={itens.length === 0 ? "Nenhum produto no radar" : "Nenhum produto neste filtro"} descricao="Adicione um produto e registre os preços que for encontrando nas lojas." />
       ) : (
@@ -377,6 +387,7 @@ export function RadarPage() {
           })}
         </ul>
       )}
+      </>)}
       <datalist id="lojas-radar">{lojasConhecidas.map((l) => <option key={l} value={l} />)}</datalist>
     </div>
   );

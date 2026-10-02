@@ -21,6 +21,7 @@ import {
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
+import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { BarraProgresso, CLASSE_INPUT, Secao } from "../../components/ui/Campos";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Select } from "../../components/ui/Select";
@@ -97,6 +98,7 @@ export function MetasPage() {
   const [ordem, setOrdem] = useState<Ordem>("PRIORIDADE");
   const [visao, setVisao] = useState<Visao>("ATIVAS");
   const [confirmarExcluir, setConfirmarExcluir] = useState<string | null>(null);
+  const [secao, setSecao] = useAbaDaPagina<"lista" | "nova" | "evolucao">("metas", "lista");
   const hoje = dataAtualISO();
 
   async function carregar() {
@@ -174,6 +176,7 @@ export function MetasPage() {
     try {
       await extras.criarMeta(form.nome.trim(), valor, form.prazo || null, form.tipo, form.prioridade, form.notas || null);
       setForm(FORM_VAZIO);
+      setSecao("lista");
       toast.success("Meta criada.");
       await carregar();
     } catch (e) {
@@ -407,7 +410,9 @@ export function MetasPage() {
         <StatCard titulo="Saldo livre" valor={formatarCentavos(saldoLivre)} corValor={saldoLivre < 0 ? "erro" : "normal"} icone={Flag} corIcone="secundaria" subtitulo={saldoLivre < 0 ? "Reservas maiores que o saldo das contas" : sugestaoMensalTotal > 0 ? `Para cumprir os prazos: ${formatarCentavos(sugestaoMensalTotal)}/mês` : "Saldo menos o que está reservado"} />
       </div>
 
-      {aportesTodos.length > 0 && (
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "lista", rotulo: "Minhas metas", icone: Target }, { id: "nova", rotulo: "Nova meta", icone: PiggyBank }, { id: "evolucao", rotulo: "Evolução", icone: Flag }]} />
+
+      {secao === "evolucao" && (aportesTodos.length === 0 ? <p className="text-sm text-texto-secundario">Guarde valores em alguma meta para ver a evolução.</p> : (
         <Secao titulo="Evolução do total guardado (12 meses)">
           <div className="h-36">
             <ResponsiveContainer width="100%" height="100%">
@@ -423,15 +428,18 @@ export function MetasPage() {
             </ResponsiveContainer>
           </div>
         </Secao>
-      )}
+      ))}
 
+      {secao === "nova" && (
       <Secao titulo="Nova meta">
         <form onSubmit={criar} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {campos(form, setForm)}
           <Button type="submit" className="sm:col-span-2 lg:col-span-3">Criar meta</Button>
         </form>
       </Secao>
+      )}
 
+      {secao === "lista" && (<>
       <div className="flex flex-wrap items-center gap-2">
         <Select aria-label="Mostrar" value={visao} onValueChange={(v) => setVisao(v as Visao)} options={[{ value: "ATIVAS", label: "Metas em andamento" }, { value: "CONCLUIDAS", label: "Metas atingidas" }, { value: "TODAS", label: "Todas as metas" }]} className="w-52" />
         <Select aria-label="Ordenar" value={ordem} onValueChange={(v) => setOrdem(v as Ordem)} options={[{ value: "PRIORIDADE", label: "Por prioridade" }, { value: "PRAZO", label: "Por prazo" }, { value: "PROGRESSO", label: "Por progresso" }, { value: "NOME", label: "Ordem alfabética" }]} className="w-48" />
@@ -442,6 +450,7 @@ export function MetasPage() {
       ) : (
         <ul className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">{visiveis.map((m) => renderMeta(m))}</ul>
       )}
+      </>)}
     </div>
   );
 }

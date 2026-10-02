@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDownLeft, ArrowUpRight, Clock, TriangleAlert } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, CalendarClock, Clock, History, PenLine, TriangleAlert } from "lucide-react";
+import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { toast } from "sonner";
 import { usePreferencia } from "../../state/usePreferencia";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -28,6 +29,7 @@ export function LancamentosPage() {
   const [carregando, setCarregando] = useState(true);
   const [duplicando, setDuplicando] = useState<{ chave: number; dados: DespesaInicial } | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
+  const [secao, setSecao] = useAbaDaPagina<"lancar" | "pagar" | "historico">("lancamentos", "lancar");
   const [contaPadrao] = usePreferencia<string>("conta_padrao", "");
   const [categoriaPadrao] = usePreferencia<string>("categoria_padrao", "");
 
@@ -95,6 +97,7 @@ export function LancamentosPage() {
       },
     });
     setAba("despesa");
+    setSecao("lancar");
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     toast.info("Formulário preenchido com a despesa duplicada. Ajuste e registre.");
   }
@@ -118,7 +121,17 @@ export function LancamentosPage() {
         <StatCard titulo="Em atraso" valor={formatarCentavos(totalAtrasado)} corValor={atrasados.length > 0 ? "erro" : "normal"} icone={TriangleAlert} corIcone="erro" subtitulo={atrasados.length === 0 ? "Tudo em dia" : `${atrasados.length} conta(s) vencida(s)`} />
       </div>
 
-      {contasAtivas.length === 0 ? (
+      <Abas
+        ativa={secao}
+        onChange={setSecao}
+        abas={[
+          { id: "lancar", rotulo: "Lançar", icone: PenLine },
+          { id: "pagar", rotulo: "Contas a pagar", icone: CalendarClock, contador: abertos.length },
+          { id: "historico", rotulo: "Histórico", icone: History },
+        ]}
+      />
+
+      {secao === "lancar" && (contasAtivas.length === 0 ? (
         <EmptyState titulo="Cadastre uma conta antes de lançar" descricao="Vá em Contas e cadastre sua conta bancária, carteira ou dinheiro em espécie primeiro." />
       ) : (
         <div ref={formRef} className="rounded-xl border border-borda bg-cartao p-4">
@@ -158,11 +171,11 @@ export function LancamentosPage() {
             <ImportarExtratoForm contasAtivas={contasAtivas} categoriasDespesa={categoriasDespesa} lancamentos={lancamentos} onImportado={carregar} />
           )}
         </div>
-      )}
+      ))}
 
-      <ContasAPagar agendamentos={agendamentos} contasPagaveis={contasPagaveis} onAlterado={carregar} />
+      {secao === "pagar" && <ContasAPagar agendamentos={agendamentos} contasPagaveis={contasPagaveis} onAlterado={carregar} />}
 
-      <HistoricoLancamentos lancamentos={lancamentos} contas={contas} onAlterado={carregar} onDuplicar={duplicar} />
+      {secao === "historico" && <HistoricoLancamentos lancamentos={lancamentos} contas={contas} onAlterado={carregar} onDuplicar={duplicar} />}
     </div>
   );
 }

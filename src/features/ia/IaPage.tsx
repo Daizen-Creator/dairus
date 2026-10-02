@@ -15,6 +15,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { Button } from "../../components/ui/Button";
 import { CLASSE_INPUT, Secao } from "../../components/ui/Campos";
 import { Select } from "../../components/ui/Select";
@@ -183,6 +184,7 @@ export function IaPage() {
   const [copiado, setCopiado] = useState<number | null>(null);
   const fimRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const [secao, setSecao] = useAbaDaPagina<"conversa" | "configuracao">("ia", "conversa");
 
   const blocos = useMemo(() => new Set(blocosSel), [blocosSel]);
   const modeloEfetivo = modeloLivre.trim() || modelo;
@@ -277,6 +279,9 @@ export function IaPage() {
         <p className="text-sm text-texto-secundario">Assistente com Google Gemini, usando a sua própria chave de API.</p>
       </div>
 
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "conversa", rotulo: "Conversa", icone: Sparkles }, { id: "configuracao", rotulo: "Conexão e privacidade", icone: KeyRound }]} />
+
+      {(secao === "configuracao") && (<>
       <div className="grid gap-4 lg:grid-cols-2">
         <Secao titulo={<><KeyRound size={16} className="text-alerta" /> Conexão com o Gemini</>}>
           <form onSubmit={salvarChave} className="flex flex-wrap items-center gap-2">
@@ -328,10 +333,12 @@ export function IaPage() {
           {contexto && <pre className="mt-2 max-h-52 overflow-y-auto whitespace-pre-wrap rounded-lg border border-borda bg-fundo p-3 text-xs text-texto-secundario">{contexto}</pre>}
         </Secao>
       </div>
+      </>)}
 
+      {(secao === "conversa") && (<>
       <section className="rounded-xl border border-borda bg-cartao p-4">
         {!chave ? (
-          <p className="text-sm text-texto-secundario">Adicione sua chave do Gemini acima para conversar com o assistente.</p>
+          <div className="flex flex-wrap items-center gap-3"><p className="text-sm text-texto-secundario">Adicione sua chave do Gemini para conversar com o assistente.</p><Button tamanho="pequeno" onClick={() => setSecao("configuracao")}><KeyRound size={13} /> Configurar conexão</Button></div>
         ) : (
           <>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -342,7 +349,7 @@ export function IaPage() {
                 <Button variante="fantasma" tamanho="pequeno" onClick={() => setMensagens([])} disabled={mensagens.length === 0}><Trash2 size={13} /> Limpar</Button>
               </div>
             </div>
-            <div className="max-h-[460px] min-h-40 space-y-3 overflow-y-auto pr-1">
+            <div className="max-h-[calc(100vh-430px)] min-h-48 space-y-3 overflow-y-auto pr-1">
               {mensagens.length === 0 && (
                 <div className="flex flex-wrap gap-2">
                   {SUGESTOES.map((s) => (
@@ -383,6 +390,7 @@ export function IaPage() {
           </>
         )}
       </section>
+      </>)}
     </div>
   );
 }

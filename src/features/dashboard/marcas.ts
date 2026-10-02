@@ -47,3 +47,12 @@ export function marcaDaDescricao(descricao: string): string | null {
   const achou = MARCAS.find((m) => bateAlguma(texto, m.palavras));
   return achou ? `/marcas/${achou.arquivo}.png` : null;
 }
+
+/** Logos sem fundo próprio (desenho solto sobre transparente). Os demais já são ícones
+ * de app com fundo colorido e ocupam o espaço todo, sem moldura. */
+const LOGOS_TRANSPARENTES = new Set(["bradesco", "claro", "gemini", "netflix", "santander", "shopee"]);
+
+export function logoTransparente(caminho: string): boolean {
+  const arquivo = caminho.split("/").pop()?.replace(".png", "") ?? "";
+  return LOGOS_TRANSPARENTES.has(arquivo);
+}

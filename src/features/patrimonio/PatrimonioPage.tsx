@@ -21,6 +21,7 @@ import {
 import { Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
+import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { CLASSE_INPUT, Secao } from "../../components/ui/Campos";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Select } from "../../components/ui/Select";
@@ -86,6 +87,7 @@ export function PatrimonioPage() {
   const [visao, setVisao] = useState<Visao>("TODOS");
   const [ordem, setOrdem] = useState<Ordem>("VALOR");
   const [confirmarExcluir, setConfirmarExcluir] = useState<string | null>(null);
+  const [secao, setSecao] = useAbaDaPagina<"itens" | "adicionar" | "visao">("patrimonio", "itens");
   const [ocultar, setOcultar] = usePreferencia<boolean>("ocultar_saldos", false);
   const cores = useThemeStore((s) => s.temaAtivo()).cores.grafico;
   const hoje = dataAtualISO();
@@ -178,6 +180,7 @@ export function PatrimonioPage() {
     try {
       await extras.criarBem(form.nome.trim(), form.tipo, centavos, hoje, form.categoria, form.notas || null, form.aqData || null, form.aqValor ? valorInputParaCentavos(form.aqValor) : null);
       setForm({ ...FORM_VAZIO, tipo: form.tipo, categoria: form.tipo === "BEM" ? "OUTRO" : "OUTRA" });
+      setSecao("itens");
       toast.success("Item adicionado.");
       await carregar();
     } catch (e) {
@@ -375,6 +378,9 @@ export function PatrimonioPage() {
         <StatCard titulo="Endividamento" valor={`${endividamento.toFixed(0)}%`} corValor={endividamento >= 50 ? "erro" : "normal"} icone={Building2} corIcone="alerta" subtitulo={liquidez !== null ? `Liquidez: ${liquidez.toFixed(1)}x (contas ÷ passivos)` : "Sem passivos"} />
       </div>
 
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "itens", rotulo: "Bens e dívidas", icone: Building2, contador: desatualizados.length }, { id: "adicionar", rotulo: "Adicionar", icone: Gem }, { id: "visao", rotulo: "Evolução e composição", icone: Scale }]} />
+
+      {secao === "visao" && (
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <Secao titulo="Evolução do patrimônio líquido (12 meses)">
           <div className="h-52">
@@ -420,19 +426,24 @@ export function PatrimonioPage() {
         </Secao>
       </div>
 
-      {desatualizados.length > 0 && (
+      )}
+
+      {secao === "itens" && desatualizados.length > 0 && (
         <p className="flex items-center gap-2 rounded-lg border border-alerta/50 bg-alerta/10 px-3 py-2 text-xs text-alerta">
           <AlertTriangle size={14} /> {desatualizados.length} item(ns) sem atualização há mais de 90 dias: {desatualizados.map((b) => b.nome).join(", ")}.
         </p>
       )}
 
+      {secao === "adicionar" && (
       <Secao titulo="Adicionar bem ou dívida">
         <form onSubmit={criar} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {camposForm(form, setForm, true)}
           <Button type="submit" className="lg:col-span-4">Adicionar</Button>
         </form>
       </Secao>
+      )}
 
+      {secao === "itens" && (<>
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-texto-secundario" />
@@ -447,6 +458,7 @@ export function PatrimonioPage() {
       ) : (
         <ul className="space-y-3">{lista.map((b) => renderItem(b))}</ul>
       )}
+      </>)}
     </div>
   );
 }

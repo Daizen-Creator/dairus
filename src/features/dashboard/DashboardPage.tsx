@@ -21,6 +21,7 @@ import {
   EyeOff,
   Pencil,
   SlidersHorizontal,
+  LayoutGrid,
 } from "lucide-react";
 import { contabilidade } from "../../services/contabilidade";
 import { dataAtualISO, formatarCentavos, formatarDataISOParaBR, nomeMesAno, proximaDataComDia } from "../../services/formato";
@@ -41,6 +42,7 @@ import { useThemeStore } from "../../state/theme-store";
 import { useSegurancaStore } from "../../state/seguranca-store";
 import { extras } from "../../services/extras";
 import { usePreferencia } from "../../state/usePreferencia";
+import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { PainelInteligente, SECOES_PAINEL, type SecaoPainel } from "./PainelInteligente";
 import type { Orcamento } from "../../types/extras";
 import { BarraProgresso } from "../../components/ui/Campos";
@@ -61,6 +63,7 @@ export function DashboardPage() {
   const [ocultar, setOcultar] = usePreferencia<boolean>("ocultar_saldos", false);
   const [secoesOcultas, setSecoesOcultas] = usePreferencia<SecaoPainel[]>("dashboard_secoes_ocultas", []);
   const [personalizando, setPersonalizando] = useState(false);
+  const [secao, setSecao] = useAbaDaPagina<"resumo" | "analises" | "movimentacoes">("dashboard", "resumo");
   const [ultimoBackup, setUltimoBackup] = useState<InfoBackup | null>(null);
   const pinAtivo = useSegurancaStore((s) => s.pinAtivo);
   const totalGuardado = metas.reduce((s, m) => s + m.guardado_centavos, 0);
@@ -210,8 +213,19 @@ export function DashboardPage() {
         </div>
       </div>
 
+      <Abas
+        ativa={secao}
+        onChange={setSecao}
+        abas={[
+          { id: "resumo", rotulo: "Resumo", icone: LayoutGrid },
+          { id: "analises", rotulo: "Análises e alertas", icone: Sparkles },
+          { id: "movimentacoes", rotulo: "Movimentações e calendário", icone: CalendarClock },
+        ]}
+      />
+
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
         <div className="min-w-0 space-y-6">
+          {secao === "resumo" && (<>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               titulo="Saldo em Conta"
@@ -240,13 +254,6 @@ export function DashboardPage() {
               corIcone="alerta"
             />
           </div>
-
-          <PainelInteligente
-            dados={{ hoje, contas, lancamentos, agendamentos, metas, orcamentos, ultimoBackup }}
-            visiveis={new Set(SECOES_PAINEL.map((x) => x.id).filter((id) => !secoesOcultas.includes(id)))}
-            ocultar={ocultar}
-            onLancado={() => setRecarga((n) => n + 1)}
-          />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
             <div className="rounded-xl border border-borda bg-cartao p-4">
@@ -309,67 +316,78 @@ export function DashboardPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.15fr]">
-            <TransacoesRecentes lancamentos={lancamentos} contas={contas} />
-            <FinancialCalendar eventos={vencimentos} />
-          </div>
+          </>)}
 
-          <BannerMotivacional />
+          {secao === "analises" && (<>
+            <div className="rounded-xl border border-borda bg-cartao p-4">
+              <div className="flex items-center justify-between">
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-texto-primario">
+                  <Sparkles size={16} className="text-primaria" /> Assistente Financeiro IA
+                </h2>
+                <span className="rounded-full bg-borda px-2 py-0.5 text-[10px] font-medium text-texto-secundario">
+                  Gemini
+                </span>
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-texto-secundario">
+                Ainda não conectado. Adicione sua chave do Google Gemini em Configurações para receber análises e
+                projeções — sempre indicando o que é dado real e o que é estimativa.
+              </p>
+              <p className="mt-3 text-[10px] font-semibold uppercase tracking-wide text-texto-secundario">
+                Prévia do que você vai receber
+              </p>
+              <ul className="mt-2 space-y-2">
+                {[
+                  { icone: ShieldCheck, cor: "var(--cor-sucesso)", texto: "Resumo dos gastos do período e o peso de cada categoria no seu orçamento." },
+                  { icone: Lightbulb, cor: "var(--cor-destaque)", texto: "Sugestões de ajuste de orçamento — você decide se aplica ou não." },
+                  { icone: CalendarClock, cor: "var(--cor-primaria)", texto: "Aviso dos próximos vencimentos e projeção do saldo." },
+                ].map((topico) => (
+                  <li
+                    key={topico.texto}
+                    className="flex items-start gap-2.5 rounded-lg border border-dashed border-borda bg-fundo/50 p-2.5"
+                  >
+                    <span
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-white"
+                      style={{ backgroundColor: topico.cor, boxShadow: `0 0 10px -2px ${topico.cor}` }}
+                    >
+                      <topico.icone size={14} strokeWidth={2.2} />
+                    </span>
+                    <span className="text-xs leading-snug text-texto-secundario">{topico.texto}</span>
+                  </li>
+                ))}
+              </ul>
+              <Link
+                to="/ia"
+                className="mt-3 flex w-full items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-primaria to-destaque py-2 text-xs font-medium text-primaria-texto shadow-[0_2px_14px_-4px_var(--cor-primaria)] transition-[transform] duration-150 [transition-timing-function:var(--ease-out)] active:scale-[0.97]"
+              >
+                Configurar IA →
+              </Link>
+              <div className="mt-2 flex items-center gap-2 rounded-lg border border-borda bg-fundo px-3 py-2">
+                <input
+                  disabled
+                  placeholder="Digite sua dúvida…"
+                  className="flex-1 bg-transparent text-xs text-texto-secundario outline-none"
+                />
+                <Send size={14} className="text-texto-secundario" />
+              </div>
+            </div>
+            <PainelInteligente
+              dados={{ hoje, contas, lancamentos, agendamentos, metas, orcamentos, ultimoBackup }}
+              visiveis={new Set(SECOES_PAINEL.map((x) => x.id).filter((id) => !secoesOcultas.includes(id)))}
+              ocultar={ocultar}
+              onLancado={() => setRecarga((n) => n + 1)}
+            />
+          </>)}
+
+          {secao === "movimentacoes" && (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.15fr]">
+              <TransacoesRecentes lancamentos={lancamentos} contas={contas} />
+              <FinancialCalendar eventos={vencimentos} />
+            </div>
+          )}
+          {secao === "movimentacoes" && <BannerMotivacional />}
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-xl border border-borda bg-cartao p-4">
-            <div className="flex items-center justify-between">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-texto-primario">
-                <Sparkles size={16} className="text-primaria" /> Assistente Financeiro IA
-              </h2>
-              <span className="rounded-full bg-borda px-2 py-0.5 text-[10px] font-medium text-texto-secundario">
-                Gemini
-              </span>
-            </div>
-            <p className="mt-2 text-xs leading-relaxed text-texto-secundario">
-              Ainda não conectado. Adicione sua chave do Google Gemini em Configurações para receber análises e
-              projeções — sempre indicando o que é dado real e o que é estimativa.
-            </p>
-            <p className="mt-3 text-[10px] font-semibold uppercase tracking-wide text-texto-secundario">
-              Prévia do que você vai receber
-            </p>
-            <ul className="mt-2 space-y-2">
-              {[
-                { icone: ShieldCheck, cor: "var(--cor-sucesso)", texto: "Resumo dos gastos do período e o peso de cada categoria no seu orçamento." },
-                { icone: Lightbulb, cor: "var(--cor-destaque)", texto: "Sugestões de ajuste de orçamento — você decide se aplica ou não." },
-                { icone: CalendarClock, cor: "var(--cor-primaria)", texto: "Aviso dos próximos vencimentos e projeção do saldo." },
-              ].map((topico) => (
-                <li
-                  key={topico.texto}
-                  className="flex items-start gap-2.5 rounded-lg border border-dashed border-borda bg-fundo/50 p-2.5"
-                >
-                  <span
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-white"
-                    style={{ backgroundColor: topico.cor, boxShadow: `0 0 10px -2px ${topico.cor}` }}
-                  >
-                    <topico.icone size={14} strokeWidth={2.2} />
-                  </span>
-                  <span className="text-xs leading-snug text-texto-secundario">{topico.texto}</span>
-                </li>
-              ))}
-            </ul>
-            <Link
-              to="/ia"
-              className="mt-3 flex w-full items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-primaria to-destaque py-2 text-xs font-medium text-primaria-texto shadow-[0_2px_14px_-4px_var(--cor-primaria)] transition-[transform] duration-150 [transition-timing-function:var(--ease-out)] active:scale-[0.97]"
-            >
-              Configurar IA →
-            </Link>
-            <div className="mt-2 flex items-center gap-2 rounded-lg border border-borda bg-fundo px-3 py-2">
-              <input
-                disabled
-                placeholder="Digite sua dúvida…"
-                className="flex-1 bg-transparent text-xs text-texto-secundario outline-none"
-              />
-              <Send size={14} className="text-texto-secundario" />
-            </div>
-          </div>
-
           <div className="rounded-xl border border-borda bg-cartao p-4">
             <div className="flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-texto-primario">

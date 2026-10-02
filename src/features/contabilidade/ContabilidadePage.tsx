@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, Info, Plus, Printer, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { Abas } from "../../components/ui/Abas";
 import { Button } from "../../components/ui/Button";
 import { CLASSE_INPUT, Secao } from "../../components/ui/Campos";
 import { Select } from "../../components/ui/Select";
@@ -235,11 +236,7 @@ export function ContabilidadePage() {
         </div>
       </div>
 
-      <div className="sem-impressao flex flex-wrap gap-2">
-        {ABAS.map((a) => (
-          <button key={a.id} onClick={() => setAba(a.id)} className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${aba === a.id ? "bg-gradient-to-r from-primaria to-destaque text-primaria-texto shadow-[0_4px_16px_-6px_var(--cor-primaria)]" : "text-texto-secundario hover:bg-borda/40"}`}>{a.rotulo}</button>
-        ))}
-      </div>
+      <Abas ativa={aba} onChange={setAba} abas={ABAS} />
 
       {aba === "balancete" && (
         <Secao titulo={`Balancete de verificação — ${formatarDataISOParaBR(periodo.inicio)} a ${formatarDataISOParaBR(periodo.fim)}`}>

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
+import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { BarraProgresso, CLASSE_INPUT, Secao } from "../../components/ui/Campos";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { IconeCoisa } from "../../components/ui/IconeCoisa";
@@ -92,6 +93,7 @@ export function SalarioPage() {
   const [incluir13, setIncluir13] = useState(true);
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [edDescricao, setEdDescricao] = useState("");
+  const [secao, setSecao] = useAbaDaPagina<"registrar" | "analises" | "historico">("salario", "registrar");
   const cores = useThemeStore((s) => s.temaAtivo()).cores.grafico;
   const hoje = dataAtualISO();
 
@@ -295,13 +297,16 @@ export function SalarioPage() {
         <StatCard titulo="Sobra do mês" valor={dinheiro(sobra)} corValor={sobra < 0 ? "erro" : "normal"} icone={Wallet} corIcone="alerta" subtitulo={rendaReferencia > 0 ? `${pctGasto.toFixed(0)}% da renda já gasta` : "Sem renda registrada"} />
       </div>
 
-      {metaPct !== null && (
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "registrar", rotulo: "Registrar e perfil", icone: Banknote }, { id: "analises", rotulo: "Análises e simulador", icone: TrendingUp }, { id: "historico", rotulo: "Histórico", icone: CalendarClock }]} />
+
+      {secao === "analises" && metaPct !== null && (
         <Secao titulo={<><Target size={16} className="text-destaque" /> Meta de renda mensal</>}>
           <div className="flex items-end justify-between text-sm"><span className="text-texto-primario">{dinheiro(totalMes)} de {dinheiro(perfil.metaMensal)}</span><span className="text-texto-secundario">{Math.min(100, Math.round(metaPct))}%</span></div>
           <div className="mt-2"><BarraProgresso percentual={metaPct} cor={metaPct >= 100 ? "var(--cor-sucesso)" : "var(--cor-destaque)"} /></div>
         </Secao>
       )}
 
+      {secao === "registrar" && (<>
       <Secao
         titulo={<><Pencil size={15} className="text-primaria" /> Perfil de renda</>}
         acao={!editandoPerfil && <Button tamanho="pequeno" variante="secundaria" onClick={() => setEditandoPerfil(true)}>{perfil.liquido ? "Editar" : "Cadastrar"}</Button>}
@@ -350,6 +355,9 @@ export function SalarioPage() {
         </div>
       )}
 
+      </>)}
+
+      {secao === "analises" && (<>
       <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
         <Secao titulo="Renda dos últimos 12 meses">
           <div className="h-52">
@@ -414,6 +422,9 @@ export function SalarioPage() {
         </Secao>
       </div>
 
+      </>)}
+
+      {secao === "historico" && (
       <section className="rounded-xl border border-borda bg-cartao">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-borda px-4 py-3">
           <h2 className="text-sm font-semibold text-texto-primario">Histórico de recebimentos ({lista.length})</h2>
@@ -446,6 +457,7 @@ export function SalarioPage() {
           </ul>
         )}
       </section>
+      )}
     </div>
   );
 }

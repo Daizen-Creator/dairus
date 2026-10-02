@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
+import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { BarraProgresso, CLASSE_INPUT, Secao } from "../../components/ui/Campos";
 import { IconeCoisa } from "../../components/ui/IconeCoisa";
 import { Select } from "../../components/ui/Select";
@@ -77,6 +78,7 @@ export function OrcamentoPage() {
   const [rendaBase, setRendaBase] = usePreferencia<number>("orcamento_renda_base", 0);
   const [rendaTexto, setRendaTexto] = useState("");
   const [confirmarLimpar, setConfirmarLimpar] = useState(false);
+  const [secao, setSecao] = useAbaDaPagina<"categorias" | "planejamento">("orcamento", "categorias");
 
   const hoje = dataAtualISO();
 
@@ -408,6 +410,9 @@ export function OrcamentoPage() {
         <StatCard titulo="Limites estourados" valor={String(estouradas.length)} corValor={estouradas.length ? "erro" : "normal"} icone={TriangleAlert} corIcone="erro" subtitulo={estouradas.length ? estouradas.map((c) => c.nome).join(", ") : "Nenhum neste mês"} />
       </div>
 
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "categorias", rotulo: "Categorias e limites", icone: Wallet, contador: estouradas.length }, { id: "planejamento", rotulo: "Renda, ritmo e atalhos", icone: PiggyBank }]} />
+
+      {secao === "planejamento" && (
       <div className="grid gap-4 lg:grid-cols-3">
         <Secao titulo={<><PiggyBank size={16} className="text-sucesso" /> Renda e poupança</>}>
           <div className="flex flex-wrap items-center gap-2">
@@ -445,6 +450,9 @@ export function OrcamentoPage() {
         </Secao>
       </div>
 
+      )}
+
+      {secao === "categorias" && (
       <Secao
         titulo="Categorias de despesa"
         acao={
@@ -479,6 +487,7 @@ export function OrcamentoPage() {
         )}
         <p className="mt-4 text-xs text-texto-secundario">Deixe o campo vazio (ou 0) e salve para remover o limite. Categorias criadas por você podem ser arquivadas quando o saldo for zero.</p>
       </Secao>
+      )}
     </div>
   );
 }

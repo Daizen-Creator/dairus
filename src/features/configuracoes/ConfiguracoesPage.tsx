@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Download, Keyboard, RotateCcw, Settings2, Sparkles, UserRound } from "lucide-react";
 import { toast } from "sonner";
+import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { Button } from "../../components/ui/Button";
 import { CLASSE_INPUT, Secao } from "../../components/ui/Campos";
 import { Select } from "../../components/ui/Select";
@@ -59,6 +60,7 @@ export function ConfiguracoesPage() {
   const [semAnimacoes, setSemAnimacoes] = usePreferencia<boolean>("ui_sem_animacoes", false);
   const [ocultar, setOcultar] = usePreferencia<boolean>("ocultar_saldos", false);
   const [importando, setImportando] = useState("");
+  const [secao, setSecao] = useAbaDaPagina<"preferencias" | "atalhos" | "sobre">("configuracoes", "preferencias");
 
   useEffect(() => {
     contabilidade.listarContas().then(setContas).catch(() => {});
@@ -122,6 +124,9 @@ export function ConfiguracoesPage() {
         <p className="text-sm text-texto-secundario">Preferências de uso do Dairus. Tudo é salvo neste computador.</p>
       </div>
 
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "preferencias", rotulo: "Preferências", icone: UserRound }, { id: "atalhos", rotulo: "Atalhos e backup das configurações", icone: Keyboard }, { id: "sobre", rotulo: "Sobre", icone: Sparkles }]} />
+
+      {(secao === "preferencias") && (<>
       <div className="grid gap-4 lg:grid-cols-2">
         <Secao titulo={<><UserRound size={16} className="text-primaria" /> Perfil e padrões</>}>
           <div className="space-y-3 text-sm">
@@ -152,7 +157,9 @@ export function ConfiguracoesPage() {
           </div>
         </Secao>
       </div>
+      </>)}
 
+      {(secao === "preferencias") && (<>
       <Secao titulo="Preferências regionais">
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <div><dt className="text-texto-secundario">Moeda</dt><dd className="text-texto-primario">Real (R$)</dd></div>
@@ -162,7 +169,9 @@ export function ConfiguracoesPage() {
         </dl>
         <p className="mt-2 text-xs text-texto-secundario">Estes valores são fixos nesta versão.</p>
       </Secao>
+      </>)}
 
+      {(secao === "atalhos") && (<>
       <div className="grid gap-4 lg:grid-cols-2">
         <Secao titulo={<><Keyboard size={16} className="text-secundaria" /> Atalhos de teclado</>}>
           <ul className="space-y-1.5 text-sm">{ATALHOS.map(([tecla, desc]) => <li key={tecla} className="flex items-center justify-between gap-3"><span className="text-texto-secundario">{desc}</span><kbd className="shrink-0 rounded border border-borda bg-fundo px-1.5 py-0.5 text-[11px] text-texto-primario">{tecla}</kbd></li>)}</ul>
@@ -177,7 +186,9 @@ export function ConfiguracoesPage() {
           <Button tamanho="pequeno" className="mt-2" onClick={importarConfig} disabled={!importando.trim()}>Importar</Button>
         </Secao>
       </div>
+      </>)}
 
+      {(secao === "sobre") && (<>
       <Secao titulo={<><Sparkles size={16} className="text-destaque" /> Sobre o Dairus</>}>
         <p className="text-sm text-texto-secundario">
           Versão 0.1.0. Motor contábil de partidas dobradas rodando localmente em SQLite, sem necessidade de internet (só o assistente de IA usa a internet, e apenas quando você pergunta).
@@ -185,11 +196,14 @@ export function ConfiguracoesPage() {
         {banco && <p className="mt-2 break-all text-xs text-texto-secundario">Dados em {banco.caminho} · SQLite {banco.versao_sqlite} · {banco.lancamentos} lançamento(s) · {banco.migracoes} migrações aplicadas.</p>}
         <div className="mt-3 flex flex-wrap gap-4 text-sm"><Link to="/backup" className="text-primaria hover:underline">Backup e PIN</Link><Link to="/ia" className="text-primaria hover:underline">Chave do Gemini</Link><Link to="/contabilidade" className="text-primaria hover:underline">Auditoria</Link></div>
       </Secao>
+      </>)}
 
+      {(secao === "sobre") && (<>
       <section className="rounded-xl border border-dashed border-borda bg-superficie p-4">
         <h2 className="text-sm font-semibold text-texto-primario">Ainda não implementado</h2>
         <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-texto-secundario">{PENDENTES.map((item) => <li key={item}>{item}</li>)}</ul>
       </section>
+      </>)}
     </div>
   );
 }

@@ -15,6 +15,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { Button } from "../../components/ui/Button";
 import { CLASSE_INPUT, Secao } from "../../components/ui/Campos";
 import { Select } from "../../components/ui/Select";
@@ -52,6 +53,7 @@ export function BackupPage() {
   const [novoPin, setNovoPin] = useState("");
   const [frase, setFrase] = useState("");
   const [mostrarReset, setMostrarReset] = useState(false);
+  const [secao, setSecao] = useAbaDaPagina<"backups" | "dados" | "pin" | "atividade" | "perigo">("backup", "backups");
   const seg = useSegurancaStore();
 
   async function carregar() {
@@ -200,6 +202,9 @@ export function BackupPage() {
         <p className="text-sm text-texto-secundario">Seus dados ficam só neste computador. Faça cópias com frequência.</p>
       </div>
 
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "backups", rotulo: "Backups", icone: DatabaseBackup }, { id: "dados", rotulo: "Banco e dados", icone: Database }, { id: "pin", rotulo: "PIN e privacidade", icone: Lock }, { id: "atividade", rotulo: "Atividade", icone: ActivitySquare }, { id: "perigo", rotulo: "Zona de perigo", icone: Trash2 }]} />
+
+      {(secao === "backups") && (<>
       <Secao
         titulo={<><DatabaseBackup size={16} className="text-primaria" /> Backups</>}
         acao={
@@ -258,7 +263,9 @@ export function BackupPage() {
           A restauração confere a integridade do arquivo e guarda uma cópia do estado atual antes de substituir. Os backups não são criptografados — guarde-os em local seguro. Os arquivos “antes-de-…” nunca são apagados pela retenção automática.
         </p>
       </Secao>
+      </>)}
 
+      {(secao === "dados") && (<>
       <div className="grid gap-4 lg:grid-cols-2">
         <Secao titulo={<><Database size={16} className="text-secundaria" /> Banco de dados</>}>
           {banco && (
@@ -290,7 +297,9 @@ export function BackupPage() {
           </div>
         </Secao>
       </div>
+      </>)}
 
+      {(secao === "pin") && (<>
       <Secao titulo={<>{seg.pinAtivo ? <Lock size={16} className="text-destaque" /> : <LockOpen size={16} className="text-texto-secundario" />} Bloqueio por PIN</>}>
         {seg.pinAtivo ? (
           <div className="space-y-4">
@@ -322,13 +331,17 @@ export function BackupPage() {
           O PIN é um bloqueio de tela do aplicativo; ele não criptografa o arquivo do banco de dados nem os backups. Após 5 erros seguidos há uma espera crescente. Se esquecer o PIN, o acesso só volta removendo a configuração manualmente (preferencias.json em %APPDATA%\com.danielsantos.dairus).
         </p>
       </Secao>
+      </>)}
 
+      {(secao === "atividade") && (<>
       <Secao titulo="Atividade recente">
         {auditoria.length === 0 ? <p className="text-sm text-texto-secundario">Sem registros.</p> : (
           <ul className="space-y-1 text-xs">{auditoria.map((a, i) => <li key={i} className="flex justify-between"><span className="text-texto-primario">{a.acao.replace(/_/g, " ").toLowerCase()} · {a.entidade}</span><span className="text-texto-secundario">{formatarDataISOParaBR(a.criado_em.slice(0, 10))} {a.criado_em.slice(11, 16)}</span></li>)}</ul>
         )}
       </Secao>
+      </>)}
 
+      {(secao === "perigo") && (<>
       <Secao titulo={<span className="text-erro">Zona de perigo</span>}>
         {!mostrarReset ? (
           <Button variante="perigo" tamanho="pequeno" onClick={() => setMostrarReset(true)}><Trash2 size={13} /> Apagar todos os meus dados…</Button>
@@ -343,6 +356,7 @@ export function BackupPage() {
           </div>
         )}
       </Secao>
+      </>)}
     </div>
   );
 }

@@ -16,10 +16,12 @@ import {
   Search,
   Star,
   TriangleAlert,
+  TrendingUp,
   Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
+import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { BarraProgresso, CLASSE_INPUT } from "../../components/ui/Campos";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { IconeCoisa } from "../../components/ui/IconeCoisa";
@@ -87,6 +89,7 @@ export function ContasBancariasPage() {
   const [saldoReal, setSaldoReal] = useState("");
   const [transferindo, setTransferindo] = useState<string | null>(null);
   const [tf, setTf] = useState({ destino: "", valor: "" });
+  const [secao, setSecao] = useAbaDaPagina<"contas" | "evolucao">("contas-bancarias", "contas");
 
   async function carregar() {
     const [c, l, a] = await Promise.all([
@@ -469,6 +472,7 @@ export function ContasBancariasPage() {
             <StatCard titulo="Maior saldo" valor={maior ? dinheiro(maior.saldo_atual_centavos) : "—"} icone={Landmark} corIcone="secundaria" subtitulo={negativas.length ? `${negativas.length} conta(s) no negativo` : (maior?.nome ?? "")} />
           </div>
 
+          {secao === "evolucao" && (
           <section className="rounded-xl border border-borda bg-cartao p-4">
             <h2 className="text-sm font-semibold text-texto-primario">Evolução do saldo total (12 meses)</h2>
             <div className="mt-2 h-40">
@@ -492,9 +496,13 @@ export function ContasBancariasPage() {
               )}
             </div>
           </section>
+          )}
         </>
       )}
 
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "contas", rotulo: "Contas", icone: Landmark, contador: undefined }, { id: "evolucao", rotulo: "Evolução do saldo", icone: TrendingUp }]} />
+
+      {secao === "contas" && (<>
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-texto-secundario" />
@@ -536,6 +544,7 @@ export function ContasBancariasPage() {
           ))}
         </div>
       )}
+      </>)}
     </div>
   );
 }
