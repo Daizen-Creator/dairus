@@ -1,5 +1,6 @@
 mod accounting;
 mod commands;
+mod conta;
 mod db;
 mod extras;
 
@@ -20,8 +21,9 @@ pub fn run() {
                 .expect("não foi possível resolver o diretório de dados do app");
             std::fs::create_dir_all(&dados_dir).expect("não foi possível criar o diretório de dados do app");
 
-            let caminho_banco = dados_dir.join("dairus.db");
-            let conn = db::abrir_conexao(&caminho_banco).expect("falha ao abrir o banco SQLite");
+            // Até alguém entrar na conta, nenhum banco do disco fica aberto: usa um vazio em memória.
+            // O banco de cada conta é aberto pelo comando `abrir_conta` depois do login.
+            let conn = db::abrir_conexao(std::path::Path::new(":memory:")).expect("falha ao abrir o banco SQLite");
             db::executar_migracoes(&conn).expect("falha ao aplicar migrações do banco");
 
             app.manage(AppState {
@@ -77,6 +79,11 @@ pub fn run() {
             extras::atualizar_item_radar,
             extras::excluir_preco_radar,
             extras::listar_auditoria,
+            conta::situacao_conta,
+            conta::abrir_conta,
+            conta::fechar_conta,
+            conta::aguardar_retorno_login,
+            conta::cancelar_login,
             extras::info_banco,
             extras::verificar_integridade,
             extras::otimizar_banco,

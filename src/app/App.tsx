@@ -5,7 +5,9 @@ import { BloqueioTela } from "../components/layout/BloqueioTela";
 import { executarBackupAutomatico } from "../services/backupAutomatico";
 import { lerPreferencia } from "../services/armazenamento";
 import { useSegurancaStore } from "../state/seguranca-store";
-import { useThemeStore } from "../state/theme-store";
+import { aplicarTemaPadrao, useThemeStore } from "../state/theme-store";
+import { useAuthStore } from "../state/auth-store";
+import { PreparandoConta, TelaLogin } from "../components/auth/PortaoDeConta";
 
 // Cada página é carregada só quando aberta (app abre mais rápido).
 const DashboardPage = lazy(() => import("../features/dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })));
@@ -44,14 +46,25 @@ export function App() {
   const inicializarSeguranca = useSegurancaStore((s) => s.inicializar);
   const segurancaCarregada = useSegurancaStore((s) => s.carregado);
   const [erroFatal, setErroFatal] = useState<string | null>(null);
+  const authCarregando = useAuthStore((s) => s.carregando);
+  const sessao = useAuthStore((s) => s.sessao);
+  const contaAberta = useAuthStore((s) => s.contaAberta);
+  const inicializarAuth = useAuthStore((s) => s.inicializar);
+
+  // Antes do login vale o tema padrão; depois, as preferências da conta.
+  useEffect(() => {
+    aplicarTemaPadrao();
+    inicializarAuth().catch((e) => setErroFatal(String(e)));
+  }, [inicializarAuth]);
 
   useEffect(() => {
+    if (!contaAberta) return;
     inicializar().catch((e) => setErroFatal(String(e)));
     inicializarSeguranca().catch((e) => setErroFatal(String(e)));
     executarBackupAutomatico().catch(() => {
       // Backup automático é conveniência: falha silenciosa; o status real aparece em Backup e Segurança.
     });
-  }, [inicializar, inicializarSeguranca]);
+  }, [contaAberta, inicializar, inicializarSeguranca]);
 
   // Preferências de interface: tamanho do texto, animações reduzidas e tela inicial.
   useEffect(() => {
@@ -72,6 +85,10 @@ export function App() {
       </div>
     );
   }
+
+  if (authCarregando) return <div className="flex h-full items-center justify-center bg-fundo" />;
+  if (!sessao) return <TelaLogin />;
+  if (!contaAberta) return <PreparandoConta />;
 
   if (!carregado || !segurancaCarregada) {
     return <div className="flex h-full items-center justify-center bg-fundo" />;

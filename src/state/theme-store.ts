@@ -159,3 +159,9 @@ export const useThemeStore = create<EstadoTema>((set, get) => ({
     }
   },
 }));
+
+/** Aplica o tema padrão (Neon Dark) antes do login, quando ainda não há preferências de conta. */
+export function aplicarTemaPadrao(): void {
+  const tema = CATALOGO.find((t) => t.id === TEMA_PADRAO_INICIAL) ?? CATALOGO[0];
+  aplicarVariaveisCss(tema);
+}

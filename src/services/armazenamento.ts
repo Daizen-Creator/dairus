@@ -4,29 +4,49 @@
 // no navegador durante o desenvolvimento) cai para `localStorage` para não
 // quebrar a experiência de quem está só olhando a UI.
 //
-// Isto é exatamente o tipo de detalhe que a camada de serviços deve
-// esconder dos componentes (seção 1 e 18 do escopo): se um dia trocarmos
-// o motor de persistência, só este arquivo muda.
+// Cada conta tem o seu próprio arquivo: preferencias-<id>.json. Antes do login
+// (ou fora de uma conta) usa o arquivo antigo, preferencias.json.
 
 type LojaTauri = {
   get<T>(chave: string): Promise<T | null | undefined>;
   set(chave: string, valor: unknown): Promise<void>;
   save(): Promise<void>;
+  entries<T>(): Promise<Array<[string, T]>>;
 };
 
-let lojaPromise: Promise<LojaTauri> | null = null;
+const ARQUIVO_LEGADO = "preferencias.json";
+let arquivoAtual = ARQUIVO_LEGADO;
+let prefixoLocal = "";
+const lojas = new Map<string, Promise<LojaTauri>>();
 
 function estaNoTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-async function obterLoja(): Promise<LojaTauri> {
-  if (!lojaPromise) {
-    lojaPromise = import("@tauri-apps/plugin-store").then(
-      ({ Store }) => Store.load("preferencias.json") as Promise<LojaTauri>,
-    );
+function obterLoja(arquivo = arquivoAtual): Promise<LojaTauri> {
+  let loja = lojas.get(arquivo);
+  if (!loja) {
+    loja = import("@tauri-apps/plugin-store").then(({ Store }) => Store.load(arquivo) as Promise<LojaTauri>);
+    lojas.set(arquivo, loja);
   }
-  return lojaPromise;
+  return loja;
+}
+
+/** Passa a ler/gravar as preferências da conta informada (null = arquivo antigo, sem conta). */
+export function definirContaDasPreferencias(usuarioId: string | null): void {
+  arquivoAtual = usuarioId ? `preferencias-${usuarioId}.json` : ARQUIVO_LEGADO;
+  prefixoLocal = usuarioId ? `${usuarioId}:` : "";
+}
+
+/** Copia as preferências antigas (de antes do login) para a conta atual. */
+export async function importarPreferenciasLegadas(): Promise<number> {
+  if (!estaNoTauri() || arquivoAtual === ARQUIVO_LEGADO) return 0;
+  const antiga = await obterLoja(ARQUIVO_LEGADO);
+  const nova = await obterLoja();
+  const itens = await antiga.entries<unknown>();
+  for (const [chave, valor] of itens) await nova.set(chave, valor);
+  await nova.save();
+  return itens.length;
 }
 
 export async function lerPreferencia<T>(chave: string): Promise<T | null> {
@@ -39,7 +59,7 @@ export async function lerPreferencia<T>(chave: string): Promise<T | null> {
       // segue para o fallback abaixo
     }
   }
-  const bruto = localStorage.getItem(chave);
+  const bruto = localStorage.getItem(prefixoLocal + chave);
   return bruto ? (JSON.parse(bruto) as T) : null;
 }
 
@@ -54,5 +74,5 @@ export async function salvarPreferencia(chave: string, valor: unknown): Promise<
       // segue para o fallback abaixo
     }
   }
-  localStorage.setItem(chave, JSON.stringify(valor));
+  localStorage.setItem(prefixoLocal + chave, JSON.stringify(valor));
 }

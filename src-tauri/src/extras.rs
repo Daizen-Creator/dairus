@@ -1001,8 +1001,14 @@ pub struct InfoBackup {
     pub criado_em: String,
 }
 
+/// DocumentosDairus<id da conta><sub>: cada conta tem as suas próprias pastas.
 fn pasta_dairus(app: &AppHandle, sub: &str) -> Res<PathBuf> {
-    let base = app.path().document_dir().map_err(e)?.join("Dairus").join(sub);
+    let usuario = crate::conta::USUARIO_ATUAL
+        .lock()
+        .expect("mutex envenenado")
+        .clone()
+        .ok_or("Entre na sua conta primeiro.")?;
+    let base = app.path().document_dir().map_err(e)?.join("Dairus").join(usuario).join(sub);
     std::fs::create_dir_all(&base).map_err(e)?;
     Ok(base)
 }

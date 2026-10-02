@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Minus, Moon, Square, Sun, Settings, User, X } from "lucide-react";
+import { Minus, Moon, Square, Sun, Settings, X } from "lucide-react";
 import { GlobalSearch } from "./GlobalSearch";
 import { Notificacoes } from "./Notificacoes";
-import { usePreferencia } from "../../state/usePreferencia";
+import { MenuConta } from "./MenuConta";
 import { useThemeStore } from "../../state/theme-store";
 
 const janela = getCurrentWindow();
@@ -16,7 +16,6 @@ export function TitleBar() {
   const modoAutomatico = useThemeStore((s) => s.modoAutomatico);
   const alternarModoAutomatico = useThemeStore((s) => s.alternarModoAutomatico);
   const temaAtivo = useThemeStore((s) => s.temaAtivo());
-  const [nomeUsuario] = usePreferencia<string>("nome_usuario", "");
 
   useEffect(() => {
     janela.isMaximized().then(setMaximizada);
@@ -105,15 +104,7 @@ export function TitleBar() {
         >
           <Settings size={16} />
         </button>
-        <div className="mx-1 flex items-center gap-2 border-l border-borda pl-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-borda text-texto-secundario">
-            <User size={14} />
-          </span>
-          <span className="hidden text-xs leading-tight text-texto-secundario sm:block">
-            <span className="block max-w-28 truncate font-medium text-texto-primario">{nomeUsuario || "Usuário"}</span>
-            Modo local
-          </span>
-        </div>
+        <MenuConta />
       </div>
 
       <div className="ml-2 flex h-full">
