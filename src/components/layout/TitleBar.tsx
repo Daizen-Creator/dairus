@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Bell, Minus, Moon, Square, Sun, Settings, TrendingUp, User, X } from "lucide-react";
+import { Bell, Minus, Moon, Square, Sun, Settings, User, X } from "lucide-react";
 import { GlobalSearch } from "./GlobalSearch";
 import { useThemeStore } from "../../state/theme-store";
 
@@ -58,16 +58,16 @@ export function TitleBar() {
       style={{ height: "var(--altura-barra-titulo)" }}
     >
       <div className="flex shrink-0 items-center gap-2.5">
-        <span
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-primaria-texto"
-          style={{
-            background: `linear-gradient(135deg, ${temaAtivo.cores.primaria}, ${temaAtivo.cores.destaque})`,
-            boxShadow: `0 2px 12px -2px ${temaAtivo.cores.primaria}`,
-          }}
+        <img
+          src="/dairus.svg"
+          alt=""
+          width={32}
+          height={32}
+          draggable={false}
+          className="h-8 w-8 shrink-0"
+          style={{ filter: `drop-shadow(0 2px 8px ${temaAtivo.cores.primaria}66)` }}
           aria-hidden
-        >
-          <TrendingUp size={17} strokeWidth={2.4} />
-        </span>
+        />
         <div className="min-w-0 leading-tight">
           <p className="truncate text-sm font-semibold text-texto-primario">Dairus</p>
           <p className="truncate text-[11px] text-texto-secundario">Seu futuro financeiro, no seu controle.</p>

@@ -1,0 +1,2 @@
+cargo:rustc-link-search=native=C:\Users\dhani\OneDrive\Documentos\Sistema Dairus\src-tauri\target-audit\debug\build\webview2-com-sys-91057c40b17ba182\out\x64
+cargo:rustc-link-lib=advapi32
