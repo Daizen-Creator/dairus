@@ -5,6 +5,8 @@ mod conta;
 mod cripto;
 mod db;
 mod extras;
+mod investimentos;
+mod mercado;
 mod planilha;
 mod sincronizacao;
 mod sistema;
@@ -112,6 +114,17 @@ pub fn run() {
             extras::salvar_exportacao,
             planilha::exportar_xlsx,
             sistema::atualizar_bandeja,
+            investimentos::listar_ativos_invest,
+            investimentos::salvar_ativo_invest,
+            investimentos::arquivar_ativo_invest,
+            investimentos::excluir_ativo_invest,
+            investimentos::registrar_operacao_invest,
+            investimentos::listar_operacoes_invest,
+            investimentos::excluir_operacao_invest,
+            investimentos::atualizar_cotacoes,
+            investimentos::salvar_indicadores,
+            investimentos::listar_indicadores,
+            mercado::buscar_json_mercado,
             atualizacao::verificar_atualizacao,
             atualizacao::instalar_atualizacao,
             sincronizacao::impressao_dados,

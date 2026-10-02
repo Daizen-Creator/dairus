@@ -13,6 +13,7 @@
 //! dado autenticado, então não dá para trocá-lo sem a decifragem falhar.
 
 use std::path::{Path, PathBuf};
+#[cfg(not(test))]
 use std::sync::Mutex;
 
 use aes_gcm::aead::{rand_core::RngCore, Aead, KeyInit, OsRng, Payload};
@@ -229,23 +230,40 @@ pub struct Sessao {
     mudancas_gravadas: u64,
 }
 
+#[cfg(not(test))]
 static SESSAO: Mutex<Option<Sessao>> = Mutex::new(None);
 
+/// Acesso à sessão. Nos testes ela é por thread, para os testes paralelos não se misturarem.
+#[cfg(not(test))]
+fn com_sessao<R>(f: impl FnOnce(&mut Option<Sessao>) -> R) -> R {
+    f(&mut SESSAO.lock().expect("mutex envenenado"))
+}
+
+#[cfg(test)]
+thread_local! {
+    static SESSAO_TESTE: std::cell::RefCell<Option<Sessao>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn com_sessao<R>(f: impl FnOnce(&mut Option<Sessao>) -> R) -> R {
+    SESSAO_TESTE.with(|s| f(&mut s.borrow_mut()))
+}
+
 pub fn ativa() -> bool {
-    SESSAO.lock().expect("mutex envenenado").is_some()
+    com_sessao(|s| s.is_some())
 }
 
 pub fn iniciar_sessao(chaves: Chaves, senha: &str, arquivo: PathBuf, conn: &Connection) {
-    *SESSAO.lock().expect("mutex envenenado") =
-        Some(Sessao { chaves, senha: Zeroizing::new(senha.to_string()), arquivo, mudancas_gravadas: conn.total_changes() });
+    let nova = Sessao { chaves, senha: Zeroizing::new(senha.to_string()), arquivo, mudancas_gravadas: conn.total_changes() };
+    com_sessao(|s| *s = Some(nova));
 }
 
 pub fn encerrar_sessao() {
-    *SESSAO.lock().expect("mutex envenenado") = None;
+    com_sessao(|s| *s = None);
 }
 
 pub fn arquivo_da_sessao() -> Option<PathBuf> {
-    SESSAO.lock().expect("mutex envenenado").as_ref().map(|s| s.arquivo.clone())
+    com_sessao(|s| s.as_ref().map(|s| s.arquivo.clone()))
 }
 
 /// Copia o banco inteiro para bytes (funciona com banco em memória ou em arquivo).
@@ -276,24 +294,26 @@ fn gravar_atomico(destino: &Path, bytes: &[u8]) -> Res<()> {
 
 /// Grava o banco (cifrado) se mudou desde a última gravação, ou sempre com `forcar`.
 pub fn persistir(conn: &Connection, forcar: bool) -> Res<bool> {
-    let mut guarda = SESSAO.lock().expect("mutex envenenado");
-    let Some(s) = guarda.as_mut() else { return Ok(false) };
-    let mudancas = conn.total_changes();
-    if !forcar && mudancas == s.mudancas_gravadas {
-        return Ok(false);
-    }
-    let texto = Zeroizing::new(serializar(conn)?);
-    gravar_atomico(&s.arquivo, &s.chaves.cifrar(&texto)?)?;
-    s.mudancas_gravadas = mudancas;
-    Ok(true)
+    com_sessao(|guarda| {
+        let Some(s) = guarda.as_mut() else { return Ok(false) };
+        let mudancas = conn.total_changes();
+        if !forcar && mudancas == s.mudancas_gravadas {
+            return Ok(false);
+        }
+        let texto = Zeroizing::new(serializar(conn)?);
+        gravar_atomico(&s.arquivo, &s.chaves.cifrar(&texto)?)?;
+        s.mudancas_gravadas = mudancas;
+        Ok(true)
+    })
 }
 
 /// Bytes para um arquivo de backup: cifrados se a criptografia está ligada.
 pub fn bytes_de_backup(conn: &Connection) -> Res<Option<Vec<u8>>> {
-    let guarda = SESSAO.lock().expect("mutex envenenado");
-    let Some(s) = guarda.as_ref() else { return Ok(None) };
-    let texto = Zeroizing::new(serializar(conn)?);
-    Ok(Some(s.chaves.cifrar(&texto)?))
+    com_sessao(|guarda| {
+        let Some(s) = guarda.as_ref() else { return Ok(None) };
+        let texto = Zeroizing::new(serializar(conn)?);
+        Ok(Some(s.chaves.cifrar(&texto)?))
+    })
 }
 
 /// Abre um arquivo de banco/backup, cifrado (com a senha da sessão) ou não.
@@ -301,11 +321,7 @@ pub fn bytes_de_backup(conn: &Connection) -> Res<Option<Vec<u8>>> {
 pub fn abrir_arquivo(caminho: &Path) -> Res<Connection> {
     let bytes = std::fs::read(caminho).map_err(|e| e.to_string())?;
     if eh_cifrado(&bytes) {
-        let senha = SESSAO
-            .lock()
-            .expect("mutex envenenado")
-            .as_ref()
-            .map(|s| s.senha.clone())
+        let senha = com_sessao(|s| s.as_ref().map(|s| s.senha.clone()))
             .ok_or("Este backup está criptografado. Ligue a criptografia com a mesma senha para abri-lo.")?;
         let (_, texto) = abrir_com_senha(&bytes, &senha)
             .map_err(|e| if e == "Senha incorreta." { "Este backup foi criptografado com outra senha.".to_string() } else { e })?;
@@ -316,20 +332,20 @@ pub fn abrir_arquivo(caminho: &Path) -> Res<Connection> {
 }
 
 pub fn senha_confere(senha: &str) -> bool {
-    SESSAO.lock().expect("mutex envenenado").as_ref().is_some_and(|s| s.senha.as_str() == senha)
+    com_sessao(|s| s.as_ref().is_some_and(|s| s.senha.as_str() == senha))
 }
 
 /// Troca a senha da sessão (o arquivo é regravado com o cabeçalho novo).
 pub fn trocar_senha(conn: &Connection, atual: &str, nova: &str) -> Res<()> {
-    {
-        let mut guarda = SESSAO.lock().expect("mutex envenenado");
+    com_sessao(|guarda| -> Res<()> {
         let s = guarda.as_mut().ok_or("A criptografia não está ligada.")?;
         if s.senha.as_str() != atual {
             return Err("Senha atual incorreta.".into());
         }
         s.chaves = s.chaves.com_nova_senha(nova)?;
         s.senha = Zeroizing::new(nova.to_string());
-    }
+        Ok(())
+    })?;
     persistir(conn, true).map(|_| ())
 }
 
@@ -344,8 +360,7 @@ pub fn converter_backups(pasta: &Path, cifrar: bool) -> usize {
         let Ok(bytes) = std::fs::read(&caminho) else { continue };
         let ja_cifrado = eh_cifrado(&bytes);
         let novo = if cifrar && !ja_cifrado {
-            let guarda = SESSAO.lock().expect("mutex envenenado");
-            guarda.as_ref().and_then(|s| s.chaves.cifrar(&bytes).ok())
+            com_sessao(|guarda| guarda.as_ref().and_then(|s| s.chaves.cifrar(&bytes).ok()))
         } else if !cifrar && ja_cifrado {
             abrir_arquivo(&caminho).ok().and_then(|c| serializar(&c).ok())
         } else {
