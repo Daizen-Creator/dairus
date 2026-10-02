@@ -1,0 +1,39 @@
+name: Testes
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  telas:
+    name: Telas (Vitest) e TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit -p .
+      - run: npm test
+
+  motor:
+    name: Motor (cargo test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bibliotecas do Tauri no Linux
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> /tmp/dairus-target
+      - name: cargo test
+        working-directory: src-tauri
+        env:
+          # O .cargo/config.toml aponta a pasta de build para o D: do Windows.
+          CARGO_TARGET_DIR: /tmp/dairus-target
+        run: cargo test

@@ -4,6 +4,7 @@ mod conta;
 mod db;
 mod extras;
 mod planilha;
+mod sistema;
 
 use std::sync::Mutex;
 
@@ -13,9 +14,35 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Uma instância só: abrir o Dairus de novo traz a janela que já está aberta.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| sistema::mostrar_janela(app)))
+        .plugin(sistema::plugin_log())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![sistema::ARG_MINIMIZADO]),
+        ))
+        .plugin(sistema::plugin_atalho())
         .setup(|app| {
+            log::info!("Dairus {} iniciado", app.package_info().version);
+            if let Err(erro) = sistema::criar_bandeja(app.handle()) {
+                log::warn!("não foi possível criar o ícone da bandeja: {erro}");
+            }
+            {
+                use tauri_plugin_global_shortcut::GlobalShortcutExt;
+                if let Err(erro) = app.global_shortcut().register(sistema::atalho_lancamento()) {
+                    log::warn!("atalho Ctrl+Alt+D indisponível (outro programa pode estar usando): {erro}");
+                }
+            }
+            // Aberto pelo Windows ao ligar: fica só na bandeja até ser chamado.
+            if std::env::args().any(|a| a == sistema::ARG_MINIMIZADO) {
+                if let Some(janela) = app.get_webview_window("main") {
+                    let _ = janela.hide();
+                }
+            }
+
             let dados_dir = app
                 .path()
                 .app_data_dir()
@@ -70,6 +97,9 @@ pub fn run() {
             extras::restaurar_backup,
             extras::salvar_exportacao,
             planilha::exportar_xlsx,
+            sistema::atualizar_bandeja,
+            sistema::pasta_de_logs,
+            sistema::ler_log,
             extras::salvar_exportacao_binaria,
             extras::atualizar_lancamento_info,
             extras::atualizar_agendamento,

@@ -3,6 +3,8 @@ import { Outlet } from "react-router-dom";
 import { Toaster } from "sonner";
 import { TitleBar } from "./TitleBar";
 import { Sidebar } from "./Sidebar";
+import { IntegracaoSistema } from "./IntegracaoSistema";
+import { LancamentoRapido } from "./LancamentoRapido";
 
 export function AppShell({ carregando }: { carregando?: ReactNode }) {
   return (
@@ -18,6 +20,8 @@ export function AppShell({ carregando }: { carregando?: ReactNode }) {
           </div>
         </main>
       </div>
+      <IntegracaoSistema />
+      <LancamentoRapido />
       <Toaster
         position="bottom-right"
         toastOptions={{

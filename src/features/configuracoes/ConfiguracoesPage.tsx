@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Download, Keyboard, RotateCcw, Settings2, Sparkles, UserRound } from "lucide-react";
+import { Bell, Download, FolderOpen, Keyboard, MonitorCog, RotateCcw, Settings2, Sparkles, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { Button } from "../../components/ui/Button";
@@ -10,6 +10,8 @@ import { contabilidade } from "../../services/contabilidade";
 import { extras } from "../../services/extras";
 import { lerPreferencia, salvarPreferencia } from "../../services/armazenamento";
 import { usePreferencia } from "../../state/usePreferencia";
+import { verificarAvisosAgora } from "../../components/layout/IntegracaoSistema";
+import { abrirComWindows, lerLog, notificar, pastaDeLogs } from "../../services/sistema";
 import type { Conta } from "../../types/accounting";
 import type { InfoBanco } from "../../types/extras";
 
@@ -27,6 +29,8 @@ const ATALHOS: Array<[string, string]> = [
   ["/", "Focar a busca no histórico de lançamentos"],
   ["Esc", "Fechar a busca / limpar o texto da busca"],
   ["Ctrl + L", "Bloquear o app (com PIN ativo)"],
+  ["Ctrl + Shift + N", "Lançamento rápido (de qualquer tela)"],
+  ["Ctrl + Alt + D", "Lançamento rápido mesmo com o app minimizado"],
   ["Enter", "Salvar um limite no Orçamento; enviar pergunta à IA"],
   ["Shift + Enter", "Quebrar linha na pergunta à IA"],
 ];
@@ -58,7 +62,36 @@ export function ConfiguracoesPage() {
   const [semAnimacoes, setSemAnimacoes] = usePreferencia<boolean>("ui_sem_animacoes", false);
   const [ocultar, setOcultar] = usePreferencia<boolean>("ocultar_saldos", false);
   const [importando, setImportando] = useState("");
-  const [secao, setSecao] = useAbaDaPagina<"preferencias" | "atalhos" | "sobre">("configuracoes", "preferencias");
+  const [secao, setSecao] = useAbaDaPagina<"preferencias" | "windows" | "atalhos" | "sobre">("configuracoes", "preferencias");
+  const [avisosWindows, setAvisosWindows] = usePreferencia<boolean>("avisos_windows", true);
+  const [fecharParaBandeja, setFecharParaBandeja] = usePreferencia<boolean>("fechar_para_bandeja", false);
+  const [bloquearAoMinimizar, setBloquearAoMinimizar] = usePreferencia<boolean>("bloquear_ao_minimizar", true);
+  const [iniciarComWindows, setIniciarComWindows] = useState(false);
+  const [log, setLog] = useState<string | null>(null);
+
+  useEffect(() => {
+    abrirComWindows.ativo().then(setIniciarComWindows).catch(() => {});
+  }, []);
+
+  async function alternarInicio() {
+    try {
+      await abrirComWindows.definir(!iniciarComWindows);
+      setIniciarComWindows(!iniciarComWindows);
+      toast.success(!iniciarComWindows ? "O Dairus vai abrir junto com o Windows (na bandeja)." : "O Dairus não abre mais com o Windows.");
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  async function abrirLogs() {
+    try {
+      const pasta = await pastaDeLogs();
+      const { openPath } = await import("@tauri-apps/plugin-opener");
+      await openPath(pasta);
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
 
   useEffect(() => {
     contabilidade.listarContas().then(setContas).catch(() => {});
@@ -122,7 +155,7 @@ export function ConfiguracoesPage() {
         <p className="text-sm text-texto-secundario">Preferências de uso do Dairus. Tudo é salvo neste computador.</p>
       </div>
 
-      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "preferencias", rotulo: "Preferências", icone: UserRound }, { id: "atalhos", rotulo: "Atalhos e backup das configurações", icone: Keyboard }, { id: "sobre", rotulo: "Sobre", icone: Sparkles }]} />
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "preferencias", rotulo: "Preferências", icone: UserRound }, { id: "windows", rotulo: "Windows e avisos", icone: MonitorCog }, { id: "atalhos", rotulo: "Atalhos e backup das configurações", icone: Keyboard }, { id: "sobre", rotulo: "Sobre", icone: Sparkles }]} />
 
       {(secao === "preferencias") && (<>
       <div className="grid gap-4 lg:grid-cols-2">
@@ -167,6 +200,37 @@ export function ConfiguracoesPage() {
         </dl>
         <p className="mt-2 text-xs text-texto-secundario">Estes valores são fixos nesta versão.</p>
       </Secao>
+      </>)}
+
+      {(secao === "windows") && (<>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Secao titulo={<><Bell size={16} className="text-primaria" /> Avisos no Windows</>}>
+          <div className="space-y-3 text-sm">
+            <label className="flex items-center gap-2 text-texto-primario"><input type="checkbox" checked={avisosWindows} onChange={() => setAvisosWindows(!avisosWindows)} className="h-4 w-4 accent-[var(--cor-primaria)]" />Mostrar notificações do Windows</label>
+            <p className="text-xs text-texto-secundario">Contas a pagar 3 dias, 1 dia e no dia do vencimento; contas atrasadas; fatura que fecha amanhã ou vence; limite do cartão acima de 90% ou estourado; orçamento estourado e saldo negativo. Cada aviso aparece no máximo uma vez por dia, verificado a cada 30 minutos com o app aberto (ou na bandeja).</p>
+            <div className="flex flex-wrap gap-2">
+              <Button tamanho="pequeno" variante="secundaria" onClick={() => notificar("Dairus", "As notificações estão funcionando.").then((ok) => (ok ? toast.success("Notificação enviada.") : toast.error("O Windows não permitiu notificações para o Dairus.")))}>Testar notificação</Button>
+              <Button tamanho="pequeno" variante="secundaria" onClick={() => verificarAvisosAgora().then((n) => toast.success(n ? `${n} aviso(s) enviado(s).` : "Nenhum aviso novo hoje.")).catch((e) => toast.error(String(e)))}>Verificar agora</Button>
+            </div>
+          </div>
+        </Secao>
+        <Secao titulo={<><MonitorCog size={16} className="text-secundaria" /> Janela e inicialização</>}>
+          <div className="space-y-3 text-sm">
+            <label className="flex items-center gap-2 text-texto-primario"><input type="checkbox" checked={iniciarComWindows} onChange={alternarInicio} className="h-4 w-4 accent-[var(--cor-primaria)]" />Abrir junto com o Windows (começa na bandeja, perto do relógio)</label>
+            <label className="flex items-center gap-2 text-texto-primario"><input type="checkbox" checked={fecharParaBandeja} onChange={() => setFecharParaBandeja(!fecharParaBandeja)} className="h-4 w-4 accent-[var(--cor-primaria)]" />O botão fechar só esconde na bandeja (os avisos continuam)</label>
+            <label className="flex items-center gap-2 text-texto-primario"><input type="checkbox" checked={bloquearAoMinimizar} onChange={() => setBloquearAoMinimizar(!bloquearAoMinimizar)} className="h-4 w-4 accent-[var(--cor-primaria)]" />Com PIN ativo, bloquear ao minimizar ou quando o Windows bloquear</label>
+            <p className="text-xs text-texto-secundario">O ícone da bandeja mostra o saldo e a próxima conta ao passar o mouse; clique para abrir, botão direito para o menu (Abrir, Lançamento rápido, Sair).</p>
+          </div>
+        </Secao>
+        <Secao titulo="Registro de erros (log)">
+          <p className="text-xs text-texto-secundario">O Dairus grava o que acontece num arquivo de log (até 5 arquivos de 2 MB). Se algo der errado, mande esse arquivo para quem estiver te ajudando. O app não grava seus lançamentos nele de propósito.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button tamanho="pequeno" variante="secundaria" onClick={abrirLogs}><FolderOpen size={13} /> Abrir pasta do log</Button>
+            <Button tamanho="pequeno" variante="fantasma" onClick={() => lerLog(200).then((t) => setLog(t || "(log vazio)")).catch((e) => toast.error(String(e)))}>Ver últimas linhas</Button>
+          </div>
+          {log !== null && <pre className="mt-3 max-h-64 overflow-auto rounded-lg border border-borda bg-fundo p-2 text-[11px] text-texto-secundario">{log}</pre>}
+        </Secao>
+      </div>
       </>)}
 
       {(secao === "atalhos") && (<>

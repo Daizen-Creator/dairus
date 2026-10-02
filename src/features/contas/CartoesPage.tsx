@@ -39,6 +39,7 @@ import { calcularCiclo } from "./ciclo";
 import { NovaContaForm } from "./NovaContaForm";
 import { dividirEmParcelas, parcelamentoDe } from "./parcelas";
 import type { Conta, Lancamento } from "../../types/accounting";
+import { useAoAlterarDados } from "../../state/useAoAlterarDados";
 
 const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -92,6 +93,10 @@ export function CartoesPage() {
   const [comprando, setComprando] = useState<string | null>(null);
   const [cp, setCp] = useState({ descricao: "", valor: "", categoriaId: "despesa-outras", parcelas: "1" });
   const [detalhe, setDetalhe] = useState<string | null>(null);
+
+  useAoAlterarDados(() => {
+    carregar().catch(() => {});
+  });
 
   async function carregar() {
     const [c, l] = await Promise.all([contabilidade.listarContas(), contabilidade.listarLancamentos(3000)]);

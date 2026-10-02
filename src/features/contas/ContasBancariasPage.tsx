@@ -44,6 +44,7 @@ import { razaoDaConta } from "../../services/relatorios";
 import { usePreferencia } from "../../state/usePreferencia";
 import { NovaContaForm } from "./NovaContaForm";
 import type { Agendamento, Conta, Lancamento } from "../../types/accounting";
+import { useAoAlterarDados } from "../../state/useAoAlterarDados";
 
 const SUBTIPOS_CONTA = ["BANCO", "CARTEIRA_DIGITAL", "DINHEIRO", "INVESTIMENTO", "BENEFICIO"];
 const ROTULO_SUBTIPO: Record<string, string> = {
@@ -90,6 +91,10 @@ export function ContasBancariasPage() {
   const [transferindo, setTransferindo] = useState<string | null>(null);
   const [tf, setTf] = useState({ destino: "", valor: "" });
   const [secao, setSecao] = useAbaDaPagina<"contas" | "evolucao">("contas-bancarias", "contas");
+
+  useAoAlterarDados(() => {
+    carregar().catch(() => {});
+  });
 
   async function carregar() {
     const [c, l, a] = await Promise.all([

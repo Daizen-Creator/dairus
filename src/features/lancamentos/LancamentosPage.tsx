@@ -17,6 +17,7 @@ import { ImportarExtratoForm } from "./ImportarExtratoForm";
 import { NovaReceitaForm } from "./NovaReceitaForm";
 import { TransferenciaForm } from "./TransferenciaForm";
 import type { AnaliseLancamento } from "./analise";
+import { useAoAlterarDados } from "../../state/useAoAlterarDados";
 
 type Aba = "despesa" | "receita" | "agendar" | "transferencia" | "importar";
 
@@ -32,6 +33,10 @@ export function LancamentosPage() {
   const [secao, setSecao] = useAbaDaPagina<"lancar" | "pagar" | "historico">("lancamentos", "lancar");
   const [contaPadrao] = usePreferencia<string>("conta_padrao", "");
   const [categoriaPadrao] = usePreferencia<string>("categoria_padrao", "");
+
+  useAoAlterarDados(() => {
+    carregar().catch(() => {});
+  });
 
   async function carregar() {
     const hoje = dataAtualISO();

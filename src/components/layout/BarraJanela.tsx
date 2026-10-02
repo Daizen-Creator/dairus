@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { lerPreferencia } from "../../services/armazenamento";
+import { fecharJanela } from "../../services/sistema";
+
+async function fecharConformePreferencia() {
+  await fecharJanela((await lerPreferencia<boolean>("fechar_para_bandeja")) ?? false);
+}
 import { Minus, Square, X } from "lucide-react";
 
 const janela = getCurrentWindow();
@@ -43,7 +49,7 @@ export function BarraJanela() {
         <button type="button" aria-label={maximizada ? "Restaurar" : "Maximizar"} onClick={() => janela.toggleMaximize()} className={`${botao} hover:bg-borda/60`}>
           <Square size={11} />
         </button>
-        <button type="button" aria-label="Fechar" onClick={() => janela.close()} className={`${botao} hover:bg-erro hover:text-white`}>
+        <button type="button" aria-label="Fechar" onClick={() => fecharConformePreferencia()} className={`${botao} hover:bg-erro hover:text-white`}>
           <X size={14} />
         </button>
       </div>
