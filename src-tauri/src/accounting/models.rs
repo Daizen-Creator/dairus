@@ -141,6 +141,7 @@ pub struct Agendamento {
     pub etiqueta: Option<String>,
     pub lancamento_id: Option<String>,
     pub pago_em: Option<String>,
+    pub recorrencia: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -151,4 +152,6 @@ pub struct NovoAgendamentoInput {
     pub categoria_despesa_id: String,
     #[serde(default)]
     pub etiqueta: Option<String>,
+    #[serde(default)]
+    pub recorrencia: Option<String>,
 }

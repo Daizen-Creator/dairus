@@ -17,6 +17,8 @@ export type SubtipoConta =
 
 export type Etiqueta = "MENSALIDADE" | "ASSINATURA" | "FIXO";
 
+export type Recorrencia = "SEMANAL" | "MENSAL" | "ANUAL";
+
 export type TipoPartida = "DEBITO" | "CREDITO";
 
 export interface Conta {
@@ -104,6 +106,7 @@ export interface DespesaInput {
   data: string;
   descricao: string;
   etiqueta?: Etiqueta | null;
+  observacao?: string | null;
 }
 
 export interface TransferenciaInput {
@@ -143,6 +146,7 @@ export interface Agendamento {
   etiqueta: Etiqueta | null;
   lancamento_id: string | null;
   pago_em: string | null;
+  recorrencia: Recorrencia | null;
 }
 
 export interface NovoAgendamentoInput {
@@ -151,4 +155,5 @@ export interface NovoAgendamentoInput {
   vencimento: string;
   categoria_despesa_id: string;
   etiqueta?: Etiqueta | null;
+  recorrencia?: Recorrencia | null;
 }

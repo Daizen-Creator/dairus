@@ -85,6 +85,21 @@ pub struct Meta {
     pub valor_alvo_centavos: i64,
     pub prazo: Option<String>,
     pub guardado_centavos: i64,
+    pub tipo: Option<String>,
+    pub prioridade: Option<String>,
+    pub notas: Option<String>,
+}
+
+fn validar_extras_meta(tipo: &Option<String>, prioridade: &Option<String>) -> Res<()> {
+    if !matches!(prioridade.as_deref(), None | Some("ALTA") | Some("MEDIA") | Some("BAIXA")) {
+        return Err("Prioridade inválida.".into());
+    }
+    if let Some(t) = tipo {
+        if t.len() > 30 || t.chars().any(|c| !(c.is_ascii_alphanumeric() || c == '_')) {
+            return Err("Tipo de meta inválido.".into());
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -93,7 +108,8 @@ pub fn listar_metas(state: State<AppState>) -> Res<Vec<Meta>> {
     let mut stmt = conn
         .prepare(
             "SELECT m.id, m.nome, m.valor_alvo_centavos, m.prazo,
-                    COALESCE((SELECT SUM(valor_centavos) FROM metas_aportes a WHERE a.meta_id = m.id), 0)
+                    COALESCE((SELECT SUM(valor_centavos) FROM metas_aportes a WHERE a.meta_id = m.id), 0),
+                    m.tipo, m.prioridade, m.notas
              FROM metas m ORDER BY m.criado_em",
         )
         .map_err(e)?;
@@ -105,6 +121,9 @@ pub fn listar_metas(state: State<AppState>) -> Res<Vec<Meta>> {
                 valor_alvo_centavos: r.get(2)?,
                 prazo: r.get(3)?,
                 guardado_centavos: r.get(4)?,
+                tipo: r.get(5)?,
+                prioridade: r.get(6)?,
+                notas: r.get(7)?,
             })
         })
         .map_err(e)?
@@ -119,6 +138,9 @@ pub fn criar_meta(
     nome: String,
     valor_alvo_centavos: i64,
     prazo: Option<String>,
+    tipo: Option<String>,
+    prioridade: Option<String>,
+    notas: Option<String>,
 ) -> Res<String> {
     let nome = nome_valido(&nome)?;
     if valor_alvo_centavos <= 0 {
@@ -127,11 +149,13 @@ pub fn criar_meta(
     if let Some(p) = &prazo {
         data_valida(p)?;
     }
+    validar_extras_meta(&tipo, &prioridade)?;
+    let notas = notas.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
     let conn = state.conn.lock().expect("mutex envenenado");
     let id = Uuid::new_v4().to_string();
     conn.execute(
-        "INSERT INTO metas (id, nome, valor_alvo_centavos, prazo) VALUES (?1, ?2, ?3, ?4)",
-        params![id, nome, valor_alvo_centavos, prazo],
+        "INSERT INTO metas (id, nome, valor_alvo_centavos, prazo, tipo, prioridade, notas) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![id, nome, valor_alvo_centavos, prazo, tipo, prioridade, notas],
     )
     .map_err(e)?;
     Ok(id)
@@ -376,6 +400,332 @@ pub fn registrar_preco_radar(
 pub fn excluir_item_radar(state: State<AppState>, item_id: String) -> Res<()> {
     let conn = state.conn.lock().expect("mutex envenenado");
     conn.execute("DELETE FROM radar_itens WHERE id = ?1", [item_id]).map_err(e)?;
+    Ok(())
+}
+
+// ----------------------------------------------- Edição de cadastros e extras
+
+fn etiqueta_valida(etiqueta: &Option<String>) -> Res<()> {
+    match etiqueta.as_deref() {
+        None | Some("MENSALIDADE") | Some("ASSINATURA") | Some("FIXO") => Ok(()),
+        Some(_) => Err("Etiqueta inválida.".into()),
+    }
+}
+
+/// Corrige só descrição, observação e etiqueta. Valores, datas e contas de um
+/// lançamento nunca mudam: para isso o caminho contábil correto é estornar e relançar.
+#[tauri::command]
+pub fn atualizar_lancamento_info(
+    state: State<AppState>,
+    lancamento_id: String,
+    descricao: String,
+    observacao: Option<String>,
+    etiqueta: Option<String>,
+) -> Res<()> {
+    let descricao = nome_valido(&descricao)?;
+    etiqueta_valida(&etiqueta)?;
+    let observacao = observacao.map(|o| o.trim().to_string()).filter(|o| !o.is_empty());
+    let mut conn = state.conn.lock().expect("mutex envenenado");
+    let tx = conn.transaction().map_err(e)?;
+    let alteradas = tx
+        .execute(
+            "UPDATE lancamentos SET descricao = ?1, observacao = ?2, etiqueta = ?3 WHERE id = ?4",
+            params![descricao, observacao, etiqueta, lancamento_id],
+        )
+        .map_err(e)?;
+    if alteradas == 0 {
+        return Err("Lançamento não encontrado.".into());
+    }
+    tx.execute(
+        "INSERT INTO auditoria (id, acao, entidade, entidade_id) VALUES (?1, 'ATUALIZAR_LANCAMENTO', 'lancamento', ?2)",
+        params![Uuid::new_v4().to_string(), lancamento_id],
+    )
+    .map_err(e)?;
+    tx.commit().map_err(e)
+}
+
+#[tauri::command]
+pub fn atualizar_agendamento(
+    state: State<AppState>,
+    agendamento_id: String,
+    descricao: String,
+    valor_centavos: i64,
+    vencimento: String,
+    etiqueta: Option<String>,
+    recorrencia: Option<String>,
+) -> Res<()> {
+    let descricao = nome_valido(&descricao)?;
+    if valor_centavos <= 0 {
+        return Err("O valor precisa ser maior que zero.".into());
+    }
+    data_valida(&vencimento)?;
+    etiqueta_valida(&etiqueta)?;
+    if !matches!(recorrencia.as_deref(), None | Some("SEMANAL") | Some("MENSAL") | Some("ANUAL")) {
+        return Err("Recorrência inválida.".into());
+    }
+    let conn = state.conn.lock().expect("mutex envenenado");
+    let alteradas = conn
+        .execute(
+            "UPDATE agendamentos SET descricao = ?1, valor_centavos = ?2, vencimento = ?3, etiqueta = ?4, recorrencia = ?5
+             WHERE id = ?6 AND pago_em IS NULL",
+            params![descricao, valor_centavos, vencimento, etiqueta, recorrencia, agendamento_id],
+        )
+        .map_err(e)?;
+    if alteradas == 0 {
+        return Err("Conta não encontrada ou já paga.".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn atualizar_conta(
+    state: State<AppState>,
+    conta_id: String,
+    nome: String,
+    instituicao: Option<String>,
+    limite_centavos: Option<i64>,
+    dia_fechamento_fatura: Option<i32>,
+    dia_vencimento_fatura: Option<i32>,
+) -> Res<()> {
+    let nome = nome_valido(&nome)?;
+    if matches!(limite_centavos, Some(l) if l < 0) {
+        return Err("O limite não pode ser negativo.".into());
+    }
+    for dia in [dia_fechamento_fatura, dia_vencimento_fatura].into_iter().flatten() {
+        if !(1..=31).contains(&dia) {
+            return Err("O dia da fatura precisa estar entre 1 e 31.".into());
+        }
+    }
+    let instituicao = instituicao.map(|i| i.trim().to_string()).filter(|i| !i.is_empty());
+    let conn = state.conn.lock().expect("mutex envenenado");
+    let alteradas = conn
+        .execute(
+            "UPDATE contas_contabeis SET nome = ?1, instituicao = ?2, limite_centavos = ?3,
+                    dia_fechamento_fatura = ?4, dia_vencimento_fatura = ?5
+             WHERE id = ?6 AND sistema = 0",
+            params![nome, instituicao, limite_centavos, dia_fechamento_fatura, dia_vencimento_fatura, conta_id],
+        )
+        .map_err(e)?;
+    if alteradas == 0 {
+        return Err("Conta não encontrada ou protegida do sistema.".into());
+    }
+    Ok(())
+}
+
+/// Arquiva (ou reativa) uma conta. Só arquiva com saldo zero, para não
+/// "esconder" dinheiro ou dívida.
+#[tauri::command]
+pub fn arquivar_conta(state: State<AppState>, conta_id: String, arquivar: bool) -> Res<()> {
+    let conn = state.conn.lock().expect("mutex envenenado");
+    if arquivar {
+        let saldo = crate::accounting::engine::saldo_conta(&conn, &conta_id).map_err(String::from)?;
+        if saldo != 0 {
+            return Err("Só é possível arquivar uma conta com saldo zero.".into());
+        }
+    }
+    let alteradas = conn
+        .execute(
+            "UPDATE contas_contabeis SET ativa = ?1 WHERE id = ?2 AND sistema = 0",
+            params![if arquivar { 0 } else { 1 }, conta_id],
+        )
+        .map_err(e)?;
+    if alteradas == 0 {
+        return Err("Conta não encontrada ou protegida do sistema.".into());
+    }
+    Ok(())
+}
+
+/// Categoria personalizada de despesa ou receita.
+#[tauri::command]
+pub fn criar_categoria(state: State<AppState>, nome: String, tipo: String) -> Res<String> {
+    let nome = nome_valido(&nome)?;
+    let prefixo = match tipo.as_str() {
+        "DESPESA" => "5",
+        "RECEITA" => "4",
+        _ => return Err("Tipo de categoria inválido.".into()),
+    };
+    let conn = state.conn.lock().expect("mutex envenenado");
+    let existe: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM contas_contabeis WHERE tipo = ?1 AND lower(nome) = lower(?2))",
+            params![tipo, nome],
+            |r| r.get(0),
+        )
+        .map_err(e)?;
+    if existe {
+        return Err("Já existe uma categoria com esse nome.".into());
+    }
+    let sufixo = Uuid::new_v4().simple().to_string()[..8].to_string();
+    let id = format!("cat-{sufixo}");
+    conn.execute(
+        "INSERT INTO contas_contabeis (id, codigo, nome, tipo, subtipo, categoria_pai_id, sistema)
+         VALUES (?1, ?2, ?3, ?4, NULL, NULL, 0)",
+        params![id, format!("{prefixo}.c-{sufixo}"), nome, tipo],
+    )
+    .map_err(e)?;
+    Ok(id)
+}
+
+#[tauri::command]
+pub fn atualizar_meta(
+    state: State<AppState>,
+    meta_id: String,
+    nome: String,
+    valor_alvo_centavos: i64,
+    prazo: Option<String>,
+    tipo: Option<String>,
+    prioridade: Option<String>,
+    notas: Option<String>,
+) -> Res<()> {
+    let nome = nome_valido(&nome)?;
+    if valor_alvo_centavos <= 0 {
+        return Err("O valor da meta precisa ser maior que zero.".into());
+    }
+    if let Some(p) = &prazo {
+        data_valida(p)?;
+    }
+    validar_extras_meta(&tipo, &prioridade)?;
+    let notas = notas.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+    let conn = state.conn.lock().expect("mutex envenenado");
+    let alteradas = conn
+        .execute(
+            "UPDATE metas SET nome = ?1, valor_alvo_centavos = ?2, prazo = ?3, tipo = ?4, prioridade = ?5, notas = ?6 WHERE id = ?7",
+            params![nome, valor_alvo_centavos, prazo, tipo, prioridade, notas, meta_id],
+        )
+        .map_err(e)?;
+    if alteradas == 0 {
+        return Err("Meta não encontrada.".into());
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+pub struct AporteComMeta {
+    pub meta_id: String,
+    pub data: String,
+    pub valor_centavos: i64,
+}
+
+#[tauri::command]
+pub fn listar_todos_aportes(state: State<AppState>) -> Res<Vec<AporteComMeta>> {
+    let conn = state.conn.lock().expect("mutex envenenado");
+    let mut stmt = conn
+        .prepare("SELECT meta_id, data, valor_centavos FROM metas_aportes ORDER BY data")
+        .map_err(e)?;
+    let linhas = stmt
+        .query_map([], |r| Ok(AporteComMeta { meta_id: r.get(0)?, data: r.get(1)?, valor_centavos: r.get(2)? }))
+        .map_err(e)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(e)?;
+    Ok(linhas)
+}
+
+/// Move valor já guardado de uma meta para outra, numa transação só.
+#[tauri::command]
+pub fn mover_entre_metas(
+    state: State<AppState>,
+    origem_id: String,
+    destino_id: String,
+    valor_centavos: i64,
+    data: String,
+) -> Res<()> {
+    if valor_centavos <= 0 {
+        return Err("Informe um valor maior que zero.".into());
+    }
+    if origem_id == destino_id {
+        return Err("Escolha metas diferentes.".into());
+    }
+    data_valida(&data)?;
+    let mut conn = state.conn.lock().expect("mutex envenenado");
+    let tx = conn.transaction().map_err(e)?;
+    let guardado: Option<i64> = tx
+        .query_row(
+            "SELECT COALESCE((SELECT SUM(valor_centavos) FROM metas_aportes WHERE meta_id = ?1), 0)
+             WHERE EXISTS (SELECT 1 FROM metas WHERE id = ?1)",
+            [&origem_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(e)?;
+    let guardado = guardado.ok_or("Meta de origem não encontrada.")?;
+    if guardado < valor_centavos {
+        return Err("A meta de origem não tem esse valor guardado.".into());
+    }
+    let destino_existe: bool = tx
+        .query_row("SELECT EXISTS(SELECT 1 FROM metas WHERE id = ?1)", [&destino_id], |r| r.get(0))
+        .map_err(e)?;
+    if !destino_existe {
+        return Err("Meta de destino não encontrada.".into());
+    }
+    for (meta, valor) in [(&origem_id, -valor_centavos), (&destino_id, valor_centavos)] {
+        tx.execute(
+            "INSERT INTO metas_aportes (id, meta_id, valor_centavos, data) VALUES (?1, ?2, ?3, ?4)",
+            params![Uuid::new_v4().to_string(), meta, valor, data],
+        )
+        .map_err(e)?;
+    }
+    tx.commit().map_err(e)
+}
+
+#[derive(Serialize)]
+pub struct AporteMeta {
+    pub data: String,
+    pub valor_centavos: i64,
+}
+
+#[tauri::command]
+pub fn listar_aportes_meta(state: State<AppState>, meta_id: String) -> Res<Vec<AporteMeta>> {
+    let conn = state.conn.lock().expect("mutex envenenado");
+    let mut stmt = conn
+        .prepare("SELECT data, valor_centavos FROM metas_aportes WHERE meta_id = ?1 ORDER BY data DESC, criado_em DESC")
+        .map_err(e)?;
+    let linhas = stmt
+        .query_map([meta_id], |r| Ok(AporteMeta { data: r.get(0)?, valor_centavos: r.get(1)? }))
+        .map_err(e)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(e)?;
+    Ok(linhas)
+}
+
+#[tauri::command]
+pub fn renomear_bem(state: State<AppState>, bem_id: String, nome: String) -> Res<()> {
+    let nome = nome_valido(&nome)?;
+    let conn = state.conn.lock().expect("mutex envenenado");
+    let alteradas = conn.execute("UPDATE bens SET nome = ?1 WHERE id = ?2", params![nome, bem_id]).map_err(e)?;
+    if alteradas == 0 {
+        return Err("Item não encontrado.".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn atualizar_item_radar(
+    state: State<AppState>,
+    item_id: String,
+    nome: String,
+    preco_alvo_centavos: Option<i64>,
+) -> Res<()> {
+    let nome = nome_valido(&nome)?;
+    if matches!(preco_alvo_centavos, Some(p) if p <= 0) {
+        return Err("O preço-alvo precisa ser maior que zero.".into());
+    }
+    let conn = state.conn.lock().expect("mutex envenenado");
+    let alteradas = conn
+        .execute(
+            "UPDATE radar_itens SET nome = ?1, preco_alvo_centavos = ?2 WHERE id = ?3",
+            params![nome, preco_alvo_centavos, item_id],
+        )
+        .map_err(e)?;
+    if alteradas == 0 {
+        return Err("Item não encontrado.".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn excluir_preco_radar(state: State<AppState>, preco_id: String) -> Res<()> {
+    let conn = state.conn.lock().expect("mutex envenenado");
+    conn.execute("DELETE FROM radar_precos WHERE id = ?1", [preco_id]).map_err(e)?;
     Ok(())
 }
 

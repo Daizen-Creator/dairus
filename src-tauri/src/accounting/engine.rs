@@ -497,6 +497,34 @@ fn validar_etiqueta(etiqueta: &Option<String>) -> Resultado<()> {
     }
 }
 
+fn validar_recorrencia(recorrencia: &Option<String>) -> Resultado<()> {
+    match recorrencia.as_deref() {
+        None | Some("SEMANAL") | Some("MENSAL") | Some("ANUAL") => Ok(()),
+        Some(r) => Err(AccountingError::DadoInvalido(format!("Recorrência inválida: {r}."))),
+    }
+}
+
+/// Próxima data de uma conta recorrente. Mensal/anual mantêm o dia, ajustando
+/// ao último dia do mês quando ele não existe (ex.: 31/01 -> 28/02).
+pub fn proximo_vencimento(vencimento: &str, recorrencia: &str) -> Option<String> {
+    use chrono::{Datelike, Duration, NaiveDate};
+    let data = NaiveDate::parse_from_str(vencimento, "%Y-%m-%d").ok()?;
+    let proxima = match recorrencia {
+        "SEMANAL" => data + Duration::days(7),
+        "MENSAL" | "ANUAL" => {
+            let meses = if recorrencia == "ANUAL" { 12 } else { 1 };
+            let total = data.year() * 12 + data.month0() as i32 + meses;
+            let (ano, mes) = (total.div_euclid(12), total.rem_euclid(12) as u32 + 1);
+            let ultimo = NaiveDate::from_ymd_opt(if mes == 12 { ano + 1 } else { ano }, if mes == 12 { 1 } else { mes + 1 }, 1)?
+                .pred_opt()?
+                .day();
+            NaiveDate::from_ymd_opt(ano, mes, data.day().min(ultimo))?
+        }
+        _ => return None,
+    };
+    Some(proxima.format("%Y-%m-%d").to_string())
+}
+
 pub fn criar_agendamento(conn: &mut Connection, input: NovoAgendamentoInput) -> Resultado<Agendamento> {
     if input.descricao.trim().is_empty() {
         return Err(AccountingError::DadoInvalido("Informe uma descrição para a conta.".into()));
@@ -508,6 +536,7 @@ pub fn criar_agendamento(conn: &mut Connection, input: NovoAgendamentoInput) -> 
         return Err(AccountingError::DadoInvalido("Data de vencimento inválida.".into()));
     }
     validar_etiqueta(&input.etiqueta)?;
+    validar_recorrencia(&input.recorrencia)?;
 
     let tx = conn.transaction()?;
     let tipo = conta_existe_e_ativa(&tx, &input.categoria_despesa_id)?;
@@ -517,8 +546,8 @@ pub fn criar_agendamento(conn: &mut Connection, input: NovoAgendamentoInput) -> 
 
     let id = Uuid::new_v4().to_string();
     tx.execute(
-        "INSERT INTO agendamentos (id, descricao, valor_centavos, vencimento, categoria_despesa_id, etiqueta)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO agendamentos (id, descricao, valor_centavos, vencimento, categoria_despesa_id, etiqueta, recorrencia)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             id,
             input.descricao.trim(),
@@ -526,6 +555,7 @@ pub fn criar_agendamento(conn: &mut Connection, input: NovoAgendamentoInput) -> 
             input.vencimento,
             input.categoria_despesa_id,
             input.etiqueta,
+            input.recorrencia,
         ],
     )?;
     registrar_auditoria(&tx, "CRIAR_AGENDAMENTO", "agendamento", &id)?;
@@ -540,12 +570,13 @@ pub fn criar_agendamento(conn: &mut Connection, input: NovoAgendamentoInput) -> 
         etiqueta: input.etiqueta,
         lancamento_id: None,
         pago_em: None,
+        recorrencia: input.recorrencia,
     })
 }
 
 pub fn listar_agendamentos(conn: &Connection) -> Resultado<Vec<Agendamento>> {
     let mut stmt = conn.prepare(
-        "SELECT id, descricao, valor_centavos, vencimento, categoria_despesa_id, etiqueta, lancamento_id, pago_em
+        "SELECT id, descricao, valor_centavos, vencimento, categoria_despesa_id, etiqueta, lancamento_id, pago_em, recorrencia
          FROM agendamentos ORDER BY (pago_em IS NOT NULL), vencimento, criado_em",
     )?;
     let linhas = stmt
@@ -559,6 +590,7 @@ pub fn listar_agendamentos(conn: &Connection) -> Resultado<Vec<Agendamento>> {
                 etiqueta: row.get(5)?,
                 lancamento_id: row.get(6)?,
                 pago_em: row.get(7)?,
+                recorrencia: row.get(8)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -579,11 +611,20 @@ pub fn pagar_agendamento(
     }
     let tx = conn.transaction()?;
 
-    let (descricao, valor, categoria, etiqueta, pago_em): (String, i64, String, Option<String>, Option<String>) = tx
+    let (descricao, valor, categoria, etiqueta, pago_em, vencimento, recorrencia): (
+        String,
+        i64,
+        String,
+        Option<String>,
+        Option<String>,
+        String,
+        Option<String>,
+    ) = tx
         .query_row(
-            "SELECT descricao, valor_centavos, categoria_despesa_id, etiqueta, pago_em FROM agendamentos WHERE id = ?1",
+            "SELECT descricao, valor_centavos, categoria_despesa_id, etiqueta, pago_em, vencimento, recorrencia
+             FROM agendamentos WHERE id = ?1",
             [agendamento_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?)),
         )
         .optional()?
         .ok_or_else(|| AccountingError::AgendamentoNaoEncontrado(agendamento_id.to_string()))?;
@@ -592,14 +633,15 @@ pub fn pagar_agendamento(
         return Err(AccountingError::AgendamentoJaPago(agendamento_id.to_string()));
     }
 
+    let proximo = recorrencia.as_deref().and_then(|r| proximo_vencimento(&vencimento, r));
     let input = NovoLancamentoInput {
         data: data_pagamento.to_string(),
-        descricao,
+        descricao: descricao.clone(),
         observacao: None,
         origem: "MANUAL".to_string(),
-        etiqueta,
+        etiqueta: etiqueta.clone(),
         partidas: vec![
-            PartidaInput { conta_id: categoria, tipo: TipoPartida::Debito, valor_centavos: valor },
+            PartidaInput { conta_id: categoria.clone(), tipo: TipoPartida::Debito, valor_centavos: valor },
             PartidaInput { conta_id: conta_origem_id.to_string(), tipo: TipoPartida::Credito, valor_centavos: valor },
         ],
     };
@@ -610,6 +652,17 @@ pub fn pagar_agendamento(
         params![lancamento.id, data_pagamento, agendamento_id],
     )?;
     registrar_auditoria(&tx, "PAGAR_AGENDAMENTO", "agendamento", agendamento_id)?;
+
+    // Conta recorrente: ao pagar esta, já deixa a próxima agendada.
+    if let (Some(venc), Some(rec)) = (proximo, recorrencia) {
+        let novo_id = Uuid::new_v4().to_string();
+        tx.execute(
+            "INSERT INTO agendamentos (id, descricao, valor_centavos, vencimento, categoria_despesa_id, etiqueta, recorrencia)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![novo_id, descricao, valor, venc, categoria, etiqueta, rec],
+        )?;
+        registrar_auditoria(&tx, "CRIAR_AGENDAMENTO", "agendamento", &novo_id)?;
+    }
     tx.commit()?;
     Ok(lancamento)
 }
@@ -650,6 +703,7 @@ mod testes_agendamento {
             vencimento: "2026-10-10".to_string(),
             categoria_despesa_id: "despesa-educacao".to_string(),
             etiqueta: etiqueta.map(String::from),
+            recorrencia: None,
         }
     }
 
@@ -696,5 +750,46 @@ mod testes_agendamento {
         let ag = criar_agendamento(&mut conn, novo(100, None)).unwrap();
         excluir_agendamento(&mut conn, &ag.id).unwrap();
         assert!(listar_agendamentos(&conn).unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod testes_recorrencia {
+    use super::*;
+
+    #[test]
+    fn proximo_vencimento_respeita_fim_de_mes_e_virada_de_ano() {
+        assert_eq!(proximo_vencimento("2026-01-31", "MENSAL").as_deref(), Some("2026-02-28"));
+        assert_eq!(proximo_vencimento("2028-01-31", "MENSAL").as_deref(), Some("2028-02-29"));
+        assert_eq!(proximo_vencimento("2026-12-15", "MENSAL").as_deref(), Some("2027-01-15"));
+        assert_eq!(proximo_vencimento("2026-10-10", "SEMANAL").as_deref(), Some("2026-10-17"));
+        assert_eq!(proximo_vencimento("2028-02-29", "ANUAL").as_deref(), Some("2029-02-28"));
+        assert_eq!(proximo_vencimento("2026-10-10", "QUINZENAL"), None);
+    }
+
+    #[test]
+    fn pagar_conta_recorrente_agenda_a_proxima() {
+        use crate::db::{abrir_conexao, executar_migracoes};
+        let mut conn = abrir_conexao(std::path::Path::new(":memory:")).unwrap();
+        executar_migracoes(&conn).unwrap();
+        let ag = criar_agendamento(
+            &mut conn,
+            NovoAgendamentoInput {
+                descricao: "Internet".into(),
+                valor_centavos: 9990,
+                vencimento: "2026-10-31".into(),
+                categoria_despesa_id: "despesa-moradia".into(),
+                etiqueta: Some("FIXO".into()),
+                recorrencia: Some("MENSAL".into()),
+            },
+        )
+        .unwrap();
+        pagar_agendamento(&mut conn, &ag.id, "ativo-dinheiro", "2026-10-30").unwrap();
+        let todos = listar_agendamentos(&conn).unwrap();
+        assert_eq!(todos.len(), 2);
+        let aberto = todos.iter().find(|a| a.pago_em.is_none()).unwrap();
+        assert_eq!(aberto.vencimento, "2026-11-30");
+        assert_eq!(aberto.recorrencia.as_deref(), Some("MENSAL"));
+        assert_eq!(aberto.etiqueta.as_deref(), Some("FIXO"));
     }
 }

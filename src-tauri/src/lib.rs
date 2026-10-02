@@ -63,6 +63,18 @@ pub fn run() {
             extras::listar_backups,
             extras::restaurar_backup,
             extras::salvar_exportacao,
+            extras::atualizar_lancamento_info,
+            extras::atualizar_agendamento,
+            extras::atualizar_conta,
+            extras::arquivar_conta,
+            extras::criar_categoria,
+            extras::atualizar_meta,
+            extras::listar_aportes_meta,
+            extras::listar_todos_aportes,
+            extras::mover_entre_metas,
+            extras::renomear_bem,
+            extras::atualizar_item_radar,
+            extras::excluir_preco_radar,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

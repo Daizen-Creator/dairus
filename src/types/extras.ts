@@ -11,6 +11,9 @@ export interface Meta {
   valor_alvo_centavos: number;
   prazo: string | null;
   guardado_centavos: number;
+  tipo: string | null;
+  prioridade: "ALTA" | "MEDIA" | "BAIXA" | null;
+  notas: string | null;
 }
 
 export interface Avaliacao {
@@ -48,4 +51,15 @@ export interface InfoBackup {
   caminho: string;
   tamanho_bytes: number;
   criado_em: string;
+}
+
+export interface AporteMeta {
+  data: string;
+  valor_centavos: number;
+}
+
+export interface AporteComMeta {
+  meta_id: string;
+  data: string;
+  valor_centavos: number;
 }

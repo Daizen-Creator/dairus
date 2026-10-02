@@ -116,6 +116,8 @@ pub struct DespesaInput {
     pub descricao: String,
     #[serde(default)]
     pub etiqueta: Option<String>,
+    #[serde(default)]
+    pub observacao: Option<String>,
 }
 
 /// Atalho para "paguei uma despesa agora": Débito na categoria de despesa,
@@ -126,7 +128,7 @@ pub fn registrar_despesa(state: State<AppState>, input: DespesaInput) -> Result<
     let lancamento = NovoLancamentoInput {
         data: input.data,
         descricao: input.descricao,
-        observacao: None,
+        observacao: input.observacao.map(|o| o.trim().to_string()).filter(|o| !o.is_empty()),
         origem: "MANUAL".to_string(),
         etiqueta: input.etiqueta,
         partidas: vec![

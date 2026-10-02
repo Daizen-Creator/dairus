@@ -1,9 +1,18 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
+import { Select } from "../../components/ui/Select";
 import { contabilidade } from "../../services/contabilidade";
 import { valorInputParaCentavos } from "../../services/formato";
-import type { NovaContaInput } from "../../types/accounting";
+import type { NovaContaInput, SubtipoConta } from "../../types/accounting";
+
+const TIPOS_CONTA: Array<{ value: string; label: string }> = [
+  { value: "BANCO", label: "Conta bancária" },
+  { value: "CARTEIRA_DIGITAL", label: "Carteira digital" },
+  { value: "DINHEIRO", label: "Dinheiro em espécie" },
+  { value: "INVESTIMENTO", label: "Investimento" },
+  { value: "BENEFICIO", label: "Benefício (VA/VR)" },
+];
 
 type CategoriaFormulario = "conta" | "cartao";
 
@@ -16,6 +25,7 @@ interface NovaContaFormProps {
 export function NovaContaForm({ onCriada, onCancelar, categoriaFixa }: NovaContaFormProps) {
   const [categoria, setCategoria] = useState<CategoriaFormulario>(categoriaFixa ?? "conta");
   const [nome, setNome] = useState("");
+  const [subtipo, setSubtipo] = useState("BANCO");
   const [instituicao, setInstituicao] = useState("");
   const [saldoInicial, setSaldoInicial] = useState("0,00");
   const [limite, setLimite] = useState("0,00");
@@ -37,8 +47,8 @@ export function NovaContaForm({ onCriada, onCancelar, categoriaFixa }: NovaConta
             codigo: `1.2-${sufixo}`,
             nome: nome.trim(),
             tipo: "ATIVO",
-            subtipo: "BANCO",
-            categoria_pai_id: "ativo-contas-bancarias",
+            subtipo: subtipo as SubtipoConta,
+            categoria_pai_id: subtipo === "DINHEIRO" ? "ativo-caixa-carteiras" : "ativo-contas-bancarias",
             instituicao: instituicao.trim() || null,
             saldo_inicial_centavos: valorInputParaCentavos(saldoInicial),
           }
@@ -106,6 +116,12 @@ export function NovaContaForm({ onCriada, onCancelar, categoriaFixa }: NovaConta
           />
         </label>
 
+        {categoria === "conta" && (
+          <div className="text-sm">
+            <span className="mb-1 block text-texto-secundario">Tipo</span>
+            <Select aria-label="Tipo da conta" value={subtipo} onValueChange={setSubtipo} options={TIPOS_CONTA} className="w-full" />
+          </div>
+        )}
         {categoria === "conta" ? (
           <label className="text-sm">
             <span className="mb-1 block text-texto-secundario">Saldo inicial (R$)</span>

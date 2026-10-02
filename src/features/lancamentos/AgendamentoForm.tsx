@@ -4,8 +4,9 @@ import { Button } from "../../components/ui/Button";
 import { Select } from "../../components/ui/Select";
 import { contabilidade } from "../../services/contabilidade";
 import { dataAtualISO, valorInputParaCentavos } from "../../services/formato";
-import type { Conta, Etiqueta } from "../../types/accounting";
+import type { Conta, Etiqueta, Recorrencia } from "../../types/accounting";
 import { OPCOES_ETIQUETA } from "./opcoesEtiqueta";
+import { OPCOES_RECORRENCIA } from "./opcoesRecorrencia";
 
 /** Soma meses mantendo o dia (ajusta para o último dia quando o mês é mais curto). */
 function somarMeses(dataISO: string, meses: number): string {
@@ -27,6 +28,7 @@ export function AgendamentoForm({ categoriasDespesa, onCriado }: AgendamentoForm
   const [categoriaId, setCategoriaId] = useState(categoriasDespesa[0]?.id ?? "");
   const [etiqueta, setEtiqueta] = useState("NENHUMA");
   const [parcelas, setParcelas] = useState("1");
+  const [recorrencia, setRecorrencia] = useState("NENHUMA");
   const [enviando, setEnviando] = useState(false);
 
   async function enviar(evento: React.FormEvent) {
@@ -47,6 +49,8 @@ export function AgendamentoForm({ categoriasDespesa, onCriado }: AgendamentoForm
           vencimento: somarMeses(vencimento, i),
           categoria_despesa_id: categoriaId,
           etiqueta: etiqueta === "NENHUMA" ? null : (etiqueta as Etiqueta),
+          // Conta repetida e parcelada ao mesmo tempo não faz sentido: as parcelas já são a série.
+          recorrencia: total === 1 && recorrencia !== "NENHUMA" ? (recorrencia as Recorrencia) : null,
         });
         criadas++;
       }
@@ -84,6 +88,7 @@ export function AgendamentoForm({ categoriasDespesa, onCriado }: AgendamentoForm
         options={categoriasDespesa.map((c) => ({ value: c.id, label: c.nome }))}
       />
       <Select aria-label="Etiqueta" value={etiqueta} onValueChange={setEtiqueta} options={OPCOES_ETIQUETA} />
+      <Select aria-label="Repetição" value={recorrencia} onValueChange={setRecorrencia} options={OPCOES_RECORRENCIA} />
       <label className="flex items-center gap-2 text-xs text-texto-secundario">
         Vence em
         <input
