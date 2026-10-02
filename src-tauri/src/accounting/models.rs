@@ -112,6 +112,9 @@ pub struct NovoLancamentoInput {
     pub origem: String,
     #[serde(default)]
     pub etiqueta: Option<String>,
+    /// Número de parcelas de uma compra no cartão (2 a 72). `None` = à vista.
+    #[serde(default)]
+    pub parcelas: Option<i32>,
     pub partidas: Vec<PartidaInput>,
 }
 
@@ -128,6 +131,8 @@ pub struct Lancamento {
     pub origem: String,
     pub etiqueta: Option<String>,
     pub estornado_de: Option<String>,
+    pub parcelas: Option<i32>,
+    pub corrige: Option<String>,
     pub partidas: Vec<Partida>,
 }
 

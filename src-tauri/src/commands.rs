@@ -51,6 +51,12 @@ pub fn estornar_lancamento(
 }
 
 #[tauri::command]
+pub fn corrigir_lancamento(state: State<AppState>, input: engine::CorrecaoInput) -> Result<Lancamento, String> {
+    let mut conn = state.conn.lock().expect("mutex da conexão envenenado");
+    engine::corrigir_lancamento(&mut conn, input).map_err(String::from)
+}
+
+#[tauri::command]
 pub fn listar_lancamentos(state: State<AppState>, limite: i64) -> Result<Vec<Lancamento>, String> {
     let conn = state.conn.lock().expect("mutex da conexão envenenado");
     engine::listar_lancamentos(&conn, limite).map_err(String::from)
@@ -91,6 +97,7 @@ pub fn registrar_recebimento(
         observacao: None,
         origem: "SALARIO".to_string(),
         etiqueta: None,
+        parcelas: None,
         partidas: vec![
             PartidaInput {
                 conta_id: input.conta_destino_id,
@@ -118,6 +125,9 @@ pub struct DespesaInput {
     pub etiqueta: Option<String>,
     #[serde(default)]
     pub observacao: Option<String>,
+    /// Compra parcelada no cartão (2 a 72 parcelas).
+    #[serde(default)]
+    pub parcelas: Option<i32>,
 }
 
 /// Atalho para "paguei uma despesa agora": Débito na categoria de despesa,
@@ -131,6 +141,7 @@ pub fn registrar_despesa(state: State<AppState>, input: DespesaInput) -> Result<
         observacao: input.observacao.map(|o| o.trim().to_string()).filter(|o| !o.is_empty()),
         origem: "MANUAL".to_string(),
         etiqueta: input.etiqueta,
+        parcelas: input.parcelas,
         partidas: vec![
             PartidaInput {
                 conta_id: input.categoria_despesa_id,
@@ -170,6 +181,7 @@ pub fn registrar_transferencia(
         observacao: None,
         origem: "TRANSFERENCIA".to_string(),
         etiqueta: None,
+        parcelas: None,
         partidas: vec![
             PartidaInput {
                 conta_id: input.conta_destino_id,

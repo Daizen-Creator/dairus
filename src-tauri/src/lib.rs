@@ -38,6 +38,7 @@ pub fn run() {
             commands::obter_saldo_conta,
             commands::criar_lancamento,
             commands::estornar_lancamento,
+            commands::corrigir_lancamento,
             commands::listar_lancamentos,
             commands::obter_resumo_dashboard,
             commands::registrar_recebimento,

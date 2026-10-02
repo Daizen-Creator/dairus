@@ -10,7 +10,7 @@ import { Select } from "../../components/ui/Select";
 import { contabilidade } from "../../services/contabilidade";
 import { exportarCsv, reais } from "../../services/exportacao";
 import { extras } from "../../services/extras";
-import { dataAtualISO, formatarCentavos, formatarDataISOParaBR } from "../../services/formato";
+import { centavosParaValorInput, dataAtualISO, formatarCentavos, formatarDataISOParaBR, valorInputParaCentavos } from "../../services/formato";
 import type { Conta, Lancamento } from "../../types/accounting";
 import { iconeDaCategoria } from "../dashboard/categoriaIcone";
 import { calcularPeriodo, SeletorPeriodo, type Periodo } from "../dashboard/SeletorPeriodo";
@@ -75,6 +75,9 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
   const [edDescricao, setEdDescricao] = useState("");
   const [edObs, setEdObs] = useState("");
   const [edEtiqueta, setEdEtiqueta] = useState("NENHUMA");
+  const [corrigindo, setCorrigindo] = useState<string | null>(null);
+  const [crValor, setCrValor] = useState("");
+  const [crData, setCrData] = useState("");
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [confirmarLote, setConfirmarLote] = useState(false);
   const buscaRef = useRef<HTMLInputElement>(null);
@@ -154,6 +157,27 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
       await extras.atualizarLancamentoInfo(l.id, edDescricao, edObs || null, edEtiqueta === "NENHUMA" ? null : edEtiqueta);
       toast.success("Lançamento atualizado.");
       setEditando(null);
+      onAlterado();
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  function iniciarCorrecao(l: Lancamento) {
+    setCorrigindo(l.id);
+    setEditando(null);
+    const total = l.partidas.filter((p) => p.tipo === "DEBITO").reduce((s, p) => s + p.valor_centavos, 0);
+    setCrValor(centavosParaValorInput(total));
+    setCrData(l.data);
+  }
+
+  async function salvarCorrecao(l: Lancamento) {
+    const centavos = valorInputParaCentavos(crValor);
+    if (centavos <= 0 || !crData) return toast.error("Informe o valor e a data corretos.");
+    try {
+      await contabilidade.corrigirLancamento({ lancamento_id: l.id, nova_data: crData, novo_valor_centavos: centavos });
+      toast.success("Lançamento corrigido (o original foi estornado na data dele).");
+      setCorrigindo(null);
       onAlterado();
     } catch (e) {
       toast.error(String(e));
@@ -385,6 +409,8 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
                       <div className="min-w-0">
                         <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-texto-primario">
                           <span className="truncate">{l.descricao}</span>
+                          {l.parcelas && <span className="rounded bg-borda/60 px-1.5 text-[10px] text-texto-secundario">{l.parcelas}x</span>}
+                          {l.corrige && <span className="rounded bg-borda/60 px-1.5 text-[10px] text-texto-secundario">corrigido</span>}
                           <SeloEtiqueta etiqueta={l.etiqueta} />
                           {status && <SeloStatus status={status} />}
                         </p>
@@ -411,6 +437,11 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
                       <button onClick={() => setAbertos((s) => alternar(s, l.id))} title="Ver partidas contábeis" aria-label="Detalhes" className="rounded-md p-1.5 text-texto-secundario transition-colors hover:bg-borda/50 hover:text-primaria">
                         {aberto ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                       </button>
+                      {!a.estorno && !jaEstornado && l.origem !== "SALDO_INICIAL" && (
+                        <button onClick={() => (corrigindo === l.id ? setCorrigindo(null) : iniciarCorrecao(l))} className="ml-1 text-xs text-texto-secundario transition-colors hover:text-primaria hover:underline" title="Corrigir valor ou data">
+                          Corrigir
+                        </button>
+                      )}
                       {!a.estorno && !jaEstornado && (
                         <button onClick={() => estornar(l.id)} className="ml-1 text-xs text-texto-secundario transition-colors hover:text-erro hover:underline" title="Estornar este lançamento">
                           Estornar
@@ -429,8 +460,24 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
                         <Button tamanho="pequeno" variante="fantasma" onClick={() => setEditando(null)}>Cancelar</Button>
                       </div>
                       <p className="text-[11px] text-texto-secundario sm:col-span-4">
-                        Valor, data e contas não podem ser editados (o razão contábil é imutável). Para corrigi-los, estorne e lance de novo.
+                        Para mudar valor ou data, use “Corrigir”: o app estorna o original e lança o certo sozinho.
                       </p>
+                    </div>
+                  )}
+
+                  {corrigindo === l.id && (
+                    <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-borda pt-3">
+                      <label className="text-[11px] text-texto-secundario">
+                        Valor correto
+                        <input value={crValor} onChange={(e) => setCrValor(e.target.value)} inputMode="decimal" aria-label="Valor correto" className={`${CLASSE_INPUT} mt-1 block w-32`} />
+                      </label>
+                      <label className="text-[11px] text-texto-secundario">
+                        Data correta
+                        <input type="date" value={crData} onChange={(e) => setCrData(e.target.value)} aria-label="Data correta" className={`${CLASSE_INPUT} mt-1 block`} />
+                      </label>
+                      <Button tamanho="pequeno" onClick={() => salvarCorrecao(l)}>Salvar correção</Button>
+                      <Button tamanho="pequeno" variante="fantasma" onClick={() => setCorrigindo(null)}>Cancelar</Button>
+                      {l.parcelas && <p className="w-full text-[11px] text-texto-secundario">Compra em {l.parcelas}x: o novo valor é o total, dividido nas mesmas parcelas.</p>}
                     </div>
                   )}
 

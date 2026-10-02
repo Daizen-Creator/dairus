@@ -72,6 +72,10 @@ export interface Lancamento {
   origem: string;
   etiqueta: Etiqueta | null;
   estornado_de: string | null;
+  /** Número de parcelas de uma compra no cartão (null = à vista). */
+  parcelas: number | null;
+  /** Id do lançamento que este corrige (estornado e relançado). */
+  corrige: string | null;
   partidas: Partida[];
 }
 
@@ -81,7 +85,16 @@ export interface NovoLancamentoInput {
   observacao?: string | null;
   origem?: string;
   etiqueta?: Etiqueta | null;
+  parcelas?: number | null;
   partidas: PartidaInput[];
+}
+
+export interface CorrecaoInput {
+  lancamento_id: string;
+  nova_data: string;
+  /** Novo valor total (soma dos débitos), em centavos. */
+  novo_valor_centavos: number;
+  nova_descricao?: string | null;
 }
 
 export interface ResumoDashboard {
@@ -107,6 +120,8 @@ export interface DespesaInput {
   descricao: string;
   etiqueta?: Etiqueta | null;
   observacao?: string | null;
+  /** Compra parcelada no cartão (2 a 72). */
+  parcelas?: number | null;
 }
 
 export interface TransferenciaInput {

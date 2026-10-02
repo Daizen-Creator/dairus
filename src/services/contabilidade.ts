@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Agendamento,
   Conta,
+  CorrecaoInput,
   DespesaInput,
   Lancamento,
   NovaContaInput,
@@ -28,6 +29,9 @@ export const contabilidade = {
 
   estornarLancamento: (lancamentoId: string) =>
     invoke<Lancamento>("estornar_lancamento", { lancamentoId }),
+
+  /** Estorna o lançamento na data original e grava um novo com o valor/data corrigidos. */
+  corrigirLancamento: (input: CorrecaoInput) => invoke<Lancamento>("corrigir_lancamento", { input }),
 
   listarLancamentos: (limite = 100) =>
     invoke<Lancamento[]>("listar_lancamentos", { limite }),

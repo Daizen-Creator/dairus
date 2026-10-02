@@ -1181,6 +1181,7 @@ mod testes_backup {
                 observacao: None,
                 origem: "MANUAL".into(),
                 etiqueta: None,
+                parcelas: None,
                 partidas: vec![
                     PartidaInput { conta_id: "despesa-outras".into(), tipo: TipoPartida::Debito, valor_centavos: valor },
                     PartidaInput { conta_id: "ativo-dinheiro".into(), tipo: TipoPartida::Credito, valor_centavos: valor },
@@ -1248,6 +1249,7 @@ mod testes_manutencao {
                 observacao: None,
                 origem: "MANUAL".into(),
                 etiqueta: None,
+                parcelas: None,
                 partidas: vec![
                     PartidaInput { conta_id: "despesa-outras".into(), tipo: TipoPartida::Debito, valor_centavos: 500 },
                     PartidaInput { conta_id: "ativo-dinheiro".into(), tipo: TipoPartida::Credito, valor_centavos: 500 },

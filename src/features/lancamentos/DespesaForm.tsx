@@ -36,6 +36,7 @@ export function DespesaForm({ contasOrigem, categoriasDespesa, onRegistrada, ini
   const [categoriaId, setCategoriaId] = useState(inicial?.categoriaId ?? categoriasDespesa[0]?.id ?? "");
   const [etiqueta, setEtiqueta] = useState<string>(inicial?.etiqueta ?? "NENHUMA");
   const [observacao, setObservacao] = useState(inicial?.observacao ?? "");
+  const [parcelas, setParcelas] = useState("1");
   const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
@@ -52,6 +53,13 @@ export function DespesaForm({ contasOrigem, categoriasDespesa, onRegistrada, ini
       toast.error("Preencha descrição, valor, conta e categoria.");
       return;
     }
+    const origem = contasOrigem.find((c) => c.id === contaOrigemId);
+    const ehCartao = origem?.subtipo === "CARTAO_CREDITO";
+    const nParcelas = ehCartao ? Math.floor(Number(parcelas) || 1) : 1;
+    if (nParcelas < 1 || nParcelas > 72) {
+      toast.error("O parcelamento vai de 1 a 72 vezes.");
+      return;
+    }
     try {
       setEnviando(true);
       await contabilidade.registrarDespesa({
@@ -62,8 +70,10 @@ export function DespesaForm({ contasOrigem, categoriasDespesa, onRegistrada, ini
         descricao: descricao.trim(),
         etiqueta: etiqueta === "NENHUMA" ? null : (etiqueta as Etiqueta),
         observacao: observacao.trim() || null,
+        parcelas: nParcelas > 1 ? nParcelas : null,
       });
-      toast.success("Despesa registrada.");
+      toast.success(nParcelas > 1 ? `Compra registrada em ${nParcelas} parcelas.` : "Despesa registrada.");
+      setParcelas("1");
       setDescricao("");
       setValor("");
       setObservacao("");
@@ -84,6 +94,12 @@ export function DespesaForm({ contasOrigem, categoriasDespesa, onRegistrada, ini
       <Select aria-label="Etiqueta" value={etiqueta} onValueChange={setEtiqueta} options={OPCOES_ETIQUETA} />
       <input type="date" value={data} onChange={(e) => setData(e.target.value)} className={CLASSE_INPUT} />
       <input value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Observação (opcional)" className={`${CLASSE_INPUT} lg:col-span-2`} />
+      {contasOrigem.find((c) => c.id === contaOrigemId)?.subtipo === "CARTAO_CREDITO" && (
+        <label className="flex items-center gap-2 text-xs text-texto-secundario">
+          Parcelas
+          <input type="number" min={1} max={72} value={parcelas} onChange={(e) => setParcelas(e.target.value)} aria-label="Parcelas" className={`${CLASSE_INPUT} w-20`} />
+        </label>
+      )}
       <Button type="submit" disabled={enviando} className="lg:col-start-5">
         {enviando ? "Salvando…" : "Registrar despesa"}
       </Button>
