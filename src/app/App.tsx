@@ -18,6 +18,7 @@ import { BackupPage } from "../features/backup/BackupPage";
 import { TemasPage } from "../features/temas/TemasPage";
 import { ConfiguracoesPage } from "../features/configuracoes/ConfiguracoesPage";
 import { executarBackupAutomatico } from "../services/backupAutomatico";
+import { lerPreferencia } from "../services/armazenamento";
 import { useSegurancaStore } from "../state/seguranca-store";
 import { useThemeStore } from "../state/theme-store";
 
@@ -35,6 +36,18 @@ export function App() {
       // Backup automático é conveniência: falha silenciosa; o status real aparece em Backup e Segurança.
     });
   }, [inicializar, inicializarSeguranca]);
+
+  // Preferências de interface: tamanho do texto, animações reduzidas e tela inicial.
+  useEffect(() => {
+    if (!carregado) return;
+    lerPreferencia<number>("ui_fonte").then((f) => {
+      document.documentElement.style.fontSize = f && f >= 85 && f <= 125 ? `${f}%` : "";
+    });
+    lerPreferencia<boolean>("ui_sem_animacoes").then((v) => document.documentElement.classList.toggle("sem-animacoes", !!v));
+    lerPreferencia<string>("pagina_inicial").then((rota) => {
+      if (rota && rota !== "/" && (window.location.hash === "" || window.location.hash === "#/")) window.location.hash = `#${rota}`;
+    });
+  }, [carregado]);
 
   if (erroFatal) {
     return (

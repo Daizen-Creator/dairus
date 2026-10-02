@@ -74,3 +74,15 @@ export interface RegistroAuditoria {
   entidade_id: string;
   criado_em: string;
 }
+
+export interface InfoBanco {
+  caminho: string;
+  tamanho_bytes: number;
+  lancamentos: number;
+  contas: number;
+  agendamentos: number;
+  metas: number;
+  bens: number;
+  versao_sqlite: string;
+  migracoes: number;
+}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowDownLeft, ArrowUpRight, Clock, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
+import { usePreferencia } from "../../state/usePreferencia";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Skeleton, SkeletonLinhas } from "../../components/ui/Skeleton";
 import { StatCard } from "../../components/ui/StatCard";
@@ -27,6 +28,8 @@ export function LancamentosPage() {
   const [carregando, setCarregando] = useState(true);
   const [duplicando, setDuplicando] = useState<{ chave: number; dados: DespesaInicial } | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
+  const [contaPadrao] = usePreferencia<string>("conta_padrao", "");
+  const [categoriaPadrao] = usePreferencia<string>("categoria_padrao", "");
 
   async function carregar() {
     const hoje = dataAtualISO();
@@ -144,6 +147,8 @@ export function LancamentosPage() {
                 carregar();
               }}
               inicial={duplicando?.dados}
+              contaPadraoId={contaPadrao}
+              categoriaPadraoId={categoriaPadrao}
             />
           )}
           {aba === "receita" && <NovaReceitaForm contasDestino={contasAtivas} categoriasReceita={categoriasReceita} onRegistrada={carregar} />}

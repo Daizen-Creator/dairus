@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
 import { CLASSE_INPUT } from "../../components/ui/Campos";
@@ -23,9 +23,12 @@ interface DespesaFormProps {
   onRegistrada: () => void;
   /** Pré-preenche o formulário (usado por "Duplicar"). */
   inicial?: DespesaInicial | null;
+  /** Padrões vindos das Configurações (usados só quando não é uma duplicação). */
+  contaPadraoId?: string;
+  categoriaPadraoId?: string;
 }
 
-export function DespesaForm({ contasOrigem, categoriasDespesa, onRegistrada, inicial }: DespesaFormProps) {
+export function DespesaForm({ contasOrigem, categoriasDespesa, onRegistrada, inicial, contaPadraoId, categoriaPadraoId }: DespesaFormProps) {
   const [descricao, setDescricao] = useState(inicial?.descricao ?? "");
   const [valor, setValor] = useState(inicial ? centavosParaValorInput(inicial.valorCentavos) : "");
   const [data, setData] = useState(dataAtualISO());
@@ -34,6 +37,13 @@ export function DespesaForm({ contasOrigem, categoriasDespesa, onRegistrada, ini
   const [etiqueta, setEtiqueta] = useState<string>(inicial?.etiqueta ?? "NENHUMA");
   const [observacao, setObservacao] = useState(inicial?.observacao ?? "");
   const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    if (inicial) return;
+    if (contaPadraoId && contasOrigem.some((c) => c.id === contaPadraoId)) setContaOrigemId(contaPadraoId);
+    if (categoriaPadraoId && categoriasDespesa.some((c) => c.id === categoriaPadraoId)) setCategoriaId(categoriaPadraoId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contaPadraoId, categoriaPadraoId]);
 
   async function enviar(evento: React.FormEvent) {
     evento.preventDefault();

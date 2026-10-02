@@ -77,6 +77,14 @@ pub fn run() {
             extras::atualizar_item_radar,
             extras::excluir_preco_radar,
             extras::listar_auditoria,
+            extras::info_banco,
+            extras::verificar_integridade,
+            extras::otimizar_banco,
+            extras::excluir_backup,
+            extras::verificar_backup,
+            extras::aplicar_retencao,
+            extras::abrir_pasta_dairus,
+            extras::apagar_todos_os_dados,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

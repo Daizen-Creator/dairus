@@ -23,6 +23,19 @@ export function BloqueioTela({ children }: { children: React.ReactNode }) {
     };
   }, [pinAtivo, bloqueado, minutosInatividade, bloquear]);
 
+  // Ctrl+L bloqueia na hora.
+  useEffect(() => {
+    if (!pinAtivo) return;
+    const aoTeclar = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
+        e.preventDefault();
+        bloquear();
+      }
+    };
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, [pinAtivo, bloquear]);
+
   useEffect(() => {
     if (espera <= 0) return;
     const t = window.setTimeout(() => setEspera(espera - 1), 1000);

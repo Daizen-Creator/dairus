@@ -159,7 +159,7 @@ export function OrcamentoPage() {
   const diasRestantes = ehMesAtual ? mes.diasNoMes - diaHoje : deslocamento > 0 ? mes.diasNoMes : 0;
   const disponivelAgora = totalOrcado - totalGastoLimitadas;
   const porDia = diasRestantes > 0 && disponivelAgora > 0 ? Math.floor(disponivelAgora / diasRestantes) : 0;
-  const projecao = ehMesAtual && diasPassados > 0 ? Math.round((totalGasto / diasPassados) * mes.diasNoMes) : null;
+  const projecao = ehMesAtual && diasPassados >= 7 ? Math.round((totalGasto / diasPassados) * mes.diasNoMes) : null;
   const maisEconomica = [...comLimite]
     .map((c) => ({ c, pct: (gastoMes.get(c.id) ?? 0) / (limite.get(c.id) ?? 1) }))
     .sort((a, b) => a.pct - b.pct)[0];
@@ -285,7 +285,7 @@ export function OrcamentoPage() {
     const ic = iconeDaCategoria(c.nome);
     const rascunho = rascunhos[c.id];
     const ritmoAlto = lim > 0 && ehMesAtual && pct > decorrido + 15 && pct < 100;
-    const previsto = ehMesAtual && diasPassados > 0 ? Math.round((gasto / diasPassados) * mes.diasNoMes) : null;
+    const previsto = ehMesAtual && diasPassados >= 7 ? Math.round((gasto / diasPassados) * mes.diasNoMes) : null;
     const aberta = expandida === c.id;
     const serie = historico.porMes.map((m, i) => ({ rotulo: historico.meses[i].rotulo, v: m.get(c.id) ?? 0 }));
     const maxSerie = Math.max(1, lim, ...serie.map((s) => s.v));

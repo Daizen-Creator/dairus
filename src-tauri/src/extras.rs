@@ -795,6 +795,174 @@ pub fn excluir_preco_radar(state: State<AppState>, preco_id: String) -> Res<()> 
     Ok(())
 }
 
+// ------------------------------------------------ Manutenção e segurança dos dados
+
+#[derive(Serialize)]
+pub struct InfoBanco {
+    pub caminho: String,
+    pub tamanho_bytes: u64,
+    pub lancamentos: i64,
+    pub contas: i64,
+    pub agendamentos: i64,
+    pub metas: i64,
+    pub bens: i64,
+    pub versao_sqlite: String,
+    pub migracoes: i64,
+}
+
+#[tauri::command]
+pub fn info_banco(state: State<AppState>) -> Res<InfoBanco> {
+    let conn = state.conn.lock().expect("mutex envenenado");
+    let contar = |tabela: &str| -> Res<i64> {
+        conn.query_row(&format!("SELECT COUNT(*) FROM {tabela}"), [], |r| r.get(0)).map_err(e)
+    };
+    let caminho = conn.path().unwrap_or("").to_string();
+    let tamanho_bytes = std::fs::metadata(&caminho).map(|m| m.len()).unwrap_or(0);
+    Ok(InfoBanco {
+        tamanho_bytes,
+        lancamentos: contar("lancamentos")?,
+        contas: contar("contas_contabeis")?,
+        agendamentos: contar("agendamentos")?,
+        metas: contar("metas")?,
+        bens: contar("bens")?,
+        migracoes: contar("schema_migrations")?,
+        versao_sqlite: rusqlite::version().to_string(),
+        caminho,
+    })
+}
+
+/// Roda `PRAGMA integrity_check` e confere se débitos = créditos em todos os lançamentos.
+#[tauri::command]
+pub fn verificar_integridade(state: State<AppState>) -> Res<Vec<String>> {
+    let conn = state.conn.lock().expect("mutex envenenado");
+    let mut problemas = Vec::new();
+    let mut stmt = conn.prepare("PRAGMA integrity_check").map_err(e)?;
+    let resultados = stmt
+        .query_map([], |r| r.get::<_, String>(0))
+        .map_err(e)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(e)?;
+    if resultados.len() != 1 || resultados[0] != "ok" {
+        problemas.extend(resultados.into_iter().map(|r| format!("Banco: {r}")));
+    }
+    let desequilibrados: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM (
+                SELECT lancamento_id FROM partidas GROUP BY lancamento_id
+                HAVING SUM(CASE WHEN tipo = 'DEBITO' THEN valor_centavos ELSE -valor_centavos END) <> 0
+             )",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(e)?;
+    if desequilibrados > 0 {
+        problemas.push(format!("{desequilibrados} lançamento(s) com débitos diferentes de créditos."));
+    }
+    let sem_partidas: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM lancamentos l WHERE NOT EXISTS (SELECT 1 FROM partidas p WHERE p.lancamento_id = l.id)",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(e)?;
+    if sem_partidas > 0 {
+        problemas.push(format!("{sem_partidas} lançamento(s) sem partidas."));
+    }
+    Ok(problemas)
+}
+
+#[tauri::command]
+pub fn otimizar_banco(state: State<AppState>) -> Res<()> {
+    let conn = state.conn.lock().expect("mutex envenenado");
+    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); VACUUM;").map_err(e)
+}
+
+#[tauri::command]
+pub fn excluir_backup(app: AppHandle, nome: String) -> Res<()> {
+    let nome = nome_seguro(&nome)?;
+    let caminho = pasta_dairus(&app, "Backups")?.join(nome);
+    if !caminho.is_file() || caminho.extension().map_or(true, |x| x != "db") {
+        return Err("Backup não encontrado.".into());
+    }
+    std::fs::remove_file(caminho).map_err(e)
+}
+
+#[tauri::command]
+pub fn verificar_backup(app: AppHandle, nome: String) -> Res<()> {
+    let nome = nome_seguro(&nome)?;
+    let caminho = pasta_dairus(&app, "Backups")?.join(nome);
+    if !caminho.is_file() {
+        return Err("Backup não encontrado.".into());
+    }
+    validar_arquivo_backup(&caminho)
+}
+
+/// Mantém só os `manter` backups mais recentes feitos pelo Dairus (os de segurança
+/// "antes-de-restaurar" nunca são apagados automaticamente). Devolve quantos removeu.
+#[tauri::command]
+pub fn aplicar_retencao(app: AppHandle, manter: usize) -> Res<usize> {
+    let manter = manter.max(1);
+    let pasta = pasta_dairus(&app, "Backups")?;
+    let mut lista: Vec<(String, PathBuf)> = std::fs::read_dir(&pasta)
+        .map_err(e)?
+        .filter_map(|ent| ent.ok())
+        .map(|ent| ent.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "db"))
+        .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("dairus-")))
+        .filter_map(|p| info_do_arquivo(&p).map(|i| (i.criado_em, p)))
+        .collect();
+    lista.sort_by(|a, b| b.0.cmp(&a.0));
+    let mut removidos = 0;
+    for (_, caminho) in lista.into_iter().skip(manter) {
+        if std::fs::remove_file(caminho).is_ok() {
+            removidos += 1;
+        }
+    }
+    Ok(removidos)
+}
+
+#[tauri::command]
+pub fn abrir_pasta_dairus(app: AppHandle, subpasta: String) -> Res<String> {
+    let sub = match subpasta.as_str() {
+        "Backups" | "Exportacoes" => subpasta.as_str(),
+        _ => return Err("Pasta inválida.".into()),
+    };
+    let pasta = pasta_dairus(&app, sub)?;
+    #[cfg(windows)]
+    std::process::Command::new("explorer").arg(&pasta).spawn().map_err(e)?;
+    Ok(pasta.to_string_lossy().to_string())
+}
+
+/// Volta o app ao estado inicial: apaga lançamentos, contas e categorias suas, metas,
+/// bens, radar e orçamentos. Antes disso grava um backup de segurança.
+#[tauri::command]
+pub fn apagar_todos_os_dados(app: AppHandle, state: State<AppState>, confirmacao: String) -> Res<InfoBackup> {
+    if confirmacao != "APAGAR TUDO" {
+        return Err("Confirmação incorreta.".into());
+    }
+    let pasta = pasta_dairus(&app, "Backups")?;
+    let mut conn = state.conn.lock().expect("mutex envenenado");
+    let seguranca = gravar_backup(&conn, &pasta, "antes-de-apagar")?;
+    limpar_dados(&mut conn)?;
+    Ok(seguranca)
+}
+
+fn limpar_dados(conn: &mut Connection) -> Res<()> {
+    let tx = conn.transaction().map_err(e)?;
+    tx.execute_batch(
+        "DELETE FROM metas_aportes; DELETE FROM metas;
+         DELETE FROM bens_avaliacoes; DELETE FROM bens;
+         DELETE FROM radar_precos; DELETE FROM radar_itens;
+         DELETE FROM orcamentos; DELETE FROM agendamentos;
+         DELETE FROM partidas; UPDATE lancamentos SET estornado_de = NULL; DELETE FROM lancamentos;
+         DELETE FROM contas_contabeis WHERE sistema = 0;
+         UPDATE contas_contabeis SET ativa = 1;
+         DELETE FROM auditoria;",
+    )
+    .map_err(e)?;
+    tx.commit().map_err(e)
+}
+
 #[derive(Serialize)]
 pub struct RegistroAuditoria {
     pub acao: String,
@@ -1013,5 +1181,50 @@ mod testes_backup {
         assert!(nome_seguro("../x.db").is_err());
         assert!(nome_seguro("C:/x.db").is_err());
         assert!(nome_seguro("").is_err());
+    }
+}
+
+#[cfg(test)]
+mod testes_manutencao {
+    use super::*;
+    use crate::accounting::engine;
+    use crate::accounting::models::{NovoLancamentoInput, PartidaInput, TipoPartida};
+
+    #[test]
+    fn limpar_dados_zera_o_usuario_mas_preserva_o_plano_de_contas() {
+        let mut conn = crate::db::abrir_conexao(Path::new(":memory:")).unwrap();
+        crate::db::executar_migracoes(&conn).unwrap();
+        let l = engine::criar_lancamento(
+            &mut conn,
+            NovoLancamentoInput {
+                data: "2026-10-01".into(),
+                descricao: "Teste".into(),
+                observacao: None,
+                origem: "MANUAL".into(),
+                etiqueta: None,
+                partidas: vec![
+                    PartidaInput { conta_id: "despesa-outras".into(), tipo: TipoPartida::Debito, valor_centavos: 500 },
+                    PartidaInput { conta_id: "ativo-dinheiro".into(), tipo: TipoPartida::Credito, valor_centavos: 500 },
+                ],
+            },
+        )
+        .unwrap();
+        engine::estornar_lancamento(&mut conn, &l.id).unwrap();
+        conn.execute("INSERT INTO metas (id, nome, valor_alvo_centavos) VALUES ('m1', 'Meta', 1000)", []).unwrap();
+
+        limpar_dados(&mut conn).unwrap();
+
+        let total = |t: &str| -> i64 { conn.query_row(&format!("SELECT COUNT(*) FROM {t}"), [], |r| r.get(0)).unwrap() };
+        assert_eq!(total("lancamentos"), 0);
+        assert_eq!(total("partidas"), 0);
+        assert_eq!(total("metas"), 0);
+        assert!(total("contas_contabeis") > 10, "o plano de contas padrão precisa continuar");
+        assert_eq!(engine::saldo_conta(&conn, "ativo-dinheiro").unwrap(), 0);
+    }
+
+    #[test]
+    fn retencao_e_nomes_de_backup_so_mexem_em_arquivos_do_dairus() {
+        assert!(nome_seguro("dairus-20261002-093643.db").is_ok());
+        assert!(nome_seguro("antes-de-restaurar-20261002-093643.db").is_ok());
     }
 }

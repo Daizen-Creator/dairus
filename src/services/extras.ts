@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { RegistroAuditoria, AporteComMeta, AporteMeta, Bem, InfoBackup, ItemRadar, Meta, Orcamento, TipoBem } from "../types/extras";
+import type { InfoBanco, RegistroAuditoria, AporteComMeta, AporteMeta, Bem, InfoBackup, ItemRadar, Meta, Orcamento, TipoBem } from "../types/extras";
 
 // Porta de entrada para os módulos de src-tauri/src/extras.rs.
 export const extras = {
@@ -77,6 +77,15 @@ export const extras = {
   excluirPrecoRadar: (precoId: string) => invoke<void>("excluir_preco_radar", { precoId }),
 
   listarAuditoria: (limite = 200) => invoke<RegistroAuditoria[]>("listar_auditoria", { limite }),
+
+  infoBanco: () => invoke<InfoBanco>("info_banco"),
+  verificarIntegridade: () => invoke<string[]>("verificar_integridade"),
+  otimizarBanco: () => invoke<void>("otimizar_banco"),
+  excluirBackup: (nome: string) => invoke<void>("excluir_backup", { nome }),
+  verificarBackup: (nome: string) => invoke<void>("verificar_backup", { nome }),
+  aplicarRetencao: (manter: number) => invoke<number>("aplicar_retencao", { manter }),
+  abrirPasta: (subpasta: "Backups" | "Exportacoes") => invoke<string>("abrir_pasta_dairus", { subpasta }),
+  apagarTodosOsDados: (confirmacao: string) => invoke<InfoBackup>("apagar_todos_os_dados", { confirmacao }),
 
   criarBackup: () => invoke<InfoBackup>("criar_backup"),
   listarBackups: () => invoke<InfoBackup[]>("listar_backups"),

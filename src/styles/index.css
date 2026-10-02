@@ -154,3 +154,9 @@ body {
   main { overflow: visible !important; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* Preferência "reduzir animações" (Configurações). */
+html.sem-animacoes *, html.sem-animacoes *::before, html.sem-animacoes *::after {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+}

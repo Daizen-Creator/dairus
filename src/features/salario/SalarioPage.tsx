@@ -192,7 +192,7 @@ export function SalarioPage() {
   const rankingExtras = [...extrasPorNome.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
 
   const recebeuSalarioMes = recebimentos.some((r) => r.fonte === "SALARIO" && r.l.data.startsWith(mesAtual));
-  const proxPag = perfil.diaPagamento ? proximoPagamento(perfil.diaPagamento, hoje) : null;
+  const proxPag = perfil.liquido > 0 && perfil.diaPagamento ? proximoPagamento(perfil.diaPagamento, hoje) : null;
   const diasPag = proxPag ? diasEntre(hoje, proxPag) : null;
 
   const descontos = perfil.bruto > 0 && perfil.liquido > 0 ? perfil.bruto - perfil.liquido : null;
@@ -290,8 +290,8 @@ export function SalarioPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard titulo={`Recebido em ${nomeMesAno(hoje)}`} valor={dinheiro(totalMes)} corValor="sucesso" icone={Banknote} corIcone="sucesso" subtitulo={variacao !== null ? `${variacao >= 0 ? "▲" : "▼"} ${Math.abs(variacao).toFixed(0)}% vs mês anterior (${dinheiro(totalAnterior)})` : "Sem mês anterior para comparar"} />
-        <StatCard titulo="Média mensal (12 meses)" valor={dinheiro(Math.round(media12))} icone={TrendingUp} corIcone="primaria" subtitulo={melhor && pior ? `Melhor ${melhor.nome} · menor ${pior.nome}` : "Sem histórico ainda"} />
-        <StatCard titulo="Próximo pagamento" valor={proxPag ? formatarDataISOParaBR(proxPag).slice(0, 5) : "—"} icone={CalendarClock} corIcone="secundaria" subtitulo={diasPag === null ? "Defina o dia no perfil" : recebeuSalarioMes ? `Salário de ${MESES[Number(hoje.slice(5, 7)) - 1]} já recebido` : diasPag === 0 ? "É hoje" : `em ${diasPag} dia(s)`} />
+        <StatCard titulo="Média mensal (12 meses)" valor={dinheiro(Math.round(media12))} icone={TrendingUp} corIcone="primaria" subtitulo={comRenda.length > 1 && melhor && pior ? `Melhor ${melhor.nome} · menor ${pior.nome}` : "Histórico de apenas 1 mês até agora"} />
+        <StatCard titulo="Próximo pagamento" valor={proxPag ? formatarDataISOParaBR(proxPag).slice(0, 5) : "—"} icone={CalendarClock} corIcone="secundaria" subtitulo={diasPag === null ? "Cadastre o perfil de renda" : recebeuSalarioMes ? `Salário de ${MESES[Number(hoje.slice(5, 7)) - 1]} já recebido` : diasPag === 0 ? "É hoje" : `em ${diasPag} dia(s)`} />
         <StatCard titulo="Sobra do mês" valor={dinheiro(sobra)} corValor={sobra < 0 ? "erro" : "normal"} icone={Wallet} corIcone="alerta" subtitulo={rendaReferencia > 0 ? `${pctGasto.toFixed(0)}% da renda já gasta` : "Sem renda registrada"} />
       </div>
 
