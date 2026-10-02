@@ -1228,3 +1228,59 @@ mod testes_manutencao {
         assert!(nome_seguro("antes-de-restaurar-20261002-093643.db").is_ok());
     }
 }
+
+#[cfg(test)]
+mod testes_sql_dos_modulos {
+    use super::*;
+
+    /// Garante que as instruções SQL dos módulos batem com o esquema migrado
+    /// (nomes de colunas, CHECKs e chaves estrangeiras).
+    #[test]
+    fn instrucoes_de_escrita_funcionam_no_esquema_real() {
+        let conn = crate::db::abrir_conexao(Path::new(":memory:")).unwrap();
+        crate::db::executar_migracoes(&conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO metas (id, nome, valor_alvo_centavos, prazo, tipo, prioridade, notas) VALUES ('m', 'Reserva', 100000, '2027-01-01', 'RESERVA', 'ALTA', 'x')",
+            [],
+        )
+        .unwrap();
+        conn.execute("INSERT INTO metas_aportes (id, meta_id, valor_centavos, data) VALUES ('a1', 'm', 5000, '2026-10-01')", []).unwrap();
+        let guardado: i64 = conn
+            .query_row("SELECT COALESCE(SUM(valor_centavos), 0) FROM metas_aportes WHERE meta_id = 'm'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(guardado, 5000);
+        assert!(conn.execute("INSERT INTO metas (id, nome, valor_alvo_centavos, prioridade) VALUES ('x', 'Y', 1, 'URGENTE')", []).is_err());
+
+        conn.execute(
+            "INSERT INTO bens (id, nome, tipo, categoria, notas, aquisicao_data, aquisicao_valor_centavos) VALUES ('b', 'Moto', 'BEM', 'VEICULO', NULL, '2025-01-01', 1500000)",
+            [],
+        )
+        .unwrap();
+        conn.execute("INSERT INTO bens_avaliacoes (id, bem_id, valor_centavos, data) VALUES ('v1', 'b', 1400000, '2026-10-01')", []).unwrap();
+        conn.execute(
+            "UPDATE bens SET nome = 'Moto 150', categoria = 'VEICULO', notas = 'ok', aquisicao_data = NULL, aquisicao_valor_centavos = NULL WHERE id = 'b'",
+            [],
+        )
+        .unwrap();
+
+        conn.execute("INSERT INTO radar_itens (id, nome, preco_alvo_centavos) VALUES ('r', 'Notebook', 300000)", []).unwrap();
+        conn.execute("INSERT INTO radar_precos (id, item_id, loja, preco_centavos, url, data) VALUES ('p', 'r', 'Loja', 320000, NULL, '2026-10-01')", []).unwrap();
+        assert!(conn.execute("INSERT INTO radar_precos (id, item_id, loja, preco_centavos, data) VALUES ('q', 'r', 'L', 0, '2026-10-01')", []).is_err());
+
+        conn.execute(
+            "INSERT INTO orcamentos (categoria_id, limite_centavos) VALUES ('despesa-lazer', 20000)
+             ON CONFLICT(categoria_id) DO UPDATE SET limite_centavos = excluded.limite_centavos,
+             atualizado_em = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+            [],
+        )
+        .unwrap();
+        conn.execute("INSERT INTO contas_contabeis (id, codigo, nome, tipo, subtipo, categoria_pai_id, sistema) VALUES ('cat-x', '5.c-x', 'Pets', 'DESPESA', NULL, NULL, 0)", []).unwrap();
+        conn.execute("UPDATE contas_contabeis SET nome = 'Pets 2', instituicao = NULL, limite_centavos = NULL, dia_fechamento_fatura = NULL, dia_vencimento_fatura = NULL WHERE id = 'cat-x' AND sistema = 0", []).unwrap();
+
+        // Excluir uma meta leva os aportes junto (ON DELETE CASCADE).
+        conn.execute("DELETE FROM metas WHERE id = 'm'", []).unwrap();
+        let restantes: i64 = conn.query_row("SELECT COUNT(*) FROM metas_aportes", [], |r| r.get(0)).unwrap();
+        assert_eq!(restantes, 0);
+    }
+}
