@@ -117,9 +117,31 @@ async function montarContexto(blocos: Set<Bloco>, anonimo: boolean, nTransacoes:
   return linhas.join("\n");
 }
 
+/** Chaves "AQ.…" são do Vertex AI (modo expresso); "AIza…" são do Google AI Studio. */
+export type TipoChave = "AI_STUDIO" | "VERTEX" | "DESCONHECIDA";
+
+export function tipoDaChave(chave: string): TipoChave {
+  if (chave.startsWith("AIza")) return "AI_STUDIO";
+  if (chave.startsWith("AQ.")) return "VERTEX";
+  return "DESCONHECIDA";
+}
+
+/** Limpa o que costuma vir junto ao colar (espaços, quebras de linha, aspas). */
+export function limparChave(texto: string): string {
+  return texto.replace(/s+/g, "").replace(/^["']|["']$/g, "");
+}
+
+function urlDoModelo(chave: string, modelo: string): string {
+  const m = encodeURIComponent(modelo);
+  return tipoDaChave(chave) === "VERTEX"
+    ? `https://aiplatform.googleapis.com/v1/publishers/google/models/${m}:generateContent`
+    : `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`;
+}
+
 function mensagemDeErro(status: number, texto: string): string {
-  if (status === 400 && /API key/i.test(texto)) return "Chave de API inválida. Confira a chave em Google AI Studio.";
-  if (status === 401 || status === 403) return "A chave foi recusada (sem permissão). Gere uma nova no Google AI Studio.";
+  if (/API key/i.test(texto) && /not valid|invalid|expired/i.test(texto)) return "Chave de API inválida ou expirada. Gere uma nova (Google AI Studio ou Vertex AI) e salve de novo.";
+  if (/not supported by this API|API_KEY_SERVICE_BLOCKED|has not been used|is disabled/i.test(texto)) return `Esta chave não tem acesso a este serviço do Google. Detalhe: ${texto}`;
+  if (status === 401 || status === 403) return `A chave foi recusada (sem permissão).${texto ? ` Detalhe: ${texto}` : ""}`;
   if (status === 404) return "Modelo não encontrado. Escolha outro modelo na lista.";
   if (status === 429) return "Limite de uso da API atingido. Aguarde um pouco ou use outro modelo/chave.";
   if (status >= 500) return "O serviço do Gemini está instável agora. Tente novamente em instantes.";
@@ -127,7 +149,7 @@ function mensagemDeErro(status: number, texto: string): string {
 }
 
 async function chamarGemini(opts: { chave: string; modelo: string; instrucao: string; contexto: string; temperatura: number; historico: Mensagem[]; sinal?: AbortSignal }) {
-  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(opts.modelo)}:generateContent`, {
+  const resp = await fetch(urlDoModelo(opts.chave, opts.modelo), {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": opts.chave },
     signal: opts.sinal,
@@ -199,10 +221,13 @@ export function IaPage() {
 
   async function salvarChave(ev: React.FormEvent) {
     ev.preventDefault();
-    await salvarPreferencia("gemini_chave", rascunhoChave.trim() || null);
-    setChave(rascunhoChave.trim());
+    const nova = limparChave(rascunhoChave);
+    await salvarPreferencia("gemini_chave", nova || null);
+    setChave(nova);
     setRascunhoChave("");
-    toast.success(rascunhoChave.trim() ? "Chave salva neste computador." : "Chave removida.");
+    if (!nova) return toast.success("Chave removida.");
+    const tipo = tipoDaChave(nova);
+    toast.success(tipo === "VERTEX" ? "Chave do Vertex AI (modo expresso) salva. Clique em “Testar conexão”." : tipo === "AI_STUDIO" ? "Chave do Google AI Studio salva. Clique em “Testar conexão”." : "Chave salva, mas o formato não é o esperado (AIza… ou AQ.…). Teste a conexão.");
   }
 
   async function testarConexao() {
@@ -306,7 +331,8 @@ export function IaPage() {
               <span className="w-7 tabular-nums text-xs">{temperatura.toFixed(1)}</span>
             </label>
           </div>
-          <p className="mt-3 text-xs leading-relaxed text-texto-secundario">Gere a chave no Google AI Studio. Ela fica salva apenas neste computador (arquivo de preferências do app, sem criptografia). Nada é enviado antes de você perguntar.</p>
+          {chave && <p className="mt-3 text-xs text-texto-secundario">Chave salva: <strong className="text-texto-primario">{tipoDaChave(chave) === "VERTEX" ? "Vertex AI (modo expresso)" : tipoDaChave(chave) === "AI_STUDIO" ? "Google AI Studio" : "formato desconhecido"}</strong> · termina em …{chave.slice(-4)}</p>}
+          <p className="mt-3 text-xs leading-relaxed text-texto-secundario">Aceita chave do Google AI Studio (começa com AIza) ou do Vertex AI em modo expresso (começa com AQ.). Ela fica salva apenas neste computador (arquivo de preferências do app, sem criptografia). Nada é enviado antes de você perguntar.</p>
         </Secao>
 
         <Secao titulo={<><ShieldCheck size={16} className="text-sucesso" /> O que é enviado ao Google</>}>

@@ -31,7 +31,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost data:; style-src 'self' 'unsafe-inline'; connect-src 'self' https://generativelanguage.googleapis.com"
+      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost data:; style-src 'self' 'unsafe-inline'; connect-src 'self' https://generativelanguage.googleapis.com https://aiplatform.googleapis.com"
     }
   },
   "bundle": {
