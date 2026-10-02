@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+/*
+ * Os valores reais de cada variável --cor-* são escritos em runtime pelo
+ * theme-store (uma troca de tema = reescrever estas variáveis, nada de
+ * recarregar CSS). Aqui só mapeamos essas variáveis para tokens do
+ * Tailwind, então `bg-superficie`, `text-texto-secundario` etc. funcionam
+ * em qualquer um dos temas automaticamente.
+ */
+@theme inline {
+  --color-fundo: var(--cor-fundo);
+  --color-superficie: var(--cor-superficie);
+  --color-cartao: var(--cor-cartao);
+  --color-primaria: var(--cor-primaria);
+  --color-primaria-texto: var(--cor-primaria-texto);
+  --color-secundaria: var(--cor-secundaria);
+  --color-secundaria-texto: var(--cor-secundaria-texto);
+  --color-texto-primario: var(--cor-texto-primario);
+  --color-texto-secundario: var(--cor-texto-secundario);
+  --color-borda: var(--cor-borda);
+  --color-sucesso: var(--cor-sucesso);
+  --color-alerta: var(--cor-alerta);
+  --color-erro: var(--cor-erro);
+  --color-destaque: var(--cor-destaque);
+}
+
+:root {
+  /* valores de fallback antes do theme-store aplicar o tema escolhido */
+  --cor-fundo: #faf7f2;
+  --cor-superficie: #ffffff;
+  --cor-cartao: #ffffff;
+  --cor-primaria: #2563eb;
+  --cor-primaria-texto: #ffffff;
+  --cor-secundaria: #0d9488;
+  --cor-secundaria-texto: #ffffff;
+  --cor-texto-primario: #1f2430;
+  --cor-texto-secundario: #6b7280;
+  --cor-borda: #e7e1d8;
+  --cor-sucesso: #16a34a;
+  --cor-alerta: #d97706;
+  --cor-erro: #dc2626;
+  --cor-destaque: #7c3aed;
+  --cor-sombra: rgba(31, 36, 48, 0.08);
+  --cor-grafico-1: #2563eb;
+  --cor-grafico-2: #0d9488;
+  --cor-grafico-3: #16a34a;
+  --cor-grafico-4: #d97706;
+  --cor-grafico-5: #7c3aed;
+
+  --altura-barra-titulo: 52px;
+
+  /* Curvas de easing mais fortes que as do CSS padrão — ver skill
+     emil-design-eng: ease-in nunca, ease-out para entrar/sair. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 15% 20%, color-mix(in srgb, var(--cor-primaria) 10%, transparent), transparent 35%),
+    radial-gradient(circle at 90% 80%, color-mix(in srgb, var(--cor-destaque) 8%, transparent), transparent 35%),
+    var(--cor-fundo);
+  color: var(--cor-texto-primario);
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+/* Glassmorphism: todo cartão do sistema (bg-cartao) ganha blur do que
+   está atrás. Só tem efeito visível em temas com --cor-cartao translúcida
+   (ex.: Neon Dark usa rgba); nos demais temas é inofensivo. */
+.bg-cartao {
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  /* Degradê de fundo dos painéis: clarão azul no canto superior esquerdo
+     esfriando para roxo sutil e depois transparente. Cards coloridos
+     (saldo, atalhos) sobrescrevem isto com o degradê da própria cor. */
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--cor-primaria) 16%, transparent) 0%,
+    color-mix(in srgb, var(--cor-destaque) 6%, transparent) 55%,
+    transparent 100%
+  );
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
+::selection {
+  background-color: var(--cor-primaria);
+  color: var(--cor-primaria-texto);
+}
+
+/* Barra de rolagem discreta, coerente com o tema ativo */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--cor-borda) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--cor-borda);
+  border-radius: 999px;
+}
+
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+}
+
+/* Foco visível e consistente em qualquer tema — nunca `outline: none` sem
+   substituto (Web Interface Guidelines). Só aparece para navegação por
+   teclado, não ao clicar com o mouse. */
+:focus-visible {
+  outline: 2px solid var(--cor-primaria);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Brilho neon nas séries do gráfico de fluxo de caixa */
+.barra-receitas path { filter: drop-shadow(0 0 5px var(--cor-sucesso)); }
+.barra-despesas path { filter: drop-shadow(0 0 5px var(--cor-erro)); }
+.barra-saldo path { filter: drop-shadow(0 0 5px var(--cor-primaria)); }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

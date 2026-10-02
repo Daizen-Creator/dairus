@@ -1,0 +1,272 @@
+[
+  {
+    "id": "noite-urbana",
+    "nome": "Neon Dark",
+    "categoria": "Escuro",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#020817", "superficie": "#061426", "cartao": "rgba(7,26,46,0.72)",
+      "primaria": "#1677ff", "primariaTexto": "#ffffff",
+      "secundaria": "#00d9ff", "secundariaTexto": "#001824",
+      "textoPrimario": "#f4f8ff", "textoSecundario": "#8ea5c3",
+      "borda": "rgba(60,150,255,0.18)", "sucesso": "#00d395", "alerta": "#f59e0b", "erro": "#f43f5e",
+      "destaque": "#a855f7", "sombra": "rgba(0,0,0,0.45)",
+      "grafico": ["#a855f7", "#00d395", "#f59e0b", "#ec4899", "#00d9ff"]
+    }
+  },
+  {
+    "id": "grafite",
+    "nome": "Grafite",
+    "categoria": "Escuro",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#121212", "superficie": "#1a1a1a", "cartao": "#212121",
+      "primaria": "#f59e0b", "primariaTexto": "#1a1200",
+      "secundaria": "#60a5fa", "secundariaTexto": "#001233",
+      "textoPrimario": "#f2f2f2", "textoSecundario": "#a3a3a3",
+      "borda": "#2e2e2e", "sucesso": "#4ade80", "alerta": "#facc15", "erro": "#fb7185",
+      "destaque": "#c084fc", "sombra": "rgba(0,0,0,0.5)",
+      "grafico": ["#f59e0b", "#60a5fa", "#4ade80", "#fb7185", "#c084fc"]
+    }
+  },
+  {
+    "id": "papel",
+    "nome": "Papel",
+    "categoria": "Claro",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#faf7f2", "superficie": "#ffffff", "cartao": "#ffffff",
+      "primaria": "#2563eb", "primariaTexto": "#ffffff",
+      "secundaria": "#0d9488", "secundariaTexto": "#ffffff",
+      "textoPrimario": "#1f2430", "textoSecundario": "#6b7280",
+      "borda": "#e7e1d8", "sucesso": "#16a34a", "alerta": "#d97706", "erro": "#dc2626",
+      "destaque": "#7c3aed", "sombra": "rgba(31,36,48,0.08)",
+      "grafico": ["#2563eb", "#0d9488", "#16a34a", "#d97706", "#7c3aed"]
+    }
+  },
+  {
+    "id": "nuvem",
+    "nome": "Nuvem",
+    "categoria": "Claro",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#eef2f7", "superficie": "#ffffff", "cartao": "#ffffff",
+      "primaria": "#0ea5e9", "primariaTexto": "#ffffff",
+      "secundaria": "#6366f1", "secundariaTexto": "#ffffff",
+      "textoPrimario": "#111827", "textoSecundario": "#64748b",
+      "borda": "#dbe4ee", "sucesso": "#22c55e", "alerta": "#f59e0b", "erro": "#ef4444",
+      "destaque": "#ec4899", "sombra": "rgba(17,24,39,0.08)",
+      "grafico": ["#0ea5e9", "#6366f1", "#22c55e", "#f59e0b", "#ec4899"]
+    }
+  },
+  {
+    "id": "essencial",
+    "nome": "Essencial",
+    "categoria": "Minimalista",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#ffffff", "superficie": "#fafafa", "cartao": "#ffffff",
+      "primaria": "#18181b", "primariaTexto": "#ffffff",
+      "secundaria": "#71717a", "secundariaTexto": "#ffffff",
+      "textoPrimario": "#18181b", "textoSecundario": "#71717a",
+      "borda": "#e4e4e7", "sucesso": "#15803d", "alerta": "#b45309", "erro": "#b91c1c",
+      "destaque": "#3730a3", "sombra": "rgba(0,0,0,0.06)",
+      "grafico": ["#18181b", "#52525b", "#a1a1aa", "#d4d4d8", "#3730a3"]
+    }
+  },
+  {
+    "id": "vazio",
+    "nome": "Vazio",
+    "categoria": "Minimalista",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0a0a0a", "superficie": "#121212", "cartao": "#161616",
+      "primaria": "#fafafa", "primariaTexto": "#0a0a0a",
+      "secundaria": "#a1a1aa", "secundariaTexto": "#0a0a0a",
+      "textoPrimario": "#fafafa", "textoSecundario": "#a1a1aa",
+      "borda": "#262626", "sucesso": "#4ade80", "alerta": "#fbbf24", "erro": "#f87171",
+      "destaque": "#e4e4e7", "sombra": "rgba(0,0,0,0.6)",
+      "grafico": ["#fafafa", "#d4d4d8", "#a1a1aa", "#71717a", "#525252"]
+    }
+  },
+  {
+    "id": "executivo-azul",
+    "nome": "Executivo Azul",
+    "categoria": "Corporativo",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f4f6fa", "superficie": "#ffffff", "cartao": "#ffffff",
+      "primaria": "#1e3a8a", "primariaTexto": "#ffffff",
+      "secundaria": "#334155", "secundariaTexto": "#ffffff",
+      "textoPrimario": "#0f172a", "textoSecundario": "#475569",
+      "borda": "#dbe2ec", "sucesso": "#15803d", "alerta": "#b45309", "erro": "#b91c1c",
+      "destaque": "#0369a1", "sombra": "rgba(15,23,42,0.08)",
+      "grafico": ["#1e3a8a", "#0369a1", "#15803d", "#b45309", "#7c2d12"]
+    }
+  },
+  {
+    "id": "confianca-verde",
+    "nome": "Confiança Verde",
+    "categoria": "Corporativo",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f3f7f4", "superficie": "#ffffff", "cartao": "#ffffff",
+      "primaria": "#065f46", "primariaTexto": "#ffffff",
+      "secundaria": "#92400e", "secundariaTexto": "#ffffff",
+      "textoPrimario": "#102a1f", "textoSecundario": "#4b5f56",
+      "borda": "#d9e6de", "sucesso": "#15803d", "alerta": "#b45309", "erro": "#b91c1c",
+      "destaque": "#0e7490", "sombra": "rgba(16,42,31,0.08)",
+      "grafico": ["#065f46", "#0e7490", "#92400e", "#854d0e", "#166534"]
+    }
+  },
+  {
+    "id": "gradiente-suave",
+    "nome": "Gradiente Suave",
+    "categoria": "Moderno",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f5f3ff", "superficie": "#ffffff", "cartao": "#ffffff",
+      "primaria": "#7c3aed", "primariaTexto": "#ffffff",
+      "secundaria": "#2563eb", "secundariaTexto": "#ffffff",
+      "textoPrimario": "#1e1b2e", "textoSecundario": "#6b6480",
+      "borda": "#e4defa", "sucesso": "#16a34a", "alerta": "#d97706", "erro": "#dc2626",
+      "destaque": "#db2777", "sombra": "rgba(124,58,237,0.12)",
+      "grafico": ["#7c3aed", "#2563eb", "#db2777", "#16a34a", "#d97706"]
+    }
+  },
+  {
+    "id": "vidro",
+    "nome": "Vidro",
+    "categoria": "Moderno",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0b1b1e", "superficie": "#10262a", "cartao": "#143035",
+      "primaria": "#2dd4bf", "primariaTexto": "#042f2e",
+      "secundaria": "#38bdf8", "secundariaTexto": "#04232f",
+      "textoPrimario": "#e3f6f3", "textoSecundario": "#8db5b0",
+      "borda": "#1d3d41", "sucesso": "#4ade80", "alerta": "#fbbf24", "erro": "#fb7185",
+      "destaque": "#c084fc", "sombra": "rgba(0,0,0,0.4)",
+      "grafico": ["#2dd4bf", "#38bdf8", "#c084fc", "#fbbf24", "#4ade80"]
+    }
+  },
+  {
+    "id": "neo-toquio",
+    "nome": "Neo Tóquio",
+    "categoria": "Cyberpunk",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0a0410", "superficie": "#130a20", "cartao": "#1a0f2b",
+      "primaria": "#ff2ea6", "primariaTexto": "#1a0010",
+      "secundaria": "#22e5ff", "secundariaTexto": "#001a1f",
+      "textoPrimario": "#f3e9ff", "textoSecundario": "#a98fd1",
+      "borda": "#2c1a44", "sucesso": "#39ff9d", "alerta": "#ffd60a", "erro": "#ff3860",
+      "destaque": "#c026f5", "sombra": "rgba(255,46,166,0.25)",
+      "grafico": ["#ff2ea6", "#22e5ff", "#c026f5", "#39ff9d", "#ffd60a"]
+    }
+  },
+  {
+    "id": "distrito-neon",
+    "nome": "Distrito Neon",
+    "categoria": "Cyberpunk",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0d0b1a", "superficie": "#161327", "cartao": "#1e1a35",
+      "primaria": "#a855f7", "primariaTexto": "#160a26",
+      "secundaria": "#4ade80", "secundariaTexto": "#052e16",
+      "textoPrimario": "#ece9fb", "textoSecundario": "#9b93c9",
+      "borda": "#302a4f", "sucesso": "#4ade80", "alerta": "#facc15", "erro": "#fb7185",
+      "destaque": "#22d3ee", "sombra": "rgba(168,85,247,0.25)",
+      "grafico": ["#a855f7", "#4ade80", "#22d3ee", "#facc15", "#fb7185"]
+    }
+  },
+  {
+    "id": "neon-eletrico",
+    "nome": "Neon Elétrico",
+    "categoria": "Neon",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#000000", "superficie": "#0d0d0d", "cartao": "#161616",
+      "primaria": "#ff00c8", "primariaTexto": "#000000",
+      "secundaria": "#c6ff00", "secundariaTexto": "#0a1400",
+      "textoPrimario": "#ffffff", "textoSecundario": "#bdbdbd",
+      "borda": "#262626", "sucesso": "#00ff9c", "alerta": "#ffea00", "erro": "#ff2d55",
+      "destaque": "#00e5ff", "sombra": "rgba(255,0,200,0.3)",
+      "grafico": ["#ff00c8", "#c6ff00", "#00e5ff", "#ffea00", "#00ff9c"]
+    }
+  },
+  {
+    "id": "fliperama",
+    "nome": "Fliperama",
+    "categoria": "Neon",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#140826", "superficie": "#1d0f36", "cartao": "#261446",
+      "primaria": "#00f0ff", "primariaTexto": "#001418",
+      "secundaria": "#ffe600", "secundariaTexto": "#1a1500",
+      "textoPrimario": "#f1e9ff", "textoSecundario": "#b7a3e0",
+      "borda": "#38206b", "sucesso": "#39ff9d", "alerta": "#ffe600", "erro": "#ff4d6d",
+      "destaque": "#ff8ad8", "sombra": "rgba(0,240,255,0.25)",
+      "grafico": ["#00f0ff", "#ffe600", "#ff8ad8", "#39ff9d", "#ff4d6d"]
+    }
+  },
+  {
+    "id": "floresta",
+    "nome": "Floresta",
+    "categoria": "Natural",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f6f5ee", "superficie": "#ffffff", "cartao": "#fdfbf4",
+      "primaria": "#3f6212", "primariaTexto": "#ffffff",
+      "secundaria": "#92400e", "secundariaTexto": "#ffffff",
+      "textoPrimario": "#2b2a1f", "textoSecundario": "#6b6a57",
+      "borda": "#e3e0cf", "sucesso": "#15803d", "alerta": "#b45309", "erro": "#b91c1c",
+      "destaque": "#0f766e", "sombra": "rgba(63,98,18,0.1)",
+      "grafico": ["#3f6212", "#92400e", "#0f766e", "#b45309", "#166534"]
+    }
+  },
+  {
+    "id": "oceano",
+    "nome": "Oceano",
+    "categoria": "Natural",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#eef7f7", "superficie": "#ffffff", "cartao": "#ffffff",
+      "primaria": "#0e7490", "primariaTexto": "#ffffff",
+      "secundaria": "#0369a1", "secundariaTexto": "#ffffff",
+      "textoPrimario": "#0b2a30", "textoSecundario": "#557178",
+      "borda": "#d6ebec", "sucesso": "#15803d", "alerta": "#b45309", "erro": "#b91c1c",
+      "destaque": "#155e75", "sombra": "rgba(14,116,144,0.1)",
+      "grafico": ["#0e7490", "#0369a1", "#155e75", "#0d9488", "#1d4ed8"]
+    }
+  },
+  {
+    "id": "mono-ambar",
+    "nome": "Mono Âmbar",
+    "categoria": "Monocromático",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#1a1205", "superficie": "#241a08", "cartao": "#2e220b",
+      "primaria": "#f59e0b", "primariaTexto": "#1a1205",
+      "secundaria": "#d97706", "secundariaTexto": "#1a1205",
+      "textoPrimario": "#fde9c8", "textoSecundario": "#c89a56",
+      "borda": "#3a2b10", "sucesso": "#65a30d", "alerta": "#f59e0b", "erro": "#dc2626",
+      "destaque": "#fbbf24", "sombra": "rgba(0,0,0,0.5)",
+      "grafico": ["#f59e0b", "#d97706", "#b45309", "#92400e", "#78350f"]
+    }
+  },
+  {
+    "id": "mono-grafite",
+    "nome": "Mono Grafite",
+    "categoria": "Monocromático",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f5f5f5", "superficie": "#ffffff", "cartao": "#ffffff",
+      "primaria": "#404040", "primariaTexto": "#ffffff",
+      "secundaria": "#737373", "secundariaTexto": "#ffffff",
+      "textoPrimario": "#171717", "textoSecundario": "#525252",
+      "borda": "#e5e5e5", "sucesso": "#16a34a", "alerta": "#ca8a04", "erro": "#b91c1c",
+      "destaque": "#262626", "sombra": "rgba(0,0,0,0.08)",
+      "grafico": ["#171717", "#404040", "#737373", "#a3a3a3", "#d4d4d4"]
+    }
+  }
+]

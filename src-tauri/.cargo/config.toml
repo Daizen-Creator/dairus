@@ -1,0 +1,5 @@
+# Builds de debug do Rust/Tauri acumulam vários GB (símbolos de debug de
+# centenas de dependências). O C: deste computador já ficou sem espaço
+# duas vezes por causa disso — movendo para o D:, que tem bastante sobra.
+[build]
+target-dir = "D:/dairus-target"
