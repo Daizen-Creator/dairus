@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AporteComMeta, AporteMeta, Bem, InfoBackup, ItemRadar, Meta, Orcamento, TipoBem } from "../types/extras";
+import type { RegistroAuditoria, AporteComMeta, AporteMeta, Bem, InfoBackup, ItemRadar, Meta, Orcamento, TipoBem } from "../types/extras";
 
 // Porta de entrada para os módulos de src-tauri/src/extras.rs.
 export const extras = {
@@ -15,8 +15,24 @@ export const extras = {
   excluirMeta: (metaId: string) => invoke<void>("excluir_meta", { metaId }),
 
   listarBens: () => invoke<Bem[]>("listar_bens"),
-  criarBem: (nome: string, tipo: TipoBem, valorCentavos: number, data: string) =>
-    invoke<string>("criar_bem", { nome, tipo, valorCentavos, data }),
+  criarBem: (
+    nome: string,
+    tipo: TipoBem,
+    valorCentavos: number,
+    data: string,
+    categoria: string | null,
+    notas: string | null,
+    aquisicaoData: string | null,
+    aquisicaoValorCentavos: number | null,
+  ) => invoke<string>("criar_bem", { nome, tipo, valorCentavos, data, categoria, notas, aquisicaoData, aquisicaoValorCentavos }),
+  atualizarBemDetalhes: (
+    bemId: string,
+    nome: string,
+    categoria: string | null,
+    notas: string | null,
+    aquisicaoData: string | null,
+    aquisicaoValorCentavos: number | null,
+  ) => invoke<void>("atualizar_bem_detalhes", { bemId, nome, categoria, notas, aquisicaoData, aquisicaoValorCentavos }),
   atualizarBem: (bemId: string, valorCentavos: number, data: string) =>
     invoke<void>("atualizar_bem", { bemId, valorCentavos, data }),
   excluirBem: (bemId: string) => invoke<void>("excluir_bem", { bemId }),
@@ -59,6 +75,8 @@ export const extras = {
   atualizarItemRadar: (itemId: string, nome: string, precoAlvoCentavos: number | null) =>
     invoke<void>("atualizar_item_radar", { itemId, nome, precoAlvoCentavos }),
   excluirPrecoRadar: (precoId: string) => invoke<void>("excluir_preco_radar", { precoId }),
+
+  listarAuditoria: (limite = 200) => invoke<RegistroAuditoria[]>("listar_auditoria", { limite }),
 
   criarBackup: () => invoke<InfoBackup>("criar_backup"),
   listarBackups: () => invoke<InfoBackup[]>("listar_backups"),

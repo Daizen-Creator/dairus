@@ -17,6 +17,10 @@ import {
   Target,
   TrendingDown,
   User,
+  Eye,
+  EyeOff,
+  Pencil,
+  SlidersHorizontal,
 } from "lucide-react";
 import { contabilidade } from "../../services/contabilidade";
 import { dataAtualISO, formatarCentavos, formatarDataISOParaBR, nomeMesAno, proximaDataComDia } from "../../services/formato";
@@ -36,6 +40,9 @@ import { Skeleton, SkeletonStatCards, SkeletonLinhas } from "../../components/ui
 import { useThemeStore } from "../../state/theme-store";
 import { useSegurancaStore } from "../../state/seguranca-store";
 import { extras } from "../../services/extras";
+import { usePreferencia } from "../../state/usePreferencia";
+import { PainelInteligente, SECOES_PAINEL, type SecaoPainel } from "./PainelInteligente";
+import type { Orcamento } from "../../types/extras";
 import { BarraProgresso } from "../../components/ui/Campos";
 import type { InfoBackup, Meta } from "../../types/extras";
 import type { Agendamento, Conta, Lancamento, ResumoDashboard } from "../../types/accounting";
@@ -46,6 +53,14 @@ export function DashboardPage() {
   const [contas, setContas] = useState<Conta[]>([]);
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [metas, setMetas] = useState<Meta[]>([]);
+  const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
+  const [recarga, setRecarga] = useState(0);
+  const [nomeUsuario, setNomeUsuario] = usePreferencia<string>("nome_usuario", "");
+  const [editandoNome, setEditandoNome] = useState(false);
+  const [rascunhoNome, setRascunhoNome] = useState("");
+  const [ocultar, setOcultar] = usePreferencia<boolean>("ocultar_saldos", false);
+  const [secoesOcultas, setSecoesOcultas] = usePreferencia<SecaoPainel[]>("dashboard_secoes_ocultas", []);
+  const [personalizando, setPersonalizando] = useState(false);
   const [ultimoBackup, setUltimoBackup] = useState<InfoBackup | null>(null);
   const pinAtivo = useSegurancaStore((s) => s.pinAtivo);
   const totalGuardado = metas.reduce((s, m) => s + m.guardado_centavos, 0);
@@ -64,16 +79,18 @@ export function DashboardPage() {
     let cancelado = false;
     async function carregar() {
       try {
-        const [resumoResp, lancamentosResp, contasResp, agendamentosResp, metasResp, backupsResp] = await Promise.all([
+        const [resumoResp, lancamentosResp, contasResp, agendamentosResp, metasResp, backupsResp, orcamentosResp] = await Promise.all([
           contabilidade.obterResumoDashboard(inicioMes, fimMes),
-          contabilidade.listarLancamentos(500),
+          contabilidade.listarLancamentos(3000),
           contabilidade.listarContas(),
           contabilidade.listarAgendamentos(),
           extras.listarMetas(),
           extras.listarBackups().catch(() => [] as InfoBackup[]),
+          extras.listarOrcamentos(),
         ]);
         if (cancelado) return;
         setMetas(metasResp);
+        setOrcamentos(orcamentosResp);
         setUltimoBackup(backupsResp.find((b) => !b.nome.startsWith("antes-de-restaurar")) ?? null);
         setResumo(resumoResp);
         setLancamentos(lancamentosResp);
@@ -90,7 +107,7 @@ export function DashboardPage() {
     return () => {
       cancelado = true;
     };
-  }, [inicioMes, fimMes]);
+  }, [inicioMes, fimMes, recarga]);
 
   if (carregando) {
     return (
@@ -147,6 +164,10 @@ export function DashboardPage() {
   }));
   const mesAbrev = dadosFluxo[Number(hoje.slice(5, 7)) - 1].nome;
 
+  const hora = Number(new Intl.DateTimeFormat("pt-BR", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" }).format(new Date()));
+  const saudacao = hora < 5 ? "Boa madrugada" : hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite";
+  const dinheiro = (v: number) => (ocultar ? "R$ ••••" : formatarCentavos(v));
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -155,11 +176,38 @@ export function DashboardPage() {
             <User size={20} />
           </span>
           <div>
-            <h1 className="text-lg font-semibold text-texto-primario">Olá!</h1>
+            <h1 className="flex items-center gap-2 text-lg font-semibold text-texto-primario">
+              {saudacao}{nomeUsuario ? `, ${nomeUsuario}` : ""}!
+              <button onClick={() => { setRascunhoNome(nomeUsuario); setEditandoNome(true); }} aria-label="Definir seu nome" title="Definir seu nome" className="rounded p-1 text-texto-secundario hover:text-primaria"><Pencil size={12} /></button>
+            </h1>
+            {editandoNome && (
+              <form onSubmit={(e) => { e.preventDefault(); setNomeUsuario(rascunhoNome.trim()); setEditandoNome(false); }} className="mt-1 flex items-center gap-2">
+                <input autoFocus value={rascunhoNome} onChange={(e) => setRascunhoNome(e.target.value)} placeholder="Seu nome" aria-label="Seu nome" className="rounded-lg border border-borda bg-fundo px-2 py-1 text-sm text-texto-primario outline-none focus:border-primaria" />
+                <button type="submit" className="text-xs text-primaria hover:underline">Salvar</button>
+              </form>
+            )}
             <p className="text-sm text-texto-secundario">Aqui está o resumo da sua vida financeira.</p>
           </div>
         </div>
-        <SeletorPeriodo periodo={periodo} hoje={hoje} onChange={setPeriodo} />
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => setOcultar(!ocultar)} aria-label="Ocultar ou mostrar valores" title={ocultar ? "Mostrar valores" : "Ocultar valores"} className="rounded-xl border border-borda bg-cartao p-2.5 text-texto-secundario transition-colors hover:text-primaria">{ocultar ? <EyeOff size={16} /> : <Eye size={16} />}</button>
+          <div className="relative">
+            <button onClick={() => setPersonalizando((v) => !v)} aria-label="Personalizar painel" title="Personalizar painel" className="rounded-xl border border-borda bg-cartao p-2.5 text-texto-secundario transition-colors hover:text-primaria"><SlidersHorizontal size={16} /></button>
+            {personalizando && (
+              <div className="absolute right-0 z-40 mt-2 w-64 rounded-xl border border-borda bg-superficie p-3 shadow-[0_16px_40px_-12px_rgba(0,0,0,.7)]">
+                <p className="mb-2 text-xs font-semibold text-texto-secundario">Seções do painel</p>
+                {SECOES_PAINEL.map((sec) => (
+                  <label key={sec.id} className="flex cursor-pointer items-center gap-2 py-1 text-sm text-texto-primario">
+                    <input type="checkbox" checked={!secoesOcultas.includes(sec.id)} onChange={() => setSecoesOcultas(secoesOcultas.includes(sec.id) ? secoesOcultas.filter((x) => x !== sec.id) : [...secoesOcultas, sec.id])} className="h-4 w-4 accent-[var(--cor-primaria)]" />
+                    {sec.rotulo}
+                  </label>
+                ))}
+                <button onClick={() => setPersonalizando(false)} className="mt-2 text-xs text-primaria hover:underline">Fechar</button>
+              </div>
+            )}
+          </div>
+          <SeletorPeriodo periodo={periodo} hoje={hoje} onChange={setPeriodo} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
@@ -167,31 +215,38 @@ export function DashboardPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               titulo="Saldo em Conta"
-              valor={formatarCentavos(resumo?.saldo_disponivel_centavos ?? 0)}
+              valor={dinheiro(resumo?.saldo_disponivel_centavos ?? 0)}
               icone={Landmark}
               corIcone="sucesso"
             />
             <StatCard
               titulo={ehMesAtual ? "Salário do Mês" : "Receitas no Período"}
-              valor={formatarCentavos(resumo?.receitas_mes_centavos ?? 0)}
+              valor={dinheiro(resumo?.receitas_mes_centavos ?? 0)}
               subtitulo={recebimentoSalario ? `Recebido em ${formatarDataISOParaBR(recebimentoSalario.data)}` : ehMesAtual ? "Ainda não recebido este mês" : "Sem salário registrado no período"}
               icone={Banknote}
               corIcone="secundaria"
             />
             <StatCard
               titulo={maiorDespesa ? `Maior Despesa · ${maiorDespesa.nome}` : "Maior Despesa"}
-              valor={formatarCentavos(maiorDespesa?.valorCentavos ?? 0)}
+              valor={dinheiro(maiorDespesa?.valorCentavos ?? 0)}
               icone={TrendingDown}
               corIcone="destaque"
             />
             <StatCard
               titulo={ehMesAtual ? "Despesas do Mês" : "Despesas no Período"}
-              valor={formatarCentavos(resumo?.despesas_mes_centavos ?? 0)}
+              valor={dinheiro(resumo?.despesas_mes_centavos ?? 0)}
               subtitulo={`${lancamentosDoMes.length} lançamento(s) ${ehMesAtual ? "este mês" : "no período"}`}
               icone={Receipt}
               corIcone="alerta"
             />
           </div>
+
+          <PainelInteligente
+            dados={{ hoje, contas, lancamentos, agendamentos, metas, orcamentos, ultimoBackup }}
+            visiveis={new Set(SECOES_PAINEL.map((x) => x.id).filter((id) => !secoesOcultas.includes(id)))}
+            ocultar={ocultar}
+            onLancado={() => setRecarga((n) => n + 1)}
+          />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
             <div className="rounded-xl border border-borda bg-cartao p-4">

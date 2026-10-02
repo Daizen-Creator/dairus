@@ -146,3 +146,11 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Impressão / "Salvar como PDF": esconde o menu e libera a rolagem. */
+@media print {
+  html, body, #root { height: auto !important; overflow: visible !important; background: #fff !important; }
+  .sem-impressao { display: none !important; }
+  main { overflow: visible !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

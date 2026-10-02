@@ -29,7 +29,7 @@ export function Sidebar() {
 
   return (
     <nav
-      className="flex shrink-0 flex-col border-r border-borda bg-superficie transition-[width] duration-150 [transition-timing-function:var(--ease-out)]"
+      className="sem-impressao flex shrink-0 flex-col border-r border-borda bg-superficie transition-[width] duration-150 [transition-timing-function:var(--ease-out)]"
       style={{ width: recolhido ? 64 : 232 }}
     >
       <ul className="flex-1 space-y-0.5 overflow-y-auto p-2">

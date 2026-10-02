@@ -54,7 +54,7 @@ export function TitleBar() {
     <header
       data-tauri-drag-region
       onMouseDown={iniciarArraste}
-      className="flex shrink-0 select-none items-center justify-between border-b border-borda bg-superficie px-3"
+      className="sem-impressao flex shrink-0 select-none items-center justify-between border-b border-borda bg-superficie px-3"
       style={{ height: "var(--altura-barra-titulo)" }}
     >
       <div className="flex shrink-0 items-center gap-2.5">

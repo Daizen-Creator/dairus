@@ -212,20 +212,36 @@ pub struct Bem {
     pub nome: String,
     pub tipo: String,
     pub valor_centavos: i64,
+    pub categoria: Option<String>,
+    pub notas: Option<String>,
+    pub aquisicao_data: Option<String>,
+    pub aquisicao_valor_centavos: Option<i64>,
     pub avaliacoes: Vec<Avaliacao>,
 }
 
 #[tauri::command]
 pub fn listar_bens(state: State<AppState>) -> Res<Vec<Bem>> {
     let conn = state.conn.lock().expect("mutex envenenado");
-    let mut stmt = conn.prepare("SELECT id, nome, tipo FROM bens ORDER BY criado_em").map_err(e)?;
+    let mut stmt = conn
+        .prepare("SELECT id, nome, tipo, categoria, notas, aquisicao_data, aquisicao_valor_centavos FROM bens ORDER BY criado_em")
+        .map_err(e)?;
     let base = stmt
-        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, Option<String>>(3)?,
+                r.get::<_, Option<String>>(4)?,
+                r.get::<_, Option<String>>(5)?,
+                r.get::<_, Option<i64>>(6)?,
+            ))
+        })
         .map_err(e)?
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(e)?;
     let mut bens = Vec::new();
-    for (id, nome, tipo) in base {
+    for (id, nome, tipo, categoria, notas, aquisicao_data, aquisicao_valor_centavos) in base {
         let mut av = conn
             .prepare(
                 "SELECT data, valor_centavos FROM bens_avaliacoes WHERE bem_id = ?1
@@ -238,25 +254,44 @@ pub fn listar_bens(state: State<AppState>) -> Res<Vec<Bem>> {
             .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(e)?;
         let valor_centavos = avaliacoes.first().map(|a| a.valor_centavos).unwrap_or(0);
-        bens.push(Bem { id, nome, tipo, valor_centavos, avaliacoes });
+        bens.push(Bem { id, nome, tipo, valor_centavos, categoria, notas, aquisicao_data, aquisicao_valor_centavos, avaliacoes });
     }
     Ok(bens)
 }
 
 #[tauri::command]
-pub fn criar_bem(state: State<AppState>, nome: String, tipo: String, valor_centavos: i64, data: String) -> Res<String> {
+#[allow(clippy::too_many_arguments)]
+pub fn criar_bem(
+    state: State<AppState>,
+    nome: String,
+    tipo: String,
+    valor_centavos: i64,
+    data: String,
+    categoria: Option<String>,
+    notas: Option<String>,
+    aquisicao_data: Option<String>,
+    aquisicao_valor_centavos: Option<i64>,
+) -> Res<String> {
     let nome = nome_valido(&nome)?;
     if tipo != "BEM" && tipo != "DIVIDA" {
         return Err("Tipo inválido.".into());
     }
-    if valor_centavos < 0 {
+    if valor_centavos < 0 || matches!(aquisicao_valor_centavos, Some(v) if v < 0) {
         return Err("O valor não pode ser negativo.".into());
     }
     data_valida(&data)?;
+    if let Some(d) = &aquisicao_data {
+        data_valida(d)?;
+    }
+    let notas = notas.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
     let mut conn = state.conn.lock().expect("mutex envenenado");
     let tx = conn.transaction().map_err(e)?;
     let id = Uuid::new_v4().to_string();
-    tx.execute("INSERT INTO bens (id, nome, tipo) VALUES (?1, ?2, ?3)", params![id, nome, tipo]).map_err(e)?;
+    tx.execute(
+        "INSERT INTO bens (id, nome, tipo, categoria, notas, aquisicao_data, aquisicao_valor_centavos) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![id, nome, tipo, categoria, notas, aquisicao_data, aquisicao_valor_centavos],
+    )
+    .map_err(e)?;
     tx.execute(
         "INSERT INTO bens_avaliacoes (id, bem_id, valor_centavos, data) VALUES (?1, ?2, ?3, ?4)",
         params![Uuid::new_v4().to_string(), id, valor_centavos, data],
@@ -264,6 +299,37 @@ pub fn criar_bem(state: State<AppState>, nome: String, tipo: String, valor_centa
     .map_err(e)?;
     tx.commit().map_err(e)?;
     Ok(id)
+}
+
+#[tauri::command]
+pub fn atualizar_bem_detalhes(
+    state: State<AppState>,
+    bem_id: String,
+    nome: String,
+    categoria: Option<String>,
+    notas: Option<String>,
+    aquisicao_data: Option<String>,
+    aquisicao_valor_centavos: Option<i64>,
+) -> Res<()> {
+    let nome = nome_valido(&nome)?;
+    if matches!(aquisicao_valor_centavos, Some(v) if v < 0) {
+        return Err("O valor não pode ser negativo.".into());
+    }
+    if let Some(d) = &aquisicao_data {
+        data_valida(d)?;
+    }
+    let notas = notas.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+    let conn = state.conn.lock().expect("mutex envenenado");
+    let alteradas = conn
+        .execute(
+            "UPDATE bens SET nome = ?1, categoria = ?2, notas = ?3, aquisicao_data = ?4, aquisicao_valor_centavos = ?5 WHERE id = ?6",
+            params![nome, categoria, notas, aquisicao_data, aquisicao_valor_centavos, bem_id],
+        )
+        .map_err(e)?;
+    if alteradas == 0 {
+        return Err("Item não encontrado.".into());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -727,6 +793,32 @@ pub fn excluir_preco_radar(state: State<AppState>, preco_id: String) -> Res<()> 
     let conn = state.conn.lock().expect("mutex envenenado");
     conn.execute("DELETE FROM radar_precos WHERE id = ?1", [preco_id]).map_err(e)?;
     Ok(())
+}
+
+#[derive(Serialize)]
+pub struct RegistroAuditoria {
+    pub acao: String,
+    pub entidade: String,
+    pub entidade_id: String,
+    pub criado_em: String,
+}
+
+/// Trilha de auditoria (só o fato de algo ter acontecido; nunca valores ou descrições).
+#[tauri::command]
+pub fn listar_auditoria(state: State<AppState>, limite: i64) -> Res<Vec<RegistroAuditoria>> {
+    let limite = limite.clamp(1, 1000);
+    let conn = state.conn.lock().expect("mutex envenenado");
+    let mut stmt = conn
+        .prepare("SELECT acao, entidade, entidade_id, criado_em FROM auditoria ORDER BY criado_em DESC LIMIT ?1")
+        .map_err(e)?;
+    let linhas = stmt
+        .query_map([limite], |r| {
+            Ok(RegistroAuditoria { acao: r.get(0)?, entidade: r.get(1)?, entidade_id: r.get(2)?, criado_em: r.get(3)? })
+        })
+        .map_err(e)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(e)?;
+    Ok(linhas)
 }
 
 // ------------------------------------------------------- Backup e exportação

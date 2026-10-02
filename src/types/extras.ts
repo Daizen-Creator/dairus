@@ -28,6 +28,10 @@ export interface Bem {
   nome: string;
   tipo: TipoBem;
   valor_centavos: number;
+  categoria: string | null;
+  notas: string | null;
+  aquisicao_data: string | null;
+  aquisicao_valor_centavos: number | null;
   avaliacoes: Avaliacao[];
 }
 
@@ -62,4 +66,11 @@ export interface AporteComMeta {
   meta_id: string;
   data: string;
   valor_centavos: number;
+}
+
+export interface RegistroAuditoria {
+  acao: string;
+  entidade: string;
+  entidade_id: string;
+  criado_em: string;
 }
