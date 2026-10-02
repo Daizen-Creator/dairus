@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Lock } from "lucide-react";
 import { useSegurancaStore } from "../../state/seguranca-store";
+import { BarraJanela } from "./BarraJanela";
 
 /** Cobre o app com a tela de PIN quando bloqueado e bloqueia após inatividade. */
 export function BloqueioTela({ children }: { children: React.ReactNode }) {
@@ -54,7 +55,9 @@ export function BloqueioTela({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-full items-center justify-center bg-fundo p-6">
+    <div className="flex h-full flex-col bg-fundo">
+      <BarraJanela />
+      <div className="flex flex-1 items-center justify-center p-6">
       <form
         onSubmit={entrar}
         className="w-full max-w-xs rounded-2xl border border-borda bg-cartao p-6 text-center shadow-[0_20px_60px_-20px_var(--cor-primaria)]"
@@ -86,6 +89,7 @@ export function BloqueioTela({ children }: { children: React.ReactNode }) {
           Desbloquear
         </button>
       </form>
+      </div>
     </div>
   );
 }

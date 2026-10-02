@@ -16,7 +16,7 @@ interface EstadoAuth {
   entrando: boolean;
   erro: string | null;
   inicializar: () => Promise<void>;
-  entrarComGoogle: () => Promise<void>;
+  entrarComGoogle: (emailSugerido?: string) => Promise<void>;
   cancelarLogin: () => Promise<void>;
   situacaoDaConta: () => Promise<SituacaoConta>;
   abrirConta: (importarDadosLocais: boolean) => Promise<void>;
@@ -33,6 +33,7 @@ export const useAuthStore = create<EstadoAuth>((set, get) => ({
   async inicializar() {
     const { data } = await supabase.auth.getSession();
     set({ sessao: data.session, carregando: false });
+    lembrarConta(data.session);
     supabase.auth.onAuthStateChange((_evento, sessao) => {
       // Renovações de token mantêm a mesma conta; só zera tudo se a sessão sumir.
       if (!sessao && get().sessao) window.location.reload();
@@ -40,7 +41,7 @@ export const useAuthStore = create<EstadoAuth>((set, get) => ({
     });
   },
 
-  async entrarComGoogle() {
+  async entrarComGoogle(emailSugerido) {
     set({ entrando: true, erro: null });
     try {
       const ativo = await googleAtivado();
@@ -49,7 +50,12 @@ export const useAuthStore = create<EstadoAuth>((set, get) => ({
       }
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: URL_RETORNO_LOGIN, skipBrowserRedirect: true, queryParams: { prompt: "select_account" } },
+        options: {
+          redirectTo: URL_RETORNO_LOGIN,
+          skipBrowserRedirect: true,
+          // Conta recente: já sugere o e-mail; senão, sempre deixa escolher a conta.
+          queryParams: emailSugerido ? { login_hint: emailSugerido } : { prompt: "select_account" },
+        },
       });
       if (error || !data.url) throw new Error(error?.message ?? "Não foi possível iniciar o login.");
       // Liga o "ouvido" local antes de abrir o navegador, para não perder o retorno.
@@ -60,6 +66,7 @@ export const useAuthStore = create<EstadoAuth>((set, get) => ({
       const troca = await supabase.auth.exchangeCodeForSession(codigo);
       if (troca.error) throw new Error(troca.error.message);
       set({ sessao: troca.data.session });
+      lembrarConta(troca.data.session);
     } catch (e) {
       set({ erro: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -103,4 +110,47 @@ export function dadosDoUsuario(sessao: Session | null) {
     email: sessao?.user.email ?? "",
     foto: meta.avatar_url ?? meta.picture ?? null,
   };
+}
+
+// ---------- Contas usadas recentemente neste computador (só nome, e-mail e foto; nada sigiloso)
+
+export interface ContaRecente {
+  id: string;
+  nome: string;
+  email: string;
+  foto: string | null;
+  ultimoAcesso: string;
+}
+
+const CHAVE_RECENTES = "dairus-contas-recentes";
+
+export function contasRecentes(): ContaRecente[] {
+  try {
+    const lista = JSON.parse(localStorage.getItem(CHAVE_RECENTES) ?? "[]") as ContaRecente[];
+    return Array.isArray(lista) ? lista.slice(0, 4) : [];
+  } catch {
+    return [];
+  }
+}
+
+function lembrarConta(sessao: Session | null) {
+  if (!sessao) return;
+  const { nome, email, foto } = dadosDoUsuario(sessao);
+  const nova: ContaRecente = { id: sessao.user.id, nome, email, foto, ultimoAcesso: new Date().toISOString() };
+  try {
+    const lista = [nova, ...contasRecentes().filter((c) => c.id !== nova.id)].slice(0, 4);
+    localStorage.setItem(CHAVE_RECENTES, JSON.stringify(lista));
+  } catch {
+    // sem armazenamento local: só não lembra
+  }
+}
+
+export function esquecerConta(id: string): ContaRecente[] {
+  const lista = contasRecentes().filter((c) => c.id !== id);
+  try {
+    localStorage.setItem(CHAVE_RECENTES, JSON.stringify(lista));
+  } catch {
+    // ignora
+  }
+  return lista;
 }
