@@ -90,6 +90,8 @@ export const extras = {
   criarBackup: () => invoke<InfoBackup>("criar_backup"),
   listarBackups: () => invoke<InfoBackup[]>("listar_backups"),
   restaurarBackup: (nome: string) => invoke<InfoBackup>("restaurar_backup", { nome }),
+  salvarExportacaoBinaria: (nomeArquivo: string, conteudo: Uint8Array) =>
+    invoke<string>("salvar_exportacao_binaria", { nomeArquivo, conteudo: Array.from(conteudo) }),
   salvarExportacao: (nomeArquivo: string, conteudo: string) =>
     invoke<string>("salvar_exportacao", { nomeArquivo, conteudo }),
 };

@@ -1106,6 +1106,18 @@ pub fn restaurar_backup(app: AppHandle, state: State<AppState>, nome: String) ->
     Ok(seguranca)
 }
 
+/// Grava um arquivo binário (ex.: PDF) na pasta de exportações da conta.
+#[tauri::command]
+pub fn salvar_exportacao_binaria(app: AppHandle, nome_arquivo: String, conteudo: Vec<u8>) -> Res<String> {
+    let nome = nome_seguro(&nome_arquivo)?;
+    if conteudo.len() > 50 * 1024 * 1024 {
+        return Err("Arquivo grande demais.".into());
+    }
+    let caminho = pasta_dairus(&app, "Exportacoes")?.join(nome);
+    std::fs::write(&caminho, &conteudo).map_err(e)?;
+    Ok(caminho.to_string_lossy().to_string())
+}
+
 /// Grava um arquivo exportado (CSV, texto) em Documentos\Dairus\Exportacoes.
 #[tauri::command]
 pub fn salvar_exportacao(app: AppHandle, nome_arquivo: String, conteudo: String) -> Res<String> {

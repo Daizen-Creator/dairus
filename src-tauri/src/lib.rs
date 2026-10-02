@@ -65,6 +65,7 @@ pub fn run() {
             extras::listar_backups,
             extras::restaurar_backup,
             extras::salvar_exportacao,
+            extras::salvar_exportacao_binaria,
             extras::atualizar_lancamento_info,
             extras::atualizar_agendamento,
             extras::atualizar_conta,

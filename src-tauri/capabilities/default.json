@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Permissões da janela principal do Dairus — barra de título customizada e persistência de preferências.",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-close",
@@ -11,6 +13,15 @@
     "core:window:allow-is-maximized",
     "core:window:allow-start-dragging",
     "opener:default",
-    "store:default"
+    "store:default",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        {
+          "path": "$DOCUMENT/Dairus/**"
+        }
+      ]
+    },
+    "opener:allow-reveal-item-in-dir"
   ]
 }

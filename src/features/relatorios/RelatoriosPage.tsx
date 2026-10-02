@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ArrowDownRight, ArrowUpRight, Download, GitCompare, Percent, Printer, Repeat, Scale } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Download, FileDown, GitCompare, Percent, Printer, Repeat, Scale } from "lucide-react";
 import { toast } from "sonner";
 import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { Button } from "../../components/ui/Button";
+import { gerarEAbrirPdf, PainelPdf, useTitular } from "./GerarPdf";
+import { SECOES_PDF, type SecaoPdf } from "../../services/relatorioPdfSecoes";
+import { usePreferencia } from "../../state/usePreferencia";
 import { BarraProgresso, Secao } from "../../components/ui/Campos";
 import { IconeCoisa } from "../../components/ui/IconeCoisa";
 import { Skeleton } from "../../components/ui/Skeleton";
@@ -50,6 +53,9 @@ export function RelatoriosPage() {
   const hoje = dataAtualISO();
   const [periodo, setPeriodo] = useState<Periodo>(() => calcularPeriodo("este-mes", hoje));
   const [comparar, setComparar] = useState(true);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [secoesPdf] = usePreferencia<SecaoPdf[]>("pdf_secoes", SECOES_PDF.filter((x) => x.padrao).map((x) => x.id));
+  const titular = useTitular();
   const [secao, setSecao] = useAbaDaPagina<"visao" | "categorias" | "tendencias" | "entradas" | "padroes" | "exportar">("relatorios", "visao");
   const cores = useThemeStore((s) => s.temaAtivo()).cores.grafico;
 
@@ -192,6 +198,17 @@ export function RelatoriosPage() {
   const exportarAssinaturas = () =>
     exportarCsv("assinaturas", ["Assinatura", "Valor mensal (R$)", "Estimativa anual (R$)"], [...assinaturasPorNome.entries()].map(([n, v]) => [n, reais(v), reais(v * 12)]));
 
+  async function gerarPdfRapido() {
+    try {
+      setGerandoPdf(true);
+      await gerarEAbrirPdf(periodo.inicio, periodo.fim, new Set(secoesPdf), titular);
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setGerandoPdf(false);
+    }
+  }
+
   const tooltipEstilo = { background: "var(--cor-superficie)", border: "1px solid var(--cor-borda)", borderRadius: 8, fontSize: 12 };
 
   return (
@@ -206,7 +223,8 @@ export function RelatoriosPage() {
         </div>
         <div className="sem-impressao flex flex-wrap items-center gap-2">
           <Button tamanho="pequeno" variante={comparar ? "primaria" : "secundaria"} onClick={() => setComparar(!comparar)}><GitCompare size={13} /> Comparar com período anterior</Button>
-          <Button tamanho="pequeno" variante="secundaria" onClick={() => window.print()}><Printer size={13} /> Imprimir / PDF</Button>
+          <Button tamanho="pequeno" onClick={gerarPdfRapido} disabled={gerandoPdf}><FileDown size={13} /> {gerandoPdf ? "Gerando PDF…" : "Relatório em PDF"}</Button>
+          <Button tamanho="pequeno" variante="secundaria" onClick={() => window.print()}><Printer size={13} /> Imprimir tela</Button>
           <SeletorPeriodo periodo={periodo} hoje={hoje} onChange={setPeriodo} />
         </div>
       </div>
@@ -218,7 +236,7 @@ export function RelatoriosPage() {
         <StatCard titulo="Taxa de poupança" valor={taxa !== null ? `${taxa.toFixed(0)}%` : "—"} corValor={taxa !== null && taxa < 0 ? "erro" : "normal"} icone={Percent} corIcone="alerta" subtitulo={`Gasto médio: ${formatarCentavos(Math.round(dados.despesas / diasConsiderados))}/dia · ${formatarCentavos(Math.round((dados.despesas / diasConsiderados) * 30))}/mês`} />
       </div>
 
-      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "visao", rotulo: "Visão geral" }, { id: "categorias", rotulo: "Categorias e orçamento" }, { id: "tendencias", rotulo: "Tendências (12 meses)" }, { id: "entradas", rotulo: "Entradas e saídas" }, { id: "padroes", rotulo: "Padrões de gasto" }, { id: "exportar", rotulo: "Dívidas e exportação" }]} />
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "visao", rotulo: "Visão geral" }, { id: "categorias", rotulo: "Categorias e orçamento" }, { id: "tendencias", rotulo: "Tendências (12 meses)" }, { id: "entradas", rotulo: "Entradas e saídas" }, { id: "padroes", rotulo: "Padrões de gasto" }, { id: "exportar", rotulo: "PDF e exportação" }]} />
 
       {(secao === "visao") && (<>
       <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
@@ -360,6 +378,10 @@ export function RelatoriosPage() {
       </>)}
 
       {(secao === "exportar") && (<>
+      <Secao titulo={<><FileDown size={16} className="text-primaria" /> Relatório em PDF</>}>
+        <PainelPdf inicio={periodo.inicio} fim={periodo.fim} />
+      </Secao>
+
       <Secao titulo="Dívidas e cartões">
         {dividas.length === 0 ? <p className="text-sm text-texto-secundario">Nenhuma dívida ou fatura em aberto.</p> : (
           <ul className="space-y-1.5 text-sm">{dividas.map((c) => <li key={c.id} className="flex justify-between"><span className="text-texto-primario">{c.nome}{cartoes.includes(c) && c.limite_centavos ? ` · limite ${formatarCentavos(c.limite_centavos)}` : ""}</span><span className="tabular-nums text-erro">{formatarCentavos(c.saldo_atual_centavos)}</span></li>)}</ul>
@@ -375,7 +397,7 @@ export function RelatoriosPage() {
               <Button key={rotulo as string} variante="secundaria" tamanho="pequeno" onClick={() => exportar(fn as () => Promise<string>)}><Download size={13} /> {rotulo as string}</Button>
             ))}
           </div>
-          <p className="mt-3 text-xs text-texto-secundario">Os arquivos são salvos em Documentos\Dairus\Exportacoes. Para PDF, use “Imprimir / PDF” e escolha “Salvar como PDF”. Excel nativo (.xlsx) ainda não está disponível; o CSV abre direto no Excel.</p>
+          <p className="mt-3 text-xs text-texto-secundario">Os arquivos são salvos em Documentos\Dairus\Exportacoes. O relatório completo em PDF fica no botão “Relatório em PDF”. Excel nativo (.xlsx) ainda não está disponível; o CSV abre direto no Excel.</p>
         </Secao>
       </div>
       </>)}
