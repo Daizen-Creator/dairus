@@ -1,4 +1,5 @@
 mod accounting;
+mod atualizacao;
 mod commands;
 mod conta;
 mod cripto;
@@ -111,6 +112,8 @@ pub fn run() {
             extras::salvar_exportacao,
             planilha::exportar_xlsx,
             sistema::atualizar_bandeja,
+            atualizacao::verificar_atualizacao,
+            atualizacao::instalar_atualizacao,
             sincronizacao::impressao_dados,
             sincronizacao::gerar_copia_sync,
             sistema::pasta_de_logs,

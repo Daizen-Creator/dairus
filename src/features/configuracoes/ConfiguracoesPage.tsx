@@ -12,6 +12,7 @@ import { lerPreferencia, salvarPreferencia } from "../../services/armazenamento"
 import { usePreferencia } from "../../state/usePreferencia";
 import { verificarAvisosAgora } from "../../components/layout/IntegracaoSistema";
 import { abrirComWindows, lerLog, notificar, pastaDeLogs } from "../../services/sistema";
+import { EVENTO_VERIFICAR } from "../../components/layout/AvisoAtualizacao";
 import type { Conta } from "../../types/accounting";
 import type { InfoBanco } from "../../types/extras";
 
@@ -66,6 +67,12 @@ export function ConfiguracoesPage() {
   const [bloquearAoMinimizar, setBloquearAoMinimizar] = usePreferencia<boolean>("bloquear_ao_minimizar", true);
   const [iniciarComWindows, setIniciarComWindows] = useState(false);
   const [log, setLog] = useState<string | null>(null);
+  const [atualizacaoAuto, setAtualizacaoAuto] = usePreferencia<boolean>("atualizacao_auto", true);
+  const [versaoApp, setVersaoApp] = useState("");
+
+  useEffect(() => {
+    import("@tauri-apps/api/app").then(({ getVersion }) => getVersion()).then(setVersaoApp).catch(() => setVersaoApp("0.1.0"));
+  }, []);
 
   useEffect(() => {
     abrirComWindows.ativo().then(setIniciarComWindows).catch(() => {});
@@ -251,9 +258,13 @@ export function ConfiguracoesPage() {
       {(secao === "sobre") && (<>
       <Secao titulo={<><Sparkles size={16} className="text-destaque" /> Sobre o Dairus</>}>
         <p className="text-sm text-texto-secundario">
-          Versão 0.1.0. Motor contábil de partidas dobradas rodando localmente em SQLite, sem necessidade de internet (só o assistente de IA usa a internet, e apenas quando você pergunta).
+          Versão {versaoApp || "…"}. Motor contábil de partidas dobradas rodando localmente em SQLite, sem necessidade de internet (só o assistente de IA usa a internet, e apenas quando você pergunta).
         </p>
         {banco && <p className="mt-2 break-all text-xs text-texto-secundario">Dados em {banco.caminho} · SQLite {banco.versao_sqlite} · {banco.lancamentos} lançamento(s) · {banco.migracoes} migrações aplicadas.</p>}
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+          <Button tamanho="pequeno" variante="secundaria" onClick={() => window.dispatchEvent(new CustomEvent(EVENTO_VERIFICAR))}>Verificar atualizações</Button>
+          <label className="flex items-center gap-2 text-xs text-texto-primario"><input type="checkbox" checked={atualizacaoAuto} onChange={() => setAtualizacaoAuto(!atualizacaoAuto)} className="h-4 w-4 accent-[var(--cor-primaria)]" />Procurar versões novas sozinho (a cada 6 horas)</label>
+        </div>
         <div className="mt-3 flex flex-wrap gap-4 text-sm"><Link to="/backup" className="text-primaria hover:underline">Backup e PIN</Link><Link to="/ia" className="text-primaria hover:underline">Chave do Gemini</Link><Link to="/contabilidade" className="text-primaria hover:underline">Auditoria</Link></div>
       </Secao>
       </>)}

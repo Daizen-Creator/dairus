@@ -44,3 +44,11 @@ O ícone do app vem de `app-icon.svg`; depois de alterá-lo, rode `npx tauri ico
 - Backups e exportações: `Documentos\Dairus\Backups` e `Documentos\Dairus\Exportacoes`
 
 O PIN bloqueia a tela do app. Para proteger o arquivo, ligue a **criptografia** em Backup e Segurança → PIN e criptografia: o banco passa a ficar só cifrado no disco (AES-256-GCM, senha por Argon2id), aberto apenas na memória, e os backups também saem cifrados. Guarde o código de recuperação.
+
+## Publicar uma versão nova
+
+1. `npm run versao -- 0.3.0` (atualiza a versão nos três arquivos).
+2. Escreva o que mudou em `CHANGELOG.md`, numa seção `## 0.3.0`.
+3. Commit e `git tag v0.3.0 && git push --tags`.
+
+O workflow **Publicar versão** gera o instalador no Windows e cria o release no GitHub com essas notas. O Dairus instalado verifica a cada 6 horas, avisa (inclusive por notificação), mostra "O que mudou" e, em "Atualizar agora", baixa o instalador e o abre. Para isso o repositório (ou ao menos os releases) precisa ser público; com repositório privado a verificação não encontra nada.

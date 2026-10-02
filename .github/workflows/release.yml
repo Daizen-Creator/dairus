@@ -1,0 +1,44 @@
+name: Publicar versão
+
+# Para publicar: atualize a versão em package.json, src-tauri/tauri.conf.json e
+# src-tauri/Cargo.toml (ou rode `npm run versao -- 0.2.0`), escreva o que mudou
+# em CHANGELOG.md, faça commit e crie a tag:  git tag v0.2.0 && git push --tags
+# O Dairus instalado nos computadores encontra a versão nova sozinho.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - name: Notas da versão (CHANGELOG.md)
+        shell: bash
+        run: |
+          versao="${GITHUB_REF_NAME#v}"
+          awk -v v="$versao" '
+            /^## / { dentro = index($0, v) > 0; next }
+            dentro { print }
+          ' CHANGELOG.md > notas.md
+          [ -s notas.md ] || echo "Versão $versao." > notas.md
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/target
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Dairus ${{ github.ref_name }}
+          releaseBodyPath: notas.md
+          releaseDraft: false
+          prerelease: false

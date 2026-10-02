@@ -1,6 +1,6 @@
 [package]
 name = "dairus"
-version = "0.1.0"
+version = "0.2.0"
 description = "Dairus - sistema financeiro pessoal"
 authors = ["Daniel Santos"]
 edition = "2021"
@@ -38,6 +38,7 @@ log = "0.4"
 aes-gcm = "0.10"
 argon2 = "0.5"
 zeroize = "1"
+ureq = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
