@@ -157,7 +157,7 @@ export function SecaoNuvem({ onBaixado }: { onBaixado: () => void }) {
           </ul>
         </>
       )}
-      <p className="mt-3 text-xs text-texto-secundario">Para restaurar: baixe o arquivo aqui e depois use “Restaurar” na aba Backups. Os arquivos não são criptografados antes do envio; o acesso é protegido pelo login.</p>
+      <p className="mt-3 text-xs text-texto-secundario">Para restaurar: baixe o arquivo aqui e depois use “Restaurar” na aba Backups. Com a criptografia ligada, os arquivos já vão cifrados para a nuvem; sem ela, o acesso é protegido só pelo login.</p>
     </Secao>
   );
 }

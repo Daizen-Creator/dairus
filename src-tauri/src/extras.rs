@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDate;
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
@@ -817,7 +817,9 @@ pub fn info_banco(state: State<AppState>) -> Res<InfoBanco> {
     let contar = |tabela: &str| -> Res<i64> {
         conn.query_row(&format!("SELECT COUNT(*) FROM {tabela}"), [], |r| r.get(0)).map_err(e)
     };
-    let caminho = conn.path().unwrap_or("").to_string();
+    let caminho = crate::cripto::arquivo_da_sessao()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| conn.path().unwrap_or("").to_string());
     let tamanho_bytes = std::fs::metadata(&caminho).map(|m| m.len()).unwrap_or(0);
     Ok(InfoBanco {
         tamanho_bytes,
@@ -1043,7 +1045,11 @@ fn info_do_arquivo(caminho: &Path) -> Option<InfoBackup> {
 fn gravar_backup(conn: &Connection, pasta: &Path, prefixo: &str) -> Res<InfoBackup> {
     let nome = format!("{prefixo}-{}.db", chrono::Local::now().format("%Y%m%d-%H%M%S"));
     let destino = pasta.join(nome);
-    conn.backup(rusqlite::MAIN_DB, &destino, None).map_err(e)?;
+    // Com a criptografia ligada, o backup também sai cifrado.
+    match crate::cripto::bytes_de_backup(conn)? {
+        Some(bytes) => std::fs::write(&destino, bytes).map_err(e)?,
+        None => conn.backup(rusqlite::MAIN_DB, &destino, None).map_err(e)?,
+    }
     info_do_arquivo(&destino).ok_or_else(|| "Backup criado, mas não foi possível ler o arquivo.".to_string())
 }
 
@@ -1096,7 +1102,7 @@ pub fn listar_backups(app: AppHandle) -> Res<Vec<InfoBackup>> {
 }
 
 fn validar_arquivo_backup(caminho: &Path) -> Res<()> {
-    let origem = Connection::open_with_flags(caminho, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(e)?;
+    let origem = crate::cripto::abrir_arquivo(caminho)?;
     let integridade: String = origem
         .query_row("PRAGMA integrity_check", [], |r| r.get(0))
         .map_err(|_| "O arquivo não é um banco SQLite válido.".to_string())?;
@@ -1130,10 +1136,16 @@ pub fn restaurar_backup(app: AppHandle, state: State<AppState>, nome: String) ->
 
     let mut conn = state.conn.lock().expect("mutex envenenado");
     let seguranca = gravar_backup(&conn, &pasta, "antes-de-restaurar")?;
-    conn.restore(rusqlite::MAIN_DB, &origem, None::<fn(rusqlite::backup::Progress)>).map_err(e)?;
+    {
+        // Funciona com backup cifrado ou não: abre a origem (na memória, se cifrada) e copia tudo.
+        let fonte = crate::cripto::abrir_arquivo(&origem)?;
+        let copia = rusqlite::backup::Backup::new(&fonte, &mut conn).map_err(e)?;
+        copia.run_to_completion(256, std::time::Duration::ZERO, None).map_err(e)?;
+    }
     // Um backup antigo pode não ter tabelas criadas em migrações posteriores.
     crate::db::executar_migracoes(&conn).map_err(e)?;
     conn.pragma_update(None, "foreign_keys", "ON").map_err(e)?;
+    crate::cripto::persistir(&conn, true)?;
     Ok(seguranca)
 }
 

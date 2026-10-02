@@ -36,8 +36,6 @@ const ATALHOS: Array<[string, string]> = [
 ];
 
 const PENDENTES = [
-  "Criptografia do banco de dados e dos backups",
-  "Login com Google e sincronização em nuvem",
   "Busca automática de preços no Radar de Compras (hoje: preços informados por você)",
   "Conciliação bancária automática (hoje: importação manual de OFX/CSV com aviso de duplicatas)",
 ];

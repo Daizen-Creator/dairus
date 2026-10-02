@@ -19,6 +19,7 @@ import {
 import { toast } from "sonner";
 import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { SecaoNuvem } from "./SecaoNuvem";
+import { SecaoCriptografia } from "./SecaoCriptografia";
 import { enviarBackupParaNuvem } from "../../services/nuvem";
 import { Button } from "../../components/ui/Button";
 import { CLASSE_INPUT, Secao } from "../../components/ui/Campos";
@@ -206,7 +207,7 @@ export function BackupPage() {
         <p className="text-sm text-texto-secundario">Seus dados ficam só neste computador. Faça cópias com frequência.</p>
       </div>
 
-      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "backups", rotulo: "Backups", icone: DatabaseBackup }, { id: "nuvem", rotulo: "Nuvem", icone: Cloud }, { id: "dados", rotulo: "Banco e dados", icone: Database }, { id: "pin", rotulo: "PIN e privacidade", icone: Lock }, { id: "atividade", rotulo: "Atividade", icone: ActivitySquare }, { id: "perigo", rotulo: "Zona de perigo", icone: Trash2 }]} />
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "backups", rotulo: "Backups", icone: DatabaseBackup }, { id: "nuvem", rotulo: "Nuvem", icone: Cloud }, { id: "dados", rotulo: "Banco e dados", icone: Database }, { id: "pin", rotulo: "PIN e criptografia", icone: Lock }, { id: "atividade", rotulo: "Atividade", icone: ActivitySquare }, { id: "perigo", rotulo: "Zona de perigo", icone: Trash2 }]} />
 
       {secao === "nuvem" && <SecaoNuvem onBaixado={carregar} />}
 
@@ -267,7 +268,7 @@ export function BackupPage() {
           </ul>
         )}
         <p className="mt-3 text-xs text-texto-secundario">
-          A restauração confere a integridade do arquivo e guarda uma cópia do estado atual antes de substituir. Os backups não são criptografados — guarde-os em local seguro. Os arquivos “antes-de-…” nunca são apagados pela retenção automática.
+          A restauração confere a integridade do arquivo e guarda uma cópia do estado atual antes de substituir. Sem a criptografia ligada (aba PIN e privacidade), os backups ficam abertos; guarde-os em local seguro. Os arquivos “antes-de-…” nunca são apagados pela retenção automática.
         </p>
       </Secao>
       </>)}
@@ -307,6 +308,7 @@ export function BackupPage() {
       </>)}
 
       {(secao === "pin") && (<>
+      <SecaoCriptografia />
       <Secao titulo={<>{seg.pinAtivo ? <Lock size={16} className="text-destaque" /> : <LockOpen size={16} className="text-texto-secundario" />} Bloqueio por PIN</>}>
         {seg.pinAtivo ? (
           <div className="space-y-4">
@@ -335,7 +337,7 @@ export function BackupPage() {
           </form>
         )}
         <p className="mt-3 text-xs text-texto-secundario">
-          O PIN é um bloqueio de tela do aplicativo; ele não criptografa o arquivo do banco de dados nem os backups. Após 5 erros seguidos há uma espera crescente. Se esquecer o PIN, o acesso só volta removendo a configuração manualmente (preferencias.json em %APPDATA%\com.danielsantos.dairus).
+          O PIN é um bloqueio de tela do aplicativo; quem protege o arquivo do banco e os backups é a criptografia acima. Após 5 erros seguidos há uma espera crescente. Se esquecer o PIN, o acesso só volta removendo a configuração manualmente (preferencias.json em %APPDATA%\com.danielsantos.dairus).
         </p>
       </Secao>
       </>)}

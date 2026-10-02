@@ -43,4 +43,4 @@ O ícone do app vem de `app-icon.svg`; depois de alterá-lo, rode `npx tauri ico
 - Preferências: `%APPDATA%\com.danielsantos.dairus\preferencias.json`
 - Backups e exportações: `Documentos\Dairus\Backups` e `Documentos\Dairus\Exportacoes`
 
-O PIN bloqueia a tela do app, mas o banco e os backups **não** são criptografados.
+O PIN bloqueia a tela do app. Para proteger o arquivo, ligue a **criptografia** em Backup e Segurança → PIN e criptografia: o banco passa a ficar só cifrado no disco (AES-256-GCM, senha por Argon2id), aberto apenas na memória, e os backups também saem cifrados. Guarde o código de recuperação.

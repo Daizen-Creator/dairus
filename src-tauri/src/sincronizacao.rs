@@ -78,6 +78,12 @@ pub fn impressao_dados(state: State<AppState>) -> Result<String, String> {
 /// Cópia consistente do banco atual (mesmo com o app em uso), para enviar à nuvem.
 #[tauri::command]
 pub fn gerar_copia_sync(app: AppHandle, state: State<AppState>) -> Result<Vec<u8>, String> {
+    {
+        let conn = state.conn.lock().expect("mutex envenenado");
+        if let Some(cifrado) = crate::cripto::bytes_de_backup(&conn)? {
+            return Ok(cifrado);
+        }
+    }
     let temporario = pasta_dairus(&app, "Backups")?.join(format!(".sync-{}.tmp", uuid::Uuid::new_v4()));
     {
         let conn = state.conn.lock().expect("mutex envenenado");

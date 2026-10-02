@@ -50,6 +50,11 @@ fn caminho_banco_conta(app: &AppHandle, id: &str) -> Res<PathBuf> {
     Ok(pasta.join("dairus.db"))
 }
 
+/// Banco cifrado da conta (quando a criptografia está ligada).
+fn caminho_cripto(app: &AppHandle, id: &str) -> Res<PathBuf> {
+    Ok(caminho_banco_conta(app, id)?.with_extension("db.cripto"))
+}
+
 fn contar_lancamentos(caminho: &Path) -> i64 {
     Connection::open_with_flags(caminho, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .and_then(|c| c.query_row("SELECT COUNT(*) FROM lancamentos", [], |r| r.get(0)))
@@ -62,15 +67,19 @@ pub struct SituacaoConta {
     pub primeiro_acesso: bool,
     /// Lançamentos no banco antigo (de antes do login), que podem ser importados.
     pub lancamentos_legado: i64,
+    /// O banco desta conta está criptografado: precisa da senha para abrir.
+    pub criptografado: bool,
 }
 
 #[tauri::command]
 pub fn situacao_conta(app: AppHandle, usuario_id: String) -> Res<SituacaoConta> {
     let id = id_valido(&usuario_id)?;
     let banco = app.path().app_data_dir().map_err(e)?.join("contas").join(id).join("dairus.db");
+    let cifrado = banco.with_extension("db.cripto");
     let legado = caminho_banco_legado(&app)?;
     Ok(SituacaoConta {
-        primeiro_acesso: !banco.is_file(),
+        criptografado: cifrado.is_file(),
+        primeiro_acesso: !banco.is_file() && !cifrado.is_file(),
         lancamentos_legado: if legado.is_file() { contar_lancamentos(&legado) } else { 0 },
     })
 }
@@ -80,6 +89,9 @@ pub fn situacao_conta(app: AppHandle, usuario_id: String) -> Res<SituacaoConta> 
 #[tauri::command]
 pub fn abrir_conta(app: AppHandle, state: State<AppState>, usuario_id: String, importar_legado: bool) -> Res<()> {
     let id = id_valido(&usuario_id)?.to_string();
+    if caminho_cripto(&app, &id)?.is_file() {
+        return Err("SENHA_NECESSARIA".into());
+    }
     let destino = caminho_banco_conta(&app, &id)?;
     if importar_legado && !destino.is_file() {
         let legado = caminho_banco_legado(&app)?;
@@ -91,9 +103,119 @@ pub fn abrir_conta(app: AppHandle, state: State<AppState>, usuario_id: String, i
     }
     let conn = crate::db::abrir_conexao(&destino).map_err(e)?;
     crate::db::executar_migracoes(&conn).map_err(e)?;
+    crate::cripto::encerrar_sessao();
     *state.conn.lock().expect("mutex envenenado") = conn;
     *USUARIO_ATUAL.lock().expect("mutex envenenado") = Some(id);
     Ok(())
+}
+
+fn abrir_cifrado(
+    app: &AppHandle,
+    state: &State<AppState>,
+    id: String,
+    chaves: crate::cripto::Chaves,
+    texto: &[u8],
+    senha: &str,
+) -> Res<()> {
+    let conn = crate::cripto::banco_em_memoria(texto)?;
+    crate::db::executar_migracoes(&conn).map_err(e)?;
+    let arquivo = caminho_cripto(app, &id)?;
+    let mut guarda = state.conn.lock().expect("mutex envenenado");
+    crate::cripto::iniciar_sessao(chaves, senha, arquivo, &conn);
+    // Grava já com o cabeçalho atual (e com as migrações novas, se houve).
+    crate::cripto::persistir(&conn, true)?;
+    *guarda = conn;
+    *USUARIO_ATUAL.lock().expect("mutex envenenado") = Some(id);
+    Ok(())
+}
+
+/// Abre o banco criptografado da conta com a senha (decifra só na memória).
+#[tauri::command]
+pub fn abrir_conta_com_senha(app: AppHandle, state: State<AppState>, usuario_id: String, senha: String) -> Res<()> {
+    let id = id_valido(&usuario_id)?.to_string();
+    let bytes = std::fs::read(caminho_cripto(&app, &id)?).map_err(|_| "Banco criptografado não encontrado.".to_string())?;
+    let (chaves, texto) = crate::cripto::abrir_com_senha(&bytes, &senha)?;
+    abrir_cifrado(&app, &state, id, chaves, &texto, &senha)
+}
+
+/// Esqueceu a senha: abre com o código de recuperação e define uma senha nova.
+#[tauri::command]
+pub fn recuperar_conta_com_codigo(app: AppHandle, state: State<AppState>, usuario_id: String, codigo: String, nova_senha: String) -> Res<()> {
+    crate::cripto::validar_senha(&nova_senha)?;
+    let id = id_valido(&usuario_id)?.to_string();
+    let bytes = std::fs::read(caminho_cripto(&app, &id)?).map_err(|_| "Banco criptografado não encontrado.".to_string())?;
+    let (chaves, texto) = crate::cripto::abrir_com_codigo(&bytes, &codigo)?;
+    let chaves = chaves.com_nova_senha(&nova_senha)?;
+    abrir_cifrado(&app, &state, id, chaves, &texto, &nova_senha)
+}
+
+/// Liga a criptografia da conta aberta. Devolve o código de recuperação (mostrar uma vez só).
+#[tauri::command]
+pub fn ativar_criptografia(app: AppHandle, state: State<AppState>, senha: String) -> Res<String> {
+    let id = USUARIO_ATUAL.lock().expect("mutex envenenado").clone().ok_or("Entre numa conta primeiro.")?;
+    if crate::cripto::ativa() {
+        return Err("A criptografia já está ligada.".into());
+    }
+    let (chaves, codigo) = crate::cripto::Chaves::novas(&senha)?;
+    let plano = caminho_banco_conta(&app, &id)?;
+    let cifrado = caminho_cripto(&app, &id)?;
+    let mut guarda = state.conn.lock().expect("mutex envenenado");
+    let texto = zeroize::Zeroizing::new(crate::cripto::serializar(&guarda)?);
+    let arquivo = chaves.cifrar(&texto)?;
+    // Confere que o arquivo cifrado abre de volta antes de apagar o original.
+    let (_, conferido) = crate::cripto::abrir_com_senha(&arquivo, &senha)?;
+    let nova = crate::cripto::banco_em_memoria(&conferido)?;
+    std::fs::write(&cifrado, &arquivo).map_err(e)?;
+    crate::cripto::iniciar_sessao(chaves, &senha, cifrado, &nova);
+    *guarda = nova;
+    drop(guarda);
+    for sufixo in ["", "-wal", "-shm"] {
+        let _ = std::fs::remove_file(format!("{}{sufixo}", plano.to_string_lossy()));
+    }
+    if let Ok(pasta) = crate::extras::pasta_dairus(&app, "Backups") {
+        crate::cripto::converter_backups(&pasta, true);
+    }
+    log::info!("criptografia do banco ligada");
+    Ok(codigo)
+}
+
+/// Desliga a criptografia (pede a senha): o banco e os backups voltam a ficar abertos no disco.
+#[tauri::command]
+pub fn desativar_criptografia(app: AppHandle, state: State<AppState>, senha: String) -> Res<()> {
+    let id = USUARIO_ATUAL.lock().expect("mutex envenenado").clone().ok_or("Entre numa conta primeiro.")?;
+    if !crate::cripto::ativa() {
+        return Err("A criptografia não está ligada.".into());
+    }
+    if !crate::cripto::senha_confere(&senha) {
+        return Err("Senha incorreta.".into());
+    }
+    if let Ok(pasta) = crate::extras::pasta_dairus(&app, "Backups") {
+        crate::cripto::converter_backups(&pasta, false);
+    }
+    let plano = caminho_banco_conta(&app, &id)?;
+    let mut guarda = state.conn.lock().expect("mutex envenenado");
+    let tmp = plano.with_extension("db.tmp");
+    std::fs::write(&tmp, crate::cripto::serializar(&guarda)?).map_err(e)?;
+    std::fs::rename(&tmp, &plano).map_err(e)?;
+    let conn = crate::db::abrir_conexao(&plano).map_err(e)?;
+    crate::db::executar_migracoes(&conn).map_err(e)?;
+    *guarda = conn;
+    crate::cripto::encerrar_sessao();
+    drop(guarda);
+    let _ = std::fs::remove_file(caminho_cripto(&app, &id)?);
+    log::info!("criptografia do banco desligada");
+    Ok(())
+}
+
+#[tauri::command]
+pub fn trocar_senha_banco(state: State<AppState>, atual: String, nova: String) -> Res<()> {
+    let conn = state.conn.lock().expect("mutex envenenado");
+    crate::cripto::trocar_senha(&conn, &atual, &nova)
+}
+
+#[tauri::command]
+pub fn criptografia_ativa() -> bool {
+    crate::cripto::ativa()
 }
 
 /// Ao sair da conta, volta para um banco vazio em memória (nada fica aberto).
@@ -101,7 +223,11 @@ pub fn abrir_conta(app: AppHandle, state: State<AppState>, usuario_id: String, i
 pub fn fechar_conta(state: State<AppState>) -> Res<()> {
     let conn = crate::db::abrir_conexao(Path::new(":memory:")).map_err(e)?;
     crate::db::executar_migracoes(&conn).map_err(e)?;
-    *state.conn.lock().expect("mutex envenenado") = conn;
+    let mut guarda = state.conn.lock().expect("mutex envenenado");
+    crate::cripto::persistir(&guarda, false)?;
+    crate::cripto::encerrar_sessao();
+    *guarda = conn;
+    drop(guarda);
     *USUARIO_ATUAL.lock().expect("mutex envenenado") = None;
     Ok(())
 }

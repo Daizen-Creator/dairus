@@ -7,6 +7,7 @@ import { googleAtivado, supabase, URL_RETORNO_LOGIN } from "../services/supabase
 export interface SituacaoConta {
   primeiro_acesso: boolean;
   lancamentos_legado: number;
+  criptografado: boolean;
 }
 
 interface EstadoAuth {
@@ -20,6 +21,8 @@ interface EstadoAuth {
   cancelarLogin: () => Promise<void>;
   situacaoDaConta: () => Promise<SituacaoConta>;
   abrirConta: (importarDadosLocais: boolean) => Promise<void>;
+  abrirContaComSenha: (senha: string) => Promise<void>;
+  recuperarConta: (codigo: string, novaSenha: string) => Promise<void>;
   sair: () => Promise<void>;
 }
 
@@ -91,6 +94,22 @@ export const useAuthStore = create<EstadoAuth>((set, get) => ({
     await invoke("abrir_conta", { usuarioId: id, importarLegado: importarDadosLocais });
     definirContaDasPreferencias(id);
     if (importarDadosLocais) await importarPreferenciasLegadas();
+    set({ contaAberta: true });
+  },
+
+  async abrirContaComSenha(senha) {
+    const id = get().sessao?.user.id;
+    if (!id) throw new Error("Sem sessão.");
+    await invoke("abrir_conta_com_senha", { usuarioId: id, senha });
+    definirContaDasPreferencias(id);
+    set({ contaAberta: true });
+  },
+
+  async recuperarConta(codigo, novaSenha) {
+    const id = get().sessao?.user.id;
+    if (!id) throw new Error("Sem sessão.");
+    await invoke("recuperar_conta_com_codigo", { usuarioId: id, codigo, novaSenha });
+    definirContaDasPreferencias(id);
     set({ contaAberta: true });
   },
 

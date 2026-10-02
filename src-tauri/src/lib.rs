@@ -1,6 +1,7 @@
 mod accounting;
 mod commands;
 mod conta;
+mod cripto;
 mod db;
 mod extras;
 mod planilha;
@@ -57,6 +58,17 @@ pub fn run() {
 
             app.manage(AppState {
                 conn: Mutex::new(conn),
+            });
+
+            // Banco criptografado vive na memória: a cada 2 s, se mudou, grava cifrado no disco.
+            let alca = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                let estado = alca.state::<AppState>();
+                let conn = estado.conn.lock().expect("mutex da conexão envenenado");
+                if let Err(erro) = cripto::persistir(&conn, false) {
+                    log::error!("falha ao gravar o banco criptografado: {erro}");
+                }
             });
 
             Ok(())
@@ -121,6 +133,12 @@ pub fn run() {
             conta::situacao_conta,
             conta::abrir_conta,
             conta::fechar_conta,
+            conta::abrir_conta_com_senha,
+            conta::recuperar_conta_com_codigo,
+            conta::ativar_criptografia,
+            conta::desativar_criptografia,
+            conta::trocar_senha_banco,
+            conta::criptografia_ativa,
             conta::aguardar_retorno_login,
             conta::cancelar_login,
             extras::info_banco,
@@ -132,6 +150,16 @@ pub fn run() {
             extras::abrir_pasta_dairus,
             extras::apagar_todos_os_dados,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, evento| {
+            // Ao sair, grava a última versão do banco criptografado.
+            if let tauri::RunEvent::Exit = evento {
+                let estado = app.state::<AppState>();
+                let conn = estado.conn.lock().expect("mutex da conexão envenenado");
+                if let Err(erro) = cripto::persistir(&conn, false) {
+                    log::error!("falha ao gravar o banco criptografado ao sair: {erro}");
+                }
+            }
+        });
 }
