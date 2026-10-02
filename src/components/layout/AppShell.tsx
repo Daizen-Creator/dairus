@@ -1,9 +1,10 @@
+import { Suspense, type ReactNode } from "react";
 import { Outlet } from "react-router-dom";
 import { Toaster } from "sonner";
 import { TitleBar } from "./TitleBar";
 import { Sidebar } from "./Sidebar";
 
-export function AppShell() {
+export function AppShell({ carregando }: { carregando?: ReactNode }) {
   return (
     <div className="flex h-full flex-col">
       <TitleBar />
@@ -11,7 +12,9 @@ export function AppShell() {
         <Sidebar />
         <main className="min-w-0 flex-1 overflow-y-auto bg-fundo">
           <div className="mx-auto max-w-[1600px] p-6">
-            <Outlet />
+            <Suspense fallback={carregando}>
+              <Outlet />
+            </Suspense>
           </div>
         </main>
       </div>

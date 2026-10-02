@@ -633,6 +633,7 @@ pub fn criar_categoria(state: State<AppState>, nome: String, tipo: String) -> Re
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn atualizar_meta(
     state: State<AppState>,
     meta_id: String,
@@ -881,7 +882,7 @@ pub fn otimizar_banco(state: State<AppState>) -> Res<()> {
 pub fn excluir_backup(app: AppHandle, nome: String) -> Res<()> {
     let nome = nome_seguro(&nome)?;
     let caminho = pasta_dairus(&app, "Backups")?.join(nome);
-    if !caminho.is_file() || caminho.extension().map_or(true, |x| x != "db") {
+    if !caminho.is_file() || !caminho.extension().is_some_and(|x| x == "db") {
         return Err("Backup não encontrado.".into());
     }
     std::fs::remove_file(caminho).map_err(e)

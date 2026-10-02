@@ -1,26 +1,42 @@
-import { useEffect, useState } from "react";
+import { lazy, useEffect, useState } from "react";
 import { HashRouter, Route, Routes } from "react-router-dom";
 import { AppShell } from "../components/layout/AppShell";
 import { BloqueioTela } from "../components/layout/BloqueioTela";
-import { DashboardPage } from "../features/dashboard/DashboardPage";
-import { ContasBancariasPage } from "../features/contas/ContasBancariasPage";
-import { CartoesPage } from "../features/contas/CartoesPage";
-import { LancamentosPage } from "../features/lancamentos/LancamentosPage";
-import { OrcamentoPage } from "../features/orcamento/OrcamentoPage";
-import { MetasPage } from "../features/metas/MetasPage";
-import { PatrimonioPage } from "../features/patrimonio/PatrimonioPage";
-import { SalarioPage } from "../features/salario/SalarioPage";
-import { ContabilidadePage } from "../features/contabilidade/ContabilidadePage";
-import { RelatoriosPage } from "../features/relatorios/RelatoriosPage";
-import { IaPage } from "../features/ia/IaPage";
-import { RadarPage } from "../features/radar/RadarPage";
-import { BackupPage } from "../features/backup/BackupPage";
-import { TemasPage } from "../features/temas/TemasPage";
-import { ConfiguracoesPage } from "../features/configuracoes/ConfiguracoesPage";
 import { executarBackupAutomatico } from "../services/backupAutomatico";
 import { lerPreferencia } from "../services/armazenamento";
 import { useSegurancaStore } from "../state/seguranca-store";
 import { useThemeStore } from "../state/theme-store";
+
+// Cada página é carregada só quando aberta (app abre mais rápido).
+const DashboardPage = lazy(() => import("../features/dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })));
+const ContasBancariasPage = lazy(() => import("../features/contas/ContasBancariasPage").then((m) => ({ default: m.ContasBancariasPage })));
+const CartoesPage = lazy(() => import("../features/contas/CartoesPage").then((m) => ({ default: m.CartoesPage })));
+const LancamentosPage = lazy(() => import("../features/lancamentos/LancamentosPage").then((m) => ({ default: m.LancamentosPage })));
+const OrcamentoPage = lazy(() => import("../features/orcamento/OrcamentoPage").then((m) => ({ default: m.OrcamentoPage })));
+const MetasPage = lazy(() => import("../features/metas/MetasPage").then((m) => ({ default: m.MetasPage })));
+const PatrimonioPage = lazy(() => import("../features/patrimonio/PatrimonioPage").then((m) => ({ default: m.PatrimonioPage })));
+const SalarioPage = lazy(() => import("../features/salario/SalarioPage").then((m) => ({ default: m.SalarioPage })));
+const ContabilidadePage = lazy(() => import("../features/contabilidade/ContabilidadePage").then((m) => ({ default: m.ContabilidadePage })));
+const RelatoriosPage = lazy(() => import("../features/relatorios/RelatoriosPage").then((m) => ({ default: m.RelatoriosPage })));
+const IaPage = lazy(() => import("../features/ia/IaPage").then((m) => ({ default: m.IaPage })));
+const RadarPage = lazy(() => import("../features/radar/RadarPage").then((m) => ({ default: m.RadarPage })));
+const BackupPage = lazy(() => import("../features/backup/BackupPage").then((m) => ({ default: m.BackupPage })));
+const TemasPage = lazy(() => import("../features/temas/TemasPage").then((m) => ({ default: m.TemasPage })));
+const ConfiguracoesPage = lazy(() => import("../features/configuracoes/ConfiguracoesPage").then((m) => ({ default: m.ConfiguracoesPage })));
+
+function CarregandoPagina() {
+  return (
+    <div className="space-y-4" aria-busy="true">
+      <div className="h-7 w-56 animate-pulse rounded-lg bg-borda/50" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="h-28 animate-pulse rounded-xl bg-borda/40" />
+        ))}
+      </div>
+      <div className="h-64 animate-pulse rounded-xl bg-borda/30" />
+    </div>
+  );
+}
 
 export function App() {
   const inicializar = useThemeStore((s) => s.inicializar);
@@ -65,7 +81,7 @@ export function App() {
     <BloqueioTela>
       <HashRouter>
         <Routes>
-          <Route element={<AppShell />}>
+          <Route element={<AppShell carregando={<CarregandoPagina />} />}>
             <Route index element={<DashboardPage />} />
             <Route path="contas-bancarias" element={<ContasBancariasPage />} />
             <Route path="cartoes" element={<CartoesPage />} />

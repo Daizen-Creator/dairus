@@ -10,6 +10,9 @@ use super::models::{
 
 type Resultado<T> = Result<T, AccountingError>;
 
+/// id, data, descrição, observação, origem, estornado_de, etiqueta.
+type CabecalhoLancamento = (String, String, String, Option<String>, String, Option<String>, Option<String>);
+
 fn registrar_auditoria(tx: &Transaction, acao: &str, entidade: &str, entidade_id: &str) -> Resultado<()> {
     tx.execute(
         "INSERT INTO auditoria (id, acao, entidade, entidade_id) VALUES (?1, ?2, ?3, ?4)",
@@ -435,7 +438,7 @@ pub fn listar_lancamentos(conn: &Connection, limite: i64) -> Resultado<Vec<Lanca
         "SELECT id, data, descricao, observacao, origem, estornado_de, etiqueta
          FROM lancamentos ORDER BY data DESC, criado_em DESC LIMIT ?1",
     )?;
-    let cabecalhos: Vec<(String, String, String, Option<String>, String, Option<String>, Option<String>)> = stmt
+    let cabecalhos: Vec<CabecalhoLancamento> = stmt
         .query_map([limite], |row| {
             Ok((
                 row.get(0)?,

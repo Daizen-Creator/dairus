@@ -36,13 +36,30 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "Daniel Santos",
+    "copyright": "© 2026 Daniel Santos",
+    "category": "Finance",
+    "shortDescription": "Dairus — sistema financeiro pessoal",
+    "longDescription": "Controle financeiro pessoal com contabilidade de partidas dobradas, orçamento, metas, patrimônio, relatórios e backups, tudo guardado localmente no seu computador.",
+    "windows": {
+      "nsis": {
+        "languages": [
+          "PortugueseBR"
+        ],
+        "displayLanguageSelector": false,
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico"
+      }
+    }
   }
 }

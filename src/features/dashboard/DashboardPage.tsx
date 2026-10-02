@@ -63,6 +63,7 @@ export function DashboardPage() {
   const [ocultar, setOcultar] = usePreferencia<boolean>("ocultar_saldos", false);
   const [secoesOcultas, setSecoesOcultas] = usePreferencia<SecaoPainel[]>("dashboard_secoes_ocultas", []);
   const [personalizando, setPersonalizando] = useState(false);
+  const [perfilRenda] = usePreferencia<{ liquido: number; vaMensal: number; diaPagamento: number } | null>("perfil_renda", null);
   const [secao, setSecao] = useAbaDaPagina<"resumo" | "analises" | "movimentacoes">("dashboard", "resumo");
   const [ultimoBackup, setUltimoBackup] = useState<InfoBackup | null>(null);
   const pinAtivo = useSegurancaStore((s) => s.pinAtivo);
@@ -170,6 +171,20 @@ export function DashboardPage() {
   const hora = Number(new Intl.DateTimeFormat("pt-BR", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" }).format(new Date()));
   const saudacao = hora < 5 ? "Boa madrugada" : hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite";
   const dinheiro = (v: number) => (ocultar ? "R$ ••••" : formatarCentavos(v));
+
+  // Previsão do que ainda entra no mês, a partir do perfil de renda (aba Salário e Renda).
+  const mesAtualISO = hoje.slice(0, 7);
+  const recebeuNoMes = (contaReceita: string) =>
+    lancamentos.some((l) => l.data.startsWith(mesAtualISO) && l.origem !== "ESTORNO" && l.partidas.some((p) => p.conta_id === contaReceita && p.tipo === "CREDITO"));
+  const aReceber = (() => {
+    if (!perfilRenda || perfilRenda.liquido <= 0) return { valor: 0, texto: "Cadastre o perfil de renda em Salário" };
+    const salario = recebeuNoMes("receita-salario") ? 0 : perfilRenda.liquido;
+    const va = perfilRenda.vaMensal > 0 && !recebeuNoMes("receita-beneficios") ? perfilRenda.vaMensal : 0;
+    const valor = salario + va;
+    if (valor === 0) return { valor: 0, texto: "Salário do mês já recebido" };
+    const dia = Math.min(perfilRenda.diaPagamento || 5, Number(fimMes.slice(8, 10)));
+    return { valor, texto: `Previsto para ${String(dia).padStart(2, "0")}/${mesAtualISO.slice(5, 7)}${va && salario ? " (salário + VA)" : va ? " (VA)" : ""}` };
+  })();
 
   return (
     <div className="space-y-6">
@@ -291,10 +306,10 @@ export function DashboardPage() {
               cor="erro"
             />
             <CardAtalho
-              to="/orcamento"
+              to="/salario"
               titulo="Receber"
-              valor={formatarCentavos(0)}
-              subtitulo="Nenhum recebimento previsto"
+              valor={dinheiro(aReceber.valor)}
+              subtitulo={aReceber.texto}
               icone={Banknote}
               cor="sucesso"
             />

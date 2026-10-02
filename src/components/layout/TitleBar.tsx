@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Bell, Minus, Moon, Square, Sun, Settings, User, X } from "lucide-react";
+import { Minus, Moon, Square, Sun, Settings, User, X } from "lucide-react";
 import { GlobalSearch } from "./GlobalSearch";
+import { Notificacoes } from "./Notificacoes";
+import { usePreferencia } from "../../state/usePreferencia";
 import { useThemeStore } from "../../state/theme-store";
 
 const janela = getCurrentWindow();
@@ -10,11 +12,11 @@ const janela = getCurrentWindow();
 export function TitleBar() {
   const [maximizada, setMaximizada] = useState(false);
   const [buscaAberta, setBuscaAberta] = useState(false);
-  const [notificacoesAbertas, setNotificacoesAbertas] = useState(false);
   const navegar = useNavigate();
   const modoAutomatico = useThemeStore((s) => s.modoAutomatico);
   const alternarModoAutomatico = useThemeStore((s) => s.alternarModoAutomatico);
   const temaAtivo = useThemeStore((s) => s.temaAtivo());
+  const [nomeUsuario] = usePreferencia<string>("nome_usuario", "");
 
   useEffect(() => {
     janela.isMaximized().then(setMaximizada);
@@ -34,7 +36,6 @@ export function TitleBar() {
       }
       if (e.key === "Escape") {
         setBuscaAberta(false);
-        setNotificacoesAbertas(false);
       }
     }
     window.addEventListener("keydown", aoTeclar);
@@ -86,21 +87,7 @@ export function TitleBar() {
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
-        <div className="relative">
-          <button
-            type="button"
-            aria-label="Notificações"
-            onClick={() => setNotificacoesAbertas((v) => !v)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-texto-secundario transition-colors hover:bg-borda/50"
-          >
-            <Bell size={16} />
-          </button>
-          {notificacoesAbertas && (
-            <div className="absolute right-0 top-10 w-56 rounded-lg border border-borda bg-cartao p-3 text-xs text-texto-secundario shadow-lg">
-              Nenhuma notificação por enquanto.
-            </div>
-          )}
-        </div>
+        <Notificacoes />
         <button
           type="button"
           aria-label={modoAutomatico ? "Desativar tema automático" : "Seguir tema do sistema"}
@@ -123,7 +110,7 @@ export function TitleBar() {
             <User size={14} />
           </span>
           <span className="hidden text-xs leading-tight text-texto-secundario sm:block">
-            <span className="block font-medium text-texto-primario">Usuário</span>
+            <span className="block max-w-28 truncate font-medium text-texto-primario">{nomeUsuario || "Usuário"}</span>
             Modo local
           </span>
         </div>
