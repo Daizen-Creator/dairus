@@ -1002,7 +1002,7 @@ pub struct InfoBackup {
 }
 
 /// DocumentosDairus<id da conta><sub>: cada conta tem as suas próprias pastas.
-fn pasta_dairus(app: &AppHandle, sub: &str) -> Res<PathBuf> {
+pub(crate) fn pasta_dairus(app: &AppHandle, sub: &str) -> Res<PathBuf> {
     let usuario = crate::conta::USUARIO_ATUAL
         .lock()
         .expect("mutex envenenado")
@@ -1013,7 +1013,7 @@ fn pasta_dairus(app: &AppHandle, sub: &str) -> Res<PathBuf> {
     Ok(base)
 }
 
-fn nome_seguro(nome: &str) -> Res<&str> {
+pub(crate) fn nome_seguro(nome: &str) -> Res<&str> {
     let ok = !nome.is_empty()
         && nome.len() <= 120
         && nome.chars().all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | ' '))

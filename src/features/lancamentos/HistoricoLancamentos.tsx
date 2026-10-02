@@ -8,7 +8,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { IconeCoisa } from "../../components/ui/IconeCoisa";
 import { Select } from "../../components/ui/Select";
 import { contabilidade } from "../../services/contabilidade";
-import { exportarCsv, reais } from "../../services/exportacao";
+import { col, exportarCsv, exportarXlsx, reais } from "../../services/exportacao";
 import { extras } from "../../services/extras";
 import { centavosParaValorInput, dataAtualISO, formatarCentavos, formatarDataISOParaBR, valorInputParaCentavos } from "../../services/formato";
 import type { Conta, Lancamento } from "../../types/accounting";
@@ -233,6 +233,22 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
     }
   }
 
+  async function exportarExcel() {
+    try {
+      const caminho = await exportarXlsx("historico", [
+        {
+          nome: "Histórico",
+          total: true,
+          colunas: [col("Data", "DATA"), col("Descrição", "TEXTO", 36), col("Tipo", "TEXTO", 14), col("Categoria", "TEXTO", 20), col("Contas", "TEXTO", 28), col("Etiqueta", "TEXTO", 14), col("Valor", "MOEDA"), col("Observação", "TEXTO", 30)],
+          linhas: itens.map(({ l, a }) => [l.data, l.descricao, a.tipo, a.categoria?.nome ?? "", a.contasEnvolvidas.map((c) => c.nome).join(" / "), l.etiqueta ?? "", a.saida ? -a.valorCentavos : a.valorCentavos, l.observacao ?? ""]),
+        },
+      ]);
+      toast.success(`Arquivo salvo em ${caminho}`, { duration: 8000 });
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
   const categorias = contas.filter((c) => (c.tipo === "DESPESA" || c.tipo === "RECEITA") && c.subtipo !== "CATEGORIA");
   const contasMov = contas.filter((c) => (c.tipo === "ATIVO" || c.tipo === "PASSIVO") && c.subtipo !== "CATEGORIA");
 
@@ -257,6 +273,9 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
             </label>
             <Button tamanho="pequeno" variante="secundaria" onClick={exportar} disabled={itens.length === 0}>
               <Download size={13} /> CSV
+            </Button>
+            <Button tamanho="pequeno" variante="secundaria" onClick={exportarExcel} disabled={itens.length === 0}>
+              <Download size={13} /> Excel
             </Button>
           </div>
         </div>

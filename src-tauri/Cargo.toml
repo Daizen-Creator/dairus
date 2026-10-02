@@ -28,6 +28,7 @@ uuid = { version = "1.26.1", features = ["v4", "serde"] }
 thiserror = "2.0.21"
 anyhow = "1.0.104"
 tauri-plugin-store = "2.5.0"
+rust_xlsxwriter = "0.99"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

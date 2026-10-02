@@ -3,6 +3,7 @@ mod commands;
 mod conta;
 mod db;
 mod extras;
+mod planilha;
 
 use std::sync::Mutex;
 
@@ -68,6 +69,7 @@ pub fn run() {
             extras::gravar_backup_baixado,
             extras::restaurar_backup,
             extras::salvar_exportacao,
+            planilha::exportar_xlsx,
             extras::salvar_exportacao_binaria,
             extras::atualizar_lancamento_info,
             extras::atualizar_agendamento,

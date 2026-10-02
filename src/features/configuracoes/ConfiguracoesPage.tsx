@@ -32,12 +32,10 @@ const ATALHOS: Array<[string, string]> = [
 ];
 
 const PENDENTES = [
-  "Exportação de relatórios em Excel (.xlsx) (hoje: CSV e relatório em PDF)",
   "Criptografia do banco de dados e dos backups",
   "Login com Google e sincronização em nuvem",
   "Busca automática de preços no Radar de Compras (hoje: preços informados por você)",
   "Conciliação bancária automática (hoje: importação manual de OFX/CSV com aviso de duplicatas)",
-  "Parcelamento de compras no cartão com liberação gradual do limite",
 ];
 
 /** Chaves de preferências que podem ser exportadas/importadas (nunca a chave do Gemini nem o PIN). */
