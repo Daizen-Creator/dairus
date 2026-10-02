@@ -58,9 +58,9 @@ export function StatCard({ titulo, valor, corValor = "normal", subtitulo, icone,
     <div className="rounded-xl border bg-cartao p-4" style={estiloDegrade(corIcone)}>
       <div className="flex items-center gap-3">
         {icone && <BlocoIcone icone={icone} cor={corIcone} />}
-        <span className="min-w-0 truncate text-sm font-medium text-texto-secundario">{titulo}</span>
+        <span className="line-clamp-2 min-w-0 text-sm font-medium leading-tight text-texto-secundario">{titulo}</span>
       </div>
-      <p className={`mt-3 text-2xl font-bold tabular-nums ${CORES_VALOR[corValor]}`}>{valor}</p>
+      <p className={`mt-3 text-[clamp(1.2rem,1.9vw,1.5rem)] font-bold tabular-nums ${CORES_VALOR[corValor]}`}>{valor}</p>
       {subtitulo && <p className="mt-1 truncate text-xs text-texto-secundario">{subtitulo}</p>}
     </div>
   );

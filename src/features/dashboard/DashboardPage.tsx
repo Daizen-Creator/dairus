@@ -195,9 +195,9 @@ export function DashboardPage() {
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
             <div className="rounded-xl border border-borda bg-cartao p-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-texto-primario">Fluxo de Caixa Mensal</h2>
-                <div className="flex items-center gap-3 text-[11px] text-texto-secundario">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="whitespace-nowrap text-sm font-semibold text-texto-primario">Fluxo de Caixa Mensal</h2>
+                <div className="flex items-center gap-3 whitespace-nowrap text-[11px] text-texto-secundario">
                   <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sucesso" />Receitas</span>
                   <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-erro" />Despesas</span>
                   <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-primaria" />Saldo</span>

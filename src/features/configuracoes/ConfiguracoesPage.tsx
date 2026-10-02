@@ -1,13 +1,11 @@
 import { Link } from "react-router-dom";
 
 const PENDENTES = [
-  "Faturas de cartão, parcelamentos e pagamento de fatura",
-  "Importação de extratos OFX/CSV e conciliação bancária",
+  "Conciliação bancária automática (hoje: importação manual de OFX/CSV com aviso de duplicatas)",
   "Exportação de relatórios em Excel (.xlsx) e PDF (hoje: CSV)",
   "Criptografia do banco de dados e dos backups",
   "Login com Google e sincronização em nuvem",
   "Busca automática de preços no Radar de Compras (hoje: preços informados por você)",
-  "Catálogo completo de 102 temas (hoje: 18 temas reais em 9 categorias)",
 ];
 
 export function ConfiguracoesPage() {

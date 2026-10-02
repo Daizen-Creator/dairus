@@ -5,13 +5,28 @@
     "categoria": "Escuro",
     "modoBase": "escuro",
     "cores": {
-      "fundo": "#020817", "superficie": "#061426", "cartao": "rgba(7,26,46,0.72)",
-      "primaria": "#1677ff", "primariaTexto": "#ffffff",
-      "secundaria": "#00d9ff", "secundariaTexto": "#001824",
-      "textoPrimario": "#f4f8ff", "textoSecundario": "#8ea5c3",
-      "borda": "rgba(60,150,255,0.18)", "sucesso": "#00d395", "alerta": "#f59e0b", "erro": "#f43f5e",
-      "destaque": "#a855f7", "sombra": "rgba(0,0,0,0.45)",
-      "grafico": ["#a855f7", "#00d395", "#f59e0b", "#ec4899", "#00d9ff"]
+      "fundo": "#020817",
+      "superficie": "#061426",
+      "cartao": "rgba(7,26,46,0.72)",
+      "primaria": "#1677ff",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#00d9ff",
+      "secundariaTexto": "#001824",
+      "textoPrimario": "#f4f8ff",
+      "textoSecundario": "#8ea5c3",
+      "borda": "rgba(60,150,255,0.18)",
+      "sucesso": "#00d395",
+      "alerta": "#f59e0b",
+      "erro": "#f43f5e",
+      "destaque": "#a855f7",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#a855f7",
+        "#00d395",
+        "#f59e0b",
+        "#ec4899",
+        "#00d9ff"
+      ]
     }
   },
   {
@@ -20,13 +35,28 @@
     "categoria": "Escuro",
     "modoBase": "escuro",
     "cores": {
-      "fundo": "#121212", "superficie": "#1a1a1a", "cartao": "#212121",
-      "primaria": "#f59e0b", "primariaTexto": "#1a1200",
-      "secundaria": "#60a5fa", "secundariaTexto": "#001233",
-      "textoPrimario": "#f2f2f2", "textoSecundario": "#a3a3a3",
-      "borda": "#2e2e2e", "sucesso": "#4ade80", "alerta": "#facc15", "erro": "#fb7185",
-      "destaque": "#c084fc", "sombra": "rgba(0,0,0,0.5)",
-      "grafico": ["#f59e0b", "#60a5fa", "#4ade80", "#fb7185", "#c084fc"]
+      "fundo": "#121212",
+      "superficie": "#1a1a1a",
+      "cartao": "#212121",
+      "primaria": "#f59e0b",
+      "primariaTexto": "#1a1200",
+      "secundaria": "#60a5fa",
+      "secundariaTexto": "#001233",
+      "textoPrimario": "#f2f2f2",
+      "textoSecundario": "#a3a3a3",
+      "borda": "#2e2e2e",
+      "sucesso": "#4ade80",
+      "alerta": "#facc15",
+      "erro": "#fb7185",
+      "destaque": "#c084fc",
+      "sombra": "rgba(0,0,0,0.5)",
+      "grafico": [
+        "#f59e0b",
+        "#60a5fa",
+        "#4ade80",
+        "#fb7185",
+        "#c084fc"
+      ]
     }
   },
   {
@@ -35,13 +65,28 @@
     "categoria": "Claro",
     "modoBase": "claro",
     "cores": {
-      "fundo": "#faf7f2", "superficie": "#ffffff", "cartao": "#ffffff",
-      "primaria": "#2563eb", "primariaTexto": "#ffffff",
-      "secundaria": "#0d9488", "secundariaTexto": "#ffffff",
-      "textoPrimario": "#1f2430", "textoSecundario": "#6b7280",
-      "borda": "#e7e1d8", "sucesso": "#16a34a", "alerta": "#d97706", "erro": "#dc2626",
-      "destaque": "#7c3aed", "sombra": "rgba(31,36,48,0.08)",
-      "grafico": ["#2563eb", "#0d9488", "#16a34a", "#d97706", "#7c3aed"]
+      "fundo": "#faf7f2",
+      "superficie": "#ffffff",
+      "cartao": "#ffffff",
+      "primaria": "#2563eb",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#0d9488",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#1f2430",
+      "textoSecundario": "#6b7280",
+      "borda": "#e7e1d8",
+      "sucesso": "#16a34a",
+      "alerta": "#d97706",
+      "erro": "#dc2626",
+      "destaque": "#7c3aed",
+      "sombra": "rgba(31,36,48,0.08)",
+      "grafico": [
+        "#2563eb",
+        "#0d9488",
+        "#16a34a",
+        "#d97706",
+        "#7c3aed"
+      ]
     }
   },
   {
@@ -50,13 +95,28 @@
     "categoria": "Claro",
     "modoBase": "claro",
     "cores": {
-      "fundo": "#eef2f7", "superficie": "#ffffff", "cartao": "#ffffff",
-      "primaria": "#0ea5e9", "primariaTexto": "#ffffff",
-      "secundaria": "#6366f1", "secundariaTexto": "#ffffff",
-      "textoPrimario": "#111827", "textoSecundario": "#64748b",
-      "borda": "#dbe4ee", "sucesso": "#22c55e", "alerta": "#f59e0b", "erro": "#ef4444",
-      "destaque": "#ec4899", "sombra": "rgba(17,24,39,0.08)",
-      "grafico": ["#0ea5e9", "#6366f1", "#22c55e", "#f59e0b", "#ec4899"]
+      "fundo": "#eef2f7",
+      "superficie": "#ffffff",
+      "cartao": "#ffffff",
+      "primaria": "#0ea5e9",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#6366f1",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#111827",
+      "textoSecundario": "#64748b",
+      "borda": "#dbe4ee",
+      "sucesso": "#22c55e",
+      "alerta": "#f59e0b",
+      "erro": "#ef4444",
+      "destaque": "#ec4899",
+      "sombra": "rgba(17,24,39,0.08)",
+      "grafico": [
+        "#0ea5e9",
+        "#6366f1",
+        "#22c55e",
+        "#f59e0b",
+        "#ec4899"
+      ]
     }
   },
   {
@@ -65,13 +125,28 @@
     "categoria": "Minimalista",
     "modoBase": "claro",
     "cores": {
-      "fundo": "#ffffff", "superficie": "#fafafa", "cartao": "#ffffff",
-      "primaria": "#18181b", "primariaTexto": "#ffffff",
-      "secundaria": "#71717a", "secundariaTexto": "#ffffff",
-      "textoPrimario": "#18181b", "textoSecundario": "#71717a",
-      "borda": "#e4e4e7", "sucesso": "#15803d", "alerta": "#b45309", "erro": "#b91c1c",
-      "destaque": "#3730a3", "sombra": "rgba(0,0,0,0.06)",
-      "grafico": ["#18181b", "#52525b", "#a1a1aa", "#d4d4d8", "#3730a3"]
+      "fundo": "#ffffff",
+      "superficie": "#fafafa",
+      "cartao": "#ffffff",
+      "primaria": "#18181b",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#71717a",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#18181b",
+      "textoSecundario": "#71717a",
+      "borda": "#e4e4e7",
+      "sucesso": "#15803d",
+      "alerta": "#b45309",
+      "erro": "#b91c1c",
+      "destaque": "#3730a3",
+      "sombra": "rgba(0,0,0,0.06)",
+      "grafico": [
+        "#18181b",
+        "#52525b",
+        "#a1a1aa",
+        "#d4d4d8",
+        "#3730a3"
+      ]
     }
   },
   {
@@ -80,13 +155,28 @@
     "categoria": "Minimalista",
     "modoBase": "escuro",
     "cores": {
-      "fundo": "#0a0a0a", "superficie": "#121212", "cartao": "#161616",
-      "primaria": "#fafafa", "primariaTexto": "#0a0a0a",
-      "secundaria": "#a1a1aa", "secundariaTexto": "#0a0a0a",
-      "textoPrimario": "#fafafa", "textoSecundario": "#a1a1aa",
-      "borda": "#262626", "sucesso": "#4ade80", "alerta": "#fbbf24", "erro": "#f87171",
-      "destaque": "#e4e4e7", "sombra": "rgba(0,0,0,0.6)",
-      "grafico": ["#fafafa", "#d4d4d8", "#a1a1aa", "#71717a", "#525252"]
+      "fundo": "#0a0a0a",
+      "superficie": "#121212",
+      "cartao": "#161616",
+      "primaria": "#fafafa",
+      "primariaTexto": "#0a0a0a",
+      "secundaria": "#a1a1aa",
+      "secundariaTexto": "#0a0a0a",
+      "textoPrimario": "#fafafa",
+      "textoSecundario": "#a1a1aa",
+      "borda": "#262626",
+      "sucesso": "#4ade80",
+      "alerta": "#fbbf24",
+      "erro": "#f87171",
+      "destaque": "#e4e4e7",
+      "sombra": "rgba(0,0,0,0.6)",
+      "grafico": [
+        "#fafafa",
+        "#d4d4d8",
+        "#a1a1aa",
+        "#71717a",
+        "#525252"
+      ]
     }
   },
   {
@@ -95,13 +185,28 @@
     "categoria": "Corporativo",
     "modoBase": "claro",
     "cores": {
-      "fundo": "#f4f6fa", "superficie": "#ffffff", "cartao": "#ffffff",
-      "primaria": "#1e3a8a", "primariaTexto": "#ffffff",
-      "secundaria": "#334155", "secundariaTexto": "#ffffff",
-      "textoPrimario": "#0f172a", "textoSecundario": "#475569",
-      "borda": "#dbe2ec", "sucesso": "#15803d", "alerta": "#b45309", "erro": "#b91c1c",
-      "destaque": "#0369a1", "sombra": "rgba(15,23,42,0.08)",
-      "grafico": ["#1e3a8a", "#0369a1", "#15803d", "#b45309", "#7c2d12"]
+      "fundo": "#f4f6fa",
+      "superficie": "#ffffff",
+      "cartao": "#ffffff",
+      "primaria": "#1e3a8a",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#334155",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#0f172a",
+      "textoSecundario": "#475569",
+      "borda": "#dbe2ec",
+      "sucesso": "#15803d",
+      "alerta": "#b45309",
+      "erro": "#b91c1c",
+      "destaque": "#0369a1",
+      "sombra": "rgba(15,23,42,0.08)",
+      "grafico": [
+        "#1e3a8a",
+        "#0369a1",
+        "#15803d",
+        "#b45309",
+        "#7c2d12"
+      ]
     }
   },
   {
@@ -110,13 +215,28 @@
     "categoria": "Corporativo",
     "modoBase": "claro",
     "cores": {
-      "fundo": "#f3f7f4", "superficie": "#ffffff", "cartao": "#ffffff",
-      "primaria": "#065f46", "primariaTexto": "#ffffff",
-      "secundaria": "#92400e", "secundariaTexto": "#ffffff",
-      "textoPrimario": "#102a1f", "textoSecundario": "#4b5f56",
-      "borda": "#d9e6de", "sucesso": "#15803d", "alerta": "#b45309", "erro": "#b91c1c",
-      "destaque": "#0e7490", "sombra": "rgba(16,42,31,0.08)",
-      "grafico": ["#065f46", "#0e7490", "#92400e", "#854d0e", "#166534"]
+      "fundo": "#f3f7f4",
+      "superficie": "#ffffff",
+      "cartao": "#ffffff",
+      "primaria": "#065f46",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#92400e",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#102a1f",
+      "textoSecundario": "#4b5f56",
+      "borda": "#d9e6de",
+      "sucesso": "#15803d",
+      "alerta": "#b45309",
+      "erro": "#b91c1c",
+      "destaque": "#0e7490",
+      "sombra": "rgba(16,42,31,0.08)",
+      "grafico": [
+        "#065f46",
+        "#0e7490",
+        "#92400e",
+        "#854d0e",
+        "#166534"
+      ]
     }
   },
   {
@@ -125,13 +245,28 @@
     "categoria": "Moderno",
     "modoBase": "claro",
     "cores": {
-      "fundo": "#f5f3ff", "superficie": "#ffffff", "cartao": "#ffffff",
-      "primaria": "#7c3aed", "primariaTexto": "#ffffff",
-      "secundaria": "#2563eb", "secundariaTexto": "#ffffff",
-      "textoPrimario": "#1e1b2e", "textoSecundario": "#6b6480",
-      "borda": "#e4defa", "sucesso": "#16a34a", "alerta": "#d97706", "erro": "#dc2626",
-      "destaque": "#db2777", "sombra": "rgba(124,58,237,0.12)",
-      "grafico": ["#7c3aed", "#2563eb", "#db2777", "#16a34a", "#d97706"]
+      "fundo": "#f5f3ff",
+      "superficie": "#ffffff",
+      "cartao": "#ffffff",
+      "primaria": "#7c3aed",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#2563eb",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#1e1b2e",
+      "textoSecundario": "#6b6480",
+      "borda": "#e4defa",
+      "sucesso": "#16a34a",
+      "alerta": "#d97706",
+      "erro": "#dc2626",
+      "destaque": "#db2777",
+      "sombra": "rgba(124,58,237,0.12)",
+      "grafico": [
+        "#7c3aed",
+        "#2563eb",
+        "#db2777",
+        "#16a34a",
+        "#d97706"
+      ]
     }
   },
   {
@@ -140,13 +275,28 @@
     "categoria": "Moderno",
     "modoBase": "escuro",
     "cores": {
-      "fundo": "#0b1b1e", "superficie": "#10262a", "cartao": "#143035",
-      "primaria": "#2dd4bf", "primariaTexto": "#042f2e",
-      "secundaria": "#38bdf8", "secundariaTexto": "#04232f",
-      "textoPrimario": "#e3f6f3", "textoSecundario": "#8db5b0",
-      "borda": "#1d3d41", "sucesso": "#4ade80", "alerta": "#fbbf24", "erro": "#fb7185",
-      "destaque": "#c084fc", "sombra": "rgba(0,0,0,0.4)",
-      "grafico": ["#2dd4bf", "#38bdf8", "#c084fc", "#fbbf24", "#4ade80"]
+      "fundo": "#0b1b1e",
+      "superficie": "#10262a",
+      "cartao": "#143035",
+      "primaria": "#2dd4bf",
+      "primariaTexto": "#042f2e",
+      "secundaria": "#38bdf8",
+      "secundariaTexto": "#04232f",
+      "textoPrimario": "#e3f6f3",
+      "textoSecundario": "#8db5b0",
+      "borda": "#1d3d41",
+      "sucesso": "#4ade80",
+      "alerta": "#fbbf24",
+      "erro": "#fb7185",
+      "destaque": "#c084fc",
+      "sombra": "rgba(0,0,0,0.4)",
+      "grafico": [
+        "#2dd4bf",
+        "#38bdf8",
+        "#c084fc",
+        "#fbbf24",
+        "#4ade80"
+      ]
     }
   },
   {
@@ -155,13 +305,28 @@
     "categoria": "Cyberpunk",
     "modoBase": "escuro",
     "cores": {
-      "fundo": "#0a0410", "superficie": "#130a20", "cartao": "#1a0f2b",
-      "primaria": "#ff2ea6", "primariaTexto": "#1a0010",
-      "secundaria": "#22e5ff", "secundariaTexto": "#001a1f",
-      "textoPrimario": "#f3e9ff", "textoSecundario": "#a98fd1",
-      "borda": "#2c1a44", "sucesso": "#39ff9d", "alerta": "#ffd60a", "erro": "#ff3860",
-      "destaque": "#c026f5", "sombra": "rgba(255,46,166,0.25)",
-      "grafico": ["#ff2ea6", "#22e5ff", "#c026f5", "#39ff9d", "#ffd60a"]
+      "fundo": "#0a0410",
+      "superficie": "#130a20",
+      "cartao": "#1a0f2b",
+      "primaria": "#ff2ea6",
+      "primariaTexto": "#1a0010",
+      "secundaria": "#22e5ff",
+      "secundariaTexto": "#001a1f",
+      "textoPrimario": "#f3e9ff",
+      "textoSecundario": "#a98fd1",
+      "borda": "#2c1a44",
+      "sucesso": "#39ff9d",
+      "alerta": "#ffd60a",
+      "erro": "#ff3860",
+      "destaque": "#c026f5",
+      "sombra": "rgba(255,46,166,0.25)",
+      "grafico": [
+        "#ff2ea6",
+        "#22e5ff",
+        "#c026f5",
+        "#39ff9d",
+        "#ffd60a"
+      ]
     }
   },
   {
@@ -170,13 +335,28 @@
     "categoria": "Cyberpunk",
     "modoBase": "escuro",
     "cores": {
-      "fundo": "#0d0b1a", "superficie": "#161327", "cartao": "#1e1a35",
-      "primaria": "#a855f7", "primariaTexto": "#160a26",
-      "secundaria": "#4ade80", "secundariaTexto": "#052e16",
-      "textoPrimario": "#ece9fb", "textoSecundario": "#9b93c9",
-      "borda": "#302a4f", "sucesso": "#4ade80", "alerta": "#facc15", "erro": "#fb7185",
-      "destaque": "#22d3ee", "sombra": "rgba(168,85,247,0.25)",
-      "grafico": ["#a855f7", "#4ade80", "#22d3ee", "#facc15", "#fb7185"]
+      "fundo": "#0d0b1a",
+      "superficie": "#161327",
+      "cartao": "#1e1a35",
+      "primaria": "#a855f7",
+      "primariaTexto": "#160a26",
+      "secundaria": "#4ade80",
+      "secundariaTexto": "#052e16",
+      "textoPrimario": "#ece9fb",
+      "textoSecundario": "#9b93c9",
+      "borda": "#302a4f",
+      "sucesso": "#4ade80",
+      "alerta": "#facc15",
+      "erro": "#fb7185",
+      "destaque": "#22d3ee",
+      "sombra": "rgba(168,85,247,0.25)",
+      "grafico": [
+        "#a855f7",
+        "#4ade80",
+        "#22d3ee",
+        "#facc15",
+        "#fb7185"
+      ]
     }
   },
   {
@@ -185,13 +365,28 @@
     "categoria": "Neon",
     "modoBase": "escuro",
     "cores": {
-      "fundo": "#000000", "superficie": "#0d0d0d", "cartao": "#161616",
-      "primaria": "#ff00c8", "primariaTexto": "#000000",
-      "secundaria": "#c6ff00", "secundariaTexto": "#0a1400",
-      "textoPrimario": "#ffffff", "textoSecundario": "#bdbdbd",
-      "borda": "#262626", "sucesso": "#00ff9c", "alerta": "#ffea00", "erro": "#ff2d55",
-      "destaque": "#00e5ff", "sombra": "rgba(255,0,200,0.3)",
-      "grafico": ["#ff00c8", "#c6ff00", "#00e5ff", "#ffea00", "#00ff9c"]
+      "fundo": "#000000",
+      "superficie": "#0d0d0d",
+      "cartao": "#161616",
+      "primaria": "#ff00c8",
+      "primariaTexto": "#000000",
+      "secundaria": "#c6ff00",
+      "secundariaTexto": "#0a1400",
+      "textoPrimario": "#ffffff",
+      "textoSecundario": "#bdbdbd",
+      "borda": "#262626",
+      "sucesso": "#00ff9c",
+      "alerta": "#ffea00",
+      "erro": "#ff2d55",
+      "destaque": "#00e5ff",
+      "sombra": "rgba(255,0,200,0.3)",
+      "grafico": [
+        "#ff00c8",
+        "#c6ff00",
+        "#00e5ff",
+        "#ffea00",
+        "#00ff9c"
+      ]
     }
   },
   {
@@ -200,13 +395,28 @@
     "categoria": "Neon",
     "modoBase": "escuro",
     "cores": {
-      "fundo": "#140826", "superficie": "#1d0f36", "cartao": "#261446",
-      "primaria": "#00f0ff", "primariaTexto": "#001418",
-      "secundaria": "#ffe600", "secundariaTexto": "#1a1500",
-      "textoPrimario": "#f1e9ff", "textoSecundario": "#b7a3e0",
-      "borda": "#38206b", "sucesso": "#39ff9d", "alerta": "#ffe600", "erro": "#ff4d6d",
-      "destaque": "#ff8ad8", "sombra": "rgba(0,240,255,0.25)",
-      "grafico": ["#00f0ff", "#ffe600", "#ff8ad8", "#39ff9d", "#ff4d6d"]
+      "fundo": "#140826",
+      "superficie": "#1d0f36",
+      "cartao": "#261446",
+      "primaria": "#00f0ff",
+      "primariaTexto": "#001418",
+      "secundaria": "#ffe600",
+      "secundariaTexto": "#1a1500",
+      "textoPrimario": "#f1e9ff",
+      "textoSecundario": "#b7a3e0",
+      "borda": "#38206b",
+      "sucesso": "#39ff9d",
+      "alerta": "#ffe600",
+      "erro": "#ff4d6d",
+      "destaque": "#ff8ad8",
+      "sombra": "rgba(0,240,255,0.25)",
+      "grafico": [
+        "#00f0ff",
+        "#ffe600",
+        "#ff8ad8",
+        "#39ff9d",
+        "#ff4d6d"
+      ]
     }
   },
   {
@@ -215,13 +425,28 @@
     "categoria": "Natural",
     "modoBase": "claro",
     "cores": {
-      "fundo": "#f6f5ee", "superficie": "#ffffff", "cartao": "#fdfbf4",
-      "primaria": "#3f6212", "primariaTexto": "#ffffff",
-      "secundaria": "#92400e", "secundariaTexto": "#ffffff",
-      "textoPrimario": "#2b2a1f", "textoSecundario": "#6b6a57",
-      "borda": "#e3e0cf", "sucesso": "#15803d", "alerta": "#b45309", "erro": "#b91c1c",
-      "destaque": "#0f766e", "sombra": "rgba(63,98,18,0.1)",
-      "grafico": ["#3f6212", "#92400e", "#0f766e", "#b45309", "#166534"]
+      "fundo": "#f6f5ee",
+      "superficie": "#ffffff",
+      "cartao": "#fdfbf4",
+      "primaria": "#3f6212",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#92400e",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#2b2a1f",
+      "textoSecundario": "#6b6a57",
+      "borda": "#e3e0cf",
+      "sucesso": "#15803d",
+      "alerta": "#b45309",
+      "erro": "#b91c1c",
+      "destaque": "#0f766e",
+      "sombra": "rgba(63,98,18,0.1)",
+      "grafico": [
+        "#3f6212",
+        "#92400e",
+        "#0f766e",
+        "#b45309",
+        "#166534"
+      ]
     }
   },
   {
@@ -230,13 +455,28 @@
     "categoria": "Natural",
     "modoBase": "claro",
     "cores": {
-      "fundo": "#eef7f7", "superficie": "#ffffff", "cartao": "#ffffff",
-      "primaria": "#0e7490", "primariaTexto": "#ffffff",
-      "secundaria": "#0369a1", "secundariaTexto": "#ffffff",
-      "textoPrimario": "#0b2a30", "textoSecundario": "#557178",
-      "borda": "#d6ebec", "sucesso": "#15803d", "alerta": "#b45309", "erro": "#b91c1c",
-      "destaque": "#155e75", "sombra": "rgba(14,116,144,0.1)",
-      "grafico": ["#0e7490", "#0369a1", "#155e75", "#0d9488", "#1d4ed8"]
+      "fundo": "#eef7f7",
+      "superficie": "#ffffff",
+      "cartao": "#ffffff",
+      "primaria": "#0e7490",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#0369a1",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#0b2a30",
+      "textoSecundario": "#557178",
+      "borda": "#d6ebec",
+      "sucesso": "#15803d",
+      "alerta": "#b45309",
+      "erro": "#b91c1c",
+      "destaque": "#155e75",
+      "sombra": "rgba(14,116,144,0.1)",
+      "grafico": [
+        "#0e7490",
+        "#0369a1",
+        "#155e75",
+        "#0d9488",
+        "#1d4ed8"
+      ]
     }
   },
   {
@@ -245,13 +485,28 @@
     "categoria": "Monocromático",
     "modoBase": "escuro",
     "cores": {
-      "fundo": "#1a1205", "superficie": "#241a08", "cartao": "#2e220b",
-      "primaria": "#f59e0b", "primariaTexto": "#1a1205",
-      "secundaria": "#d97706", "secundariaTexto": "#1a1205",
-      "textoPrimario": "#fde9c8", "textoSecundario": "#c89a56",
-      "borda": "#3a2b10", "sucesso": "#65a30d", "alerta": "#f59e0b", "erro": "#dc2626",
-      "destaque": "#fbbf24", "sombra": "rgba(0,0,0,0.5)",
-      "grafico": ["#f59e0b", "#d97706", "#b45309", "#92400e", "#78350f"]
+      "fundo": "#1a1205",
+      "superficie": "#241a08",
+      "cartao": "#2e220b",
+      "primaria": "#f59e0b",
+      "primariaTexto": "#1a1205",
+      "secundaria": "#d97706",
+      "secundariaTexto": "#1a1205",
+      "textoPrimario": "#fde9c8",
+      "textoSecundario": "#c89a56",
+      "borda": "#3a2b10",
+      "sucesso": "#65a30d",
+      "alerta": "#f59e0b",
+      "erro": "#dc2626",
+      "destaque": "#fbbf24",
+      "sombra": "rgba(0,0,0,0.5)",
+      "grafico": [
+        "#f59e0b",
+        "#d97706",
+        "#b45309",
+        "#92400e",
+        "#78350f"
+      ]
     }
   },
   {
@@ -260,13 +515,2548 @@
     "categoria": "Monocromático",
     "modoBase": "claro",
     "cores": {
-      "fundo": "#f5f5f5", "superficie": "#ffffff", "cartao": "#ffffff",
-      "primaria": "#404040", "primariaTexto": "#ffffff",
-      "secundaria": "#737373", "secundariaTexto": "#ffffff",
-      "textoPrimario": "#171717", "textoSecundario": "#525252",
-      "borda": "#e5e5e5", "sucesso": "#16a34a", "alerta": "#ca8a04", "erro": "#b91c1c",
-      "destaque": "#262626", "sombra": "rgba(0,0,0,0.08)",
-      "grafico": ["#171717", "#404040", "#737373", "#a3a3a3", "#d4d4d4"]
+      "fundo": "#f5f5f5",
+      "superficie": "#ffffff",
+      "cartao": "#ffffff",
+      "primaria": "#404040",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#737373",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#171717",
+      "textoSecundario": "#525252",
+      "borda": "#e5e5e5",
+      "sucesso": "#16a34a",
+      "alerta": "#ca8a04",
+      "erro": "#b91c1c",
+      "destaque": "#262626",
+      "sombra": "rgba(0,0,0,0.08)",
+      "grafico": [
+        "#171717",
+        "#404040",
+        "#737373",
+        "#a3a3a3",
+        "#d4d4d4"
+      ]
+    }
+  },
+  {
+    "id": "meia-noite",
+    "nome": "Meia-Noite",
+    "categoria": "Escuro",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#060b18",
+      "superficie": "#0a1229",
+      "cartao": "rgba(12,21,49,0.72)",
+      "primaria": "#456fed",
+      "primariaTexto": "#021014",
+      "secundaria": "#3cc0ec",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f3f8",
+      "textoSecundario": "#a0a9c5",
+      "borda": "rgba(76,117,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ea7853",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#4c73e6",
+        "#de4ce6",
+        "#e6634c",
+        "#b0e64c",
+        "#4ce6a1"
+      ]
+    }
+  },
+  {
+    "id": "carvao",
+    "nome": "Carvão",
+    "categoria": "Escuro",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0e0f11",
+      "superficie": "#171a1c",
+      "cartao": "rgba(28,31,34,0.72)",
+      "primaria": "#4599ed",
+      "primariaTexto": "#021014",
+      "secundaria": "#ec943c",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f4f5f6",
+      "textoSecundario": "#abb3ba",
+      "borda": "rgba(76,158,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ea5353",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#4c99e6",
+        "#b84ce6",
+        "#e64c5c",
+        "#d6e64c",
+        "#4ce67a"
+      ]
+    }
+  },
+  {
+    "id": "vinho-noturno",
+    "nome": "Vinho Noturno",
+    "categoria": "Escuro",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#16080c",
+      "superficie": "#250e14",
+      "cartao": "rgba(44,17,24,0.72)",
+      "primaria": "#ed456f",
+      "primariaTexto": "#021014",
+      "secundaria": "#ec773c",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f2f3",
+      "textoSecundario": "#c5a0a9",
+      "borda": "rgba(240,76,117,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#53ea78",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#e64c73",
+        "#e6de4c",
+        "#4ce663",
+        "#4cb0e6",
+        "#a14ce6"
+      ]
+    }
+  },
+  {
+    "id": "ametista",
+    "nome": "Ametista",
+    "categoria": "Escuro",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0f0817",
+      "superficie": "#1a0d26",
+      "cartao": "rgba(31,15,46,0.72)",
+      "primaria": "#9945ed",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#ec3cb1",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f5f2f8",
+      "textoSecundario": "#b3a0c5",
+      "borda": "rgba(158,76,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#eaea53",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#994ce6",
+        "#e64c7a",
+        "#e6d64c",
+        "#4ce65c",
+        "#4cb8e6"
+      ]
+    }
+  },
+  {
+    "id": "esmeralda-escura",
+    "nome": "Esmeralda Escura",
+    "categoria": "Escuro",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#08170f",
+      "superficie": "#0d261a",
+      "cartao": "rgba(15,46,31,0.72)",
+      "primaria": "#45ed99",
+      "primariaTexto": "#021014",
+      "secundaria": "#3cecec",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f8f5",
+      "textoSecundario": "#a0c5b3",
+      "borda": "rgba(76,240,158,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ea53ea",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#4ce699",
+        "#4c7ae6",
+        "#d64ce6",
+        "#e65c4c",
+        "#b8e64c"
+      ]
+    }
+  },
+  {
+    "id": "ambar-noturno",
+    "nome": "Âmbar Noturno",
+    "categoria": "Escuro",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#151009",
+      "superficie": "#241b0f",
+      "cartao": "rgba(43,33,18,0.72)",
+      "primaria": "#eda745",
+      "primariaTexto": "#021014",
+      "secundaria": "#ec593c",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f5f2",
+      "textoSecundario": "#c5b6a0",
+      "borda": "rgba(240,172,76,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#53ddea",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#e6a64c",
+        "#6ee64c",
+        "#4ce6e3",
+        "#694ce6",
+        "#e64cab"
+      ]
+    }
+  },
+  {
+    "id": "safira",
+    "nome": "Safira",
+    "categoria": "Escuro",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#060e18",
+      "superficie": "#0a1729",
+      "cartao": "rgba(12,28,49,0.72)",
+      "primaria": "#458bed",
+      "primariaTexto": "#021014",
+      "secundaria": "#593cec",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#f2f4f8",
+      "textoSecundario": "#a0afc5",
+      "borda": "rgba(76,144,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ea5f53",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#4c8ce6",
+        "#c44ce6",
+        "#e64c4f",
+        "#c9e64c",
+        "#4ce687"
+      ]
+    }
+  },
+  {
+    "id": "obsidiana",
+    "nome": "Obsidiana",
+    "categoria": "Escuro",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0f0d11",
+      "superficie": "#18161d",
+      "cartao": "rgba(29,27,34,0.72)",
+      "primaria": "#7d45ed",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#3cb1ec",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f4f4f6",
+      "textoSecundario": "#afa9bc",
+      "borda": "rgba(131,76,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ead053",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#7f4ce6",
+        "#e64c94",
+        "#e6bd4c",
+        "#57e64c",
+        "#4cd1e6"
+      ]
+    }
+  },
+  {
+    "id": "aurora-boreal",
+    "nome": "Aurora Boreal",
+    "categoria": "Escuro",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#071814",
+      "superficie": "#0b2821",
+      "cartao": "rgba(14,47,39,0.72)",
+      "primaria": "#45edc3",
+      "primariaTexto": "#021014",
+      "secundaria": "#b13cec",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f8f6",
+      "textoSecundario": "#a0c5bc",
+      "borda": "rgba(76,240,199,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ea53c4",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#4ce6bf",
+        "#4c54e6",
+        "#e64ccf",
+        "#e6824c",
+        "#91e64c"
+      ]
+    }
+  },
+  {
+    "id": "crepusculo",
+    "nome": "Crepúsculo",
+    "categoria": "Escuro",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#170817",
+      "superficie": "#260d26",
+      "cartao": "rgba(46,15,46,0.72)",
+      "primaria": "#ed45ed",
+      "primariaTexto": "#021014",
+      "secundaria": "#ec853c",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f2f8",
+      "textoSecundario": "#c5a0c5",
+      "borda": "rgba(240,76,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#9eea53",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#e64ce6",
+        "#e66b4c",
+        "#a8e64c",
+        "#4ce6a8",
+        "#4c6be6"
+      ]
+    }
+  },
+  {
+    "id": "algodao",
+    "nome": "Algodão",
+    "categoria": "Claro",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f5f7fa",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#136bc3",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#11b0b0",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#0f1c29",
+      "textoSecundario": "#44576a",
+      "borda": "rgba(46,77,107,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#c81919",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#1c70c4",
+        "#921cc4",
+        "#c41c2d",
+        "#b4c41c",
+        "#1cc44f"
+      ]
+    }
+  },
+  {
+    "id": "marfim",
+    "nome": "Marfim",
+    "categoria": "Claro",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#faf8f4",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#c38813",
+      "primariaTexto": "#021014",
+      "secundaria": "#b03911",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#29200f",
+      "textoSecundario": "#6a5d44",
+      "borda": "rgba(107,87,46,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#19abc8",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#c48c1c",
+        "#32c41c",
+        "#1cb9c4",
+        "#491cc4",
+        "#c41c76"
+      ]
+    }
+  },
+  {
+    "id": "ceu-aberto",
+    "nome": "Céu Aberto",
+    "categoria": "Claro",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f4f8fb",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#1388c3",
+      "primariaTexto": "#021014",
+      "secundaria": "#112cb0",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#0f2029",
+      "textoSecundario": "#445d6a",
+      "borda": "rgba(46,87,107,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#c81936",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#1c8cc4",
+        "#761cc4",
+        "#c41c49",
+        "#c4b91c",
+        "#1cc432"
+      ]
+    }
+  },
+  {
+    "id": "menta",
+    "nome": "Menta",
+    "categoria": "Claro",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f5faf7",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#13c36b",
+      "primariaTexto": "#021014",
+      "secundaria": "#1196b0",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#0f291c",
+      "textoSecundario": "#446a57",
+      "borda": "rgba(46,107,77,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#c819c8",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#1cc470",
+        "#1c4fc4",
+        "#b41cc4",
+        "#c42d1c",
+        "#92c41c"
+      ]
+    }
+  },
+  {
+    "id": "pessego",
+    "nome": "Pêssego",
+    "categoria": "Claro",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#fbf6f4",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#c34e13",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#b01146",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#29180f",
+      "textoSecundario": "#6a5044",
+      "borda": "rgba(107,66,46,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#19c8ab",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#c4541c",
+        "#6bc41c",
+        "#1cc497",
+        "#1c27c4",
+        "#c41cae"
+      ]
+    }
+  },
+  {
+    "id": "lavanda",
+    "nome": "Lavanda",
+    "categoria": "Claro",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f7f4fa",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#5c13c3",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#b01189",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#1a0f29",
+      "textoSecundario": "#54446a",
+      "borda": "rgba(71,46,107,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#c8b919",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#621cc4",
+        "#c41c5d",
+        "#c4a51c",
+        "#1cc41f",
+        "#1ca0c4"
+      ]
+    }
+  },
+  {
+    "id": "limao-suave",
+    "nome": "Limão Suave",
+    "categoria": "Claro",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f9faf4",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#97c313",
+      "primariaTexto": "#021014",
+      "secundaria": "#11b061",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#22290f",
+      "textoSecundario": "#606a44",
+      "borda": "rgba(92,107,46,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#1944c8",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#9ac41c",
+        "#1cc468",
+        "#1c57c4",
+        "#ab1cc4",
+        "#c4241c"
+      ]
+    }
+  },
+  {
+    "id": "rosa-quartzo",
+    "nome": "Rosa Quartzo",
+    "categoria": "Claro",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#fbf4f6",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#c3134e",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#7b11b0",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#290f18",
+      "textoSecundario": "#6a4450",
+      "borda": "rgba(107,46,66,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#19c836",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#c41c54",
+        "#c4ae1c",
+        "#1cc427",
+        "#1c97c4",
+        "#6b1cc4"
+      ]
+    }
+  },
+  {
+    "id": "areia",
+    "nome": "Areia",
+    "categoria": "Claro",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#faf8f5",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#c37a13",
+      "primariaTexto": "#021014",
+      "secundaria": "#117bb0",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#291e0f",
+      "textoSecundario": "#6a5a44",
+      "borda": "rgba(107,82,46,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#19b9c8",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#c47e1c",
+        "#41c41c",
+        "#1cc4c2",
+        "#3b1cc4",
+        "#c41c84"
+      ]
+    }
+  },
+  {
+    "id": "gelo",
+    "nome": "Gelo",
+    "categoria": "Claro",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f4f9fa",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#13a6c3",
+      "primariaTexto": "#021014",
+      "secundaria": "#1146b0",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#0f2429",
+      "textoSecundario": "#44636a",
+      "borda": "rgba(46,97,107,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#c81953",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#1ca8c4",
+        "#5a1cc4",
+        "#c41c65",
+        "#c49d1c",
+        "#22c41c"
+      ]
+    }
+  },
+  {
+    "id": "branco-puro",
+    "nome": "Branco Puro",
+    "categoria": "Minimalista",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f7f7f8",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#134ec3",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#1146b0",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#0f1829",
+      "textoSecundario": "#44506a",
+      "borda": "rgba(46,66,107,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#c83619",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#1c54c4",
+        "#ae1cc4",
+        "#c4271c",
+        "#97c41c",
+        "#1cc46b"
+      ]
+    }
+  },
+  {
+    "id": "cinza-neblina",
+    "nome": "Cinza Neblina",
+    "categoria": "Minimalista",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f7f7f8",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#135cc3",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#1154b0",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#0f1a29",
+      "textoSecundario": "#44546a",
+      "borda": "rgba(46,71,107,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#c82719",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#1c62c4",
+        "#a01cc4",
+        "#c41c1f",
+        "#a5c41c",
+        "#1cc45d"
+      ]
+    }
+  },
+  {
+    "id": "tinta",
+    "nome": "Tinta",
+    "categoria": "Minimalista",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0d0e11",
+      "superficie": "#16171d",
+      "cartao": "rgba(26,28,35,0.72)",
+      "primaria": "#4561ed",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#3c59ec",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#f3f4f6",
+      "textoSecundario": "#a8abbd",
+      "borda": "rgba(76,103,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ea8553",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#4c66e6",
+        "#e64ce0",
+        "#e6704c",
+        "#a3e64c",
+        "#4ce6ad"
+      ]
+    }
+  },
+  {
+    "id": "giz",
+    "nome": "Giz",
+    "categoria": "Minimalista",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0e1011",
+      "superficie": "#171a1c",
+      "cartao": "rgba(28,31,33,0.72)",
+      "primaria": "#45b5ed",
+      "primariaTexto": "#021014",
+      "secundaria": "#3cb1ec",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f4f5f6",
+      "textoSecundario": "#acb5b9",
+      "borda": "rgba(76,186,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ea536c",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#4cb2e6",
+        "#9e4ce6",
+        "#e64c75",
+        "#e6db4c",
+        "#4ce661"
+      ]
+    }
+  },
+  {
+    "id": "linho",
+    "nome": "Linho",
+    "categoria": "Minimalista",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f8f8f7",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#c38813",
+      "primariaTexto": "#021014",
+      "secundaria": "#b07b11",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#29200f",
+      "textoSecundario": "#6a5d44",
+      "borda": "rgba(107,87,46,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#19abc8",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#c48c1c",
+        "#32c41c",
+        "#1cb9c4",
+        "#491cc4",
+        "#c41c76"
+      ]
+    }
+  },
+  {
+    "id": "pedra",
+    "nome": "Pedra",
+    "categoria": "Minimalista",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#110f0e",
+      "superficie": "#1c1a17",
+      "cartao": "rgba(33,31,28,0.72)",
+      "primaria": "#ed9945",
+      "primariaTexto": "#021014",
+      "secundaria": "#ec943c",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f6f5f4",
+      "textoSecundario": "#b9b3ac",
+      "borda": "rgba(240,158,76,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#53eaea",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#e6994c",
+        "#7ae64c",
+        "#4ce6d6",
+        "#5c4ce6",
+        "#e64cb8"
+      ]
+    }
+  },
+  {
+    "id": "nevoa",
+    "nome": "Névoa",
+    "categoria": "Minimalista",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f7f8f8",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#1397c3",
+      "primariaTexto": "#021014",
+      "secundaria": "#1189b0",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#0f2229",
+      "textoSecundario": "#44606a",
+      "borda": "rgba(46,92,107,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#c81944",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#1c9ac4",
+        "#681cc4",
+        "#c41c57",
+        "#c4ab1c",
+        "#1cc424"
+      ]
+    }
+  },
+  {
+    "id": "traco",
+    "nome": "Traço",
+    "categoria": "Minimalista",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f7f7f8",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#4e13c3",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#4611b0",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#180f29",
+      "textoSecundario": "#50446a",
+      "borda": "rgba(66,46,107,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#c8ab19",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#541cc4",
+        "#c41c6b",
+        "#c4971c",
+        "#27c41c",
+        "#1caec4"
+      ]
+    }
+  },
+  {
+    "id": "banco-central",
+    "nome": "Banco Central",
+    "categoria": "Corporativo",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#080e16",
+      "superficie": "#0e1825",
+      "cartao": "rgba(17,28,44,0.72)",
+      "primaria": "#458bed",
+      "primariaTexto": "#021014",
+      "secundaria": "#3cb1ec",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f4f8",
+      "textoSecundario": "#a0afc5",
+      "borda": "rgba(76,144,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ea5f53",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#4c8ce6",
+        "#c44ce6",
+        "#e64c4f",
+        "#c9e64c",
+        "#4ce687"
+      ]
+    }
+  },
+  {
+    "id": "cofre-dourado",
+    "nome": "Cofre Dourado",
+    "categoria": "Corporativo",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#14110b",
+      "superficie": "#211d12",
+      "cartao": "rgba(40,34,21,0.72)",
+      "primaria": "#edba45",
+      "primariaTexto": "#021014",
+      "secundaria": "#3c94ec",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f6f2",
+      "textoSecundario": "#c5baa0",
+      "borda": "rgba(240,191,76,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#53cbea",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#e6b84c",
+        "#5ce64c",
+        "#4cd6e6",
+        "#7a4ce6",
+        "#e64c99"
+      ]
+    }
+  },
+  {
+    "id": "bolsa-de-valores",
+    "nome": "Bolsa de Valores",
+    "categoria": "Corporativo",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#09150f",
+      "superficie": "#0f241a",
+      "cartao": "rgba(18,43,31,0.72)",
+      "primaria": "#45ed99",
+      "primariaTexto": "#021014",
+      "secundaria": "#3cb1ec",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f8f5",
+      "textoSecundario": "#a0c5b3",
+      "borda": "rgba(76,240,158,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ea53ea",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#4ce699",
+        "#4c7ae6",
+        "#d64ce6",
+        "#e65c4c",
+        "#b8e64c"
+      ]
+    }
+  },
+  {
+    "id": "consultoria",
+    "nome": "Consultoria",
+    "categoria": "Corporativo",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f5f8fa",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#137ac3",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#11b07b",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#0f1e29",
+      "textoSecundario": "#445a6a",
+      "borda": "rgba(46,82,107,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#c81927",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#1c7ec4",
+        "#841cc4",
+        "#c41c3b",
+        "#c2c41c",
+        "#1cc441"
+      ]
+    }
+  },
+  {
+    "id": "mogno",
+    "nome": "Mogno",
+    "categoria": "Corporativo",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#150d0a",
+      "superficie": "#221511",
+      "cartao": "rgba(41,25,20,0.72)",
+      "primaria": "#ed6f45",
+      "primariaTexto": "#021014",
+      "secundaria": "#ecb13c",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f3f2",
+      "textoSecundario": "#c5a9a0",
+      "borda": "rgba(240,117,76,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#53eac4",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#e6734c",
+        "#a1e64c",
+        "#4ce6b0",
+        "#4c63e6",
+        "#e64cde"
+      ]
+    }
+  },
+  {
+    "id": "aco",
+    "nome": "Aço",
+    "categoria": "Corporativo",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f6f7f9",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#136bc3",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#1196b0",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#0f1c29",
+      "textoSecundario": "#44576a",
+      "borda": "rgba(46,77,107,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#c81919",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#1c70c4",
+        "#921cc4",
+        "#c41c2d",
+        "#b4c41c",
+        "#1cc44f"
+      ]
+    }
+  },
+  {
+    "id": "diretoria",
+    "nome": "Diretoria",
+    "categoria": "Corporativo",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0b0915",
+      "superficie": "#130f24",
+      "cartao": "rgba(22,18,43,0.72)",
+      "primaria": "#6145ed",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#3c94ec",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f3f2f8",
+      "textoSecundario": "#a6a0c5",
+      "borda": "rgba(103,76,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#eab753",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#664ce6",
+        "#e64cad",
+        "#e6a34c",
+        "#70e64c",
+        "#4ce6e0"
+      ]
+    }
+  },
+  {
+    "id": "auditoria",
+    "nome": "Auditoria",
+    "categoria": "Corporativo",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f5f9f9",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#13c3b4",
+      "primariaTexto": "#021014",
+      "secundaria": "#1154b0",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#0f2927",
+      "textoSecundario": "#446a67",
+      "borda": "rgba(46,107,102,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#c8197f",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#1cc4b6",
+        "#301cc4",
+        "#c41c8f",
+        "#c4731c",
+        "#4cc41c"
+      ]
+    }
+  },
+  {
+    "id": "por-do-sol",
+    "nome": "Pôr do Sol",
+    "categoria": "Moderno",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#160d08",
+      "superficie": "#25160e",
+      "cartao": "rgba(44,26,17,0.72)",
+      "primaria": "#ed7d45",
+      "primariaTexto": "#021014",
+      "secundaria": "#ec3c94",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f4f2",
+      "textoSecundario": "#c5aca0",
+      "borda": "rgba(240,131,76,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#53ead0",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#e67f4c",
+        "#94e64c",
+        "#4ce6bd",
+        "#4c57e6",
+        "#e64cd1"
+      ]
+    }
+  },
+  {
+    "id": "aurora",
+    "nome": "Aurora",
+    "categoria": "Moderno",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#081717",
+      "superficie": "#0d2626",
+      "cartao": "rgba(15,46,46,0.72)",
+      "primaria": "#45eded",
+      "primariaTexto": "#021014",
+      "secundaria": "#943cec",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#f2f8f8",
+      "textoSecundario": "#a0c5c5",
+      "borda": "rgba(76,240,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ea539e",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#4ce6e6",
+        "#6b4ce6",
+        "#e64ca8",
+        "#e6a84c",
+        "#6be64c"
+      ]
+    }
+  },
+  {
+    "id": "oceano-profundo",
+    "nome": "Oceano Profundo",
+    "categoria": "Moderno",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#071118",
+      "superficie": "#0b1c28",
+      "cartao": "rgba(14,33,47,0.72)",
+      "primaria": "#45a7ed",
+      "primariaTexto": "#021014",
+      "secundaria": "#3cecce",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f5f8",
+      "textoSecundario": "#a0b6c5",
+      "borda": "rgba(76,172,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ea535f",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#4ca6e6",
+        "#ab4ce6",
+        "#e64c69",
+        "#e3e64c",
+        "#4ce66e"
+      ]
+    }
+  },
+  {
+    "id": "lava",
+    "nome": "Lava",
+    "categoria": "Moderno",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#160a08",
+      "superficie": "#25110e",
+      "cartao": "rgba(44,21,17,0.72)",
+      "primaria": "#ed5c45",
+      "primariaTexto": "#021014",
+      "secundaria": "#ecb13c",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f3f2",
+      "textoSecundario": "#c5a5a0",
+      "borda": "rgba(240,98,76,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#53eab2",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#e6614c",
+        "#b3e64c",
+        "#4ce69e",
+        "#4c75e6",
+        "#db4ce6"
+      ]
+    }
+  },
+  {
+    "id": "orquidea",
+    "nome": "Orquídea",
+    "categoria": "Moderno",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#160816",
+      "superficie": "#250e25",
+      "cartao": "rgba(44,17,44,0.72)",
+      "primaria": "#ed45ed",
+      "primariaTexto": "#021014",
+      "secundaria": "#773cec",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#f8f2f8",
+      "textoSecundario": "#c5a0c5",
+      "borda": "rgba(240,76,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#9eea53",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#e64ce6",
+        "#e66b4c",
+        "#a8e64c",
+        "#4ce6a8",
+        "#4c6be6"
+      ]
+    }
+  },
+  {
+    "id": "cobalto",
+    "nome": "Cobalto",
+    "categoria": "Moderno",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f5f6fa",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#133fc3",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#1196b0",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#0f1629",
+      "textoSecundario": "#444d6a",
+      "borda": "rgba(46,61,107,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#c84419",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#1c46c4",
+        "#bc1cc4",
+        "#c4351c",
+        "#89c41c",
+        "#1cc479"
+      ]
+    }
+  },
+  {
+    "id": "citrino",
+    "nome": "Citrino",
+    "categoria": "Moderno",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#fafaf4",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#c3ac13",
+      "primariaTexto": "#021014",
+      "secundaria": "#b04611",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#29250f",
+      "textoSecundario": "#6a6544",
+      "borda": "rgba(107,99,46,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#1988c8",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#c4ae1c",
+        "#1cc427",
+        "#1c97c4",
+        "#6b1cc4",
+        "#c41c54"
+      ]
+    }
+  },
+  {
+    "id": "coral",
+    "nome": "Coral",
+    "categoria": "Moderno",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#faf5f4",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#c32b13",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#b01161",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#29130f",
+      "textoSecundario": "#6a4944",
+      "borda": "rgba(107,54,46,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#19c888",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#c4321c",
+        "#8cc41c",
+        "#1cc476",
+        "#1c49c4",
+        "#b91cc4"
+      ]
+    }
+  },
+  {
+    "id": "indigo",
+    "nome": "Índigo",
+    "categoria": "Moderno",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#080718",
+      "superficie": "#0e0b28",
+      "cartao": "rgba(17,14,47,0.72)",
+      "primaria": "#5345ed",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#ec3cec",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f2f8",
+      "textoSecundario": "#a3a0c5",
+      "borda": "rgba(89,76,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#eaab53",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#594ce6",
+        "#e64cba",
+        "#e6964c",
+        "#7de64c",
+        "#4ce6d4"
+      ]
+    }
+  },
+  {
+    "id": "turquesa",
+    "nome": "Turquesa",
+    "categoria": "Moderno",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f5fafa",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#13c3b4",
+      "primariaTexto": "#021014",
+      "secundaria": "#112cb0",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#0f2927",
+      "textoSecundario": "#446a67",
+      "borda": "rgba(46,107,102,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#c8197f",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#1cc4b6",
+        "#301cc4",
+        "#c41c8f",
+        "#c4731c",
+        "#4cc41c"
+      ]
+    }
+  },
+  {
+    "id": "matrix",
+    "nome": "Matrix",
+    "categoria": "Cyberpunk",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#030f07",
+      "superficie": "#051e0e",
+      "cartao": "rgba(7,39,18,0.72)",
+      "primaria": "#29ff70",
+      "primariaTexto": "#021014",
+      "secundaria": "#29ffb8",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f8f4",
+      "textoSecundario": "#a0c5ac",
+      "borda": "rgba(76,240,131,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#d053ea",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#38fa79",
+        "#3893fa",
+        "#c638fa",
+        "#fa3845",
+        "#e0fa38"
+      ]
+    }
+  },
+  {
+    "id": "blade",
+    "nome": "Blade",
+    "categoria": "Cyberpunk",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0f030f",
+      "superficie": "#1d061d",
+      "cartao": "rgba(38,8,38,0.72)",
+      "primaria": "#ff29ff",
+      "primariaTexto": "#021014",
+      "secundaria": "#29dbff",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f2f8",
+      "textoSecundario": "#c5a0c5",
+      "borda": "rgba(240,76,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#9eea53",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#fa38fa",
+        "#fa5f38",
+        "#acfa38",
+        "#38faac",
+        "#385ffa"
+      ]
+    }
+  },
+  {
+    "id": "synthwave",
+    "nome": "Synthwave",
+    "categoria": "Cyberpunk",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0e040c",
+      "superficie": "#1d0719",
+      "cartao": "rgba(37,9,32,0.72)",
+      "primaria": "#ff29db",
+      "primariaTexto": "#021014",
+      "secundaria": "#29b8ff",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f2f7",
+      "textoSecundario": "#c5a0bf",
+      "borda": "rgba(240,76,213,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#85ea53",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#fa38da",
+        "#fa7f38",
+        "#8cfa38",
+        "#38facd",
+        "#383ffa"
+      ]
+    }
+  },
+  {
+    "id": "glitch",
+    "nome": "Glitch",
+    "categoria": "Cyberpunk",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0f0309",
+      "superficie": "#1d0612",
+      "cartao": "rgba(38,8,23,0.72)",
+      "primaria": "#ff2994",
+      "primariaTexto": "#021014",
+      "secundaria": "#29ffdb",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f2f5",
+      "textoSecundario": "#c5a0b3",
+      "borda": "rgba(240,76,158,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#53ea53",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#fa3899",
+        "#fac038",
+        "#4bfa38",
+        "#38e7fa",
+        "#7238fa"
+      ]
+    }
+  },
+  {
+    "id": "rede-sombra",
+    "nome": "Rede Sombra",
+    "categoria": "Cyberpunk",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0b040e",
+      "superficie": "#15081c",
+      "cartao": "rgba(27,10,36,0.72)",
+      "primaria": "#b829ff",
+      "primariaTexto": "#021014",
+      "secundaria": "#29ff29",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f6f2f8",
+      "textoSecundario": "#b9a0c5",
+      "borda": "rgba(186,76,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#d0ea53",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#b938fa",
+        "#fa3852",
+        "#edfa38",
+        "#38fa6c",
+        "#389ffa"
+      ]
+    }
+  },
+  {
+    "id": "terminal",
+    "nome": "Terminal",
+    "categoria": "Cyberpunk",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#040e04",
+      "superficie": "#071d07",
+      "cartao": "rgba(9,37,9,0.72)",
+      "primaria": "#29ff29",
+      "primariaTexto": "#021014",
+      "secundaria": "#ffff29",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f8f2",
+      "textoSecundario": "#a0c5a0",
+      "borda": "rgba(76,240,76,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#9e53ea",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#38fa38",
+        "#38d3fa",
+        "#8638fa",
+        "#fa3886",
+        "#fad338"
+      ]
+    }
+  },
+  {
+    "id": "cromo-neon",
+    "nome": "Cromo Neon",
+    "categoria": "Cyberpunk",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#040c0e",
+      "superficie": "#07191d",
+      "cartao": "rgba(9,32,37,0.72)",
+      "primaria": "#29dbff",
+      "primariaTexto": "#021014",
+      "secundaria": "#ff29b8",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f7f8",
+      "textoSecundario": "#a0bfc5",
+      "borda": "rgba(76,213,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ea5385",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#38dafa",
+        "#7f38fa",
+        "#fa388c",
+        "#facd38",
+        "#3ffa38"
+      ]
+    }
+  },
+  {
+    "id": "codigo-vermelho",
+    "nome": "Código Vermelho",
+    "categoria": "Cyberpunk",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0e0405",
+      "superficie": "#1d070b",
+      "cartao": "rgba(37,9,14,0.72)",
+      "primaria": "#ff294d",
+      "primariaTexto": "#021014",
+      "secundaria": "#29dbff",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f2f3",
+      "textoSecundario": "#c5a0a6",
+      "borda": "rgba(240,76,103,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#53ea85",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#fa3858",
+        "#f3fa38",
+        "#38fa65",
+        "#38a6fa",
+        "#b338fa"
+      ]
+    }
+  },
+  {
+    "id": "rosa-choque",
+    "nome": "Rosa Choque",
+    "categoria": "Neon",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0f030a",
+      "superficie": "#1d0614",
+      "cartao": "rgba(38,8,25,0.72)",
+      "primaria": "#ff29a6",
+      "primariaTexto": "#021014",
+      "secundaria": "#29dbff",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f2f5",
+      "textoSecundario": "#c5a0b6",
+      "borda": "rgba(240,76,172,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#5fea53",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#fa38a9",
+        "#fab038",
+        "#5cfa38",
+        "#38f7fa",
+        "#6238fa"
+      ]
+    }
+  },
+  {
+    "id": "verde-acido",
+    "nome": "Verde Ácido",
+    "categoria": "Neon",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#060f03",
+      "superficie": "#0c1d06",
+      "cartao": "rgba(15,38,8,0.72)",
+      "primaria": "#5eff29",
+      "primariaTexto": "#021014",
+      "secundaria": "#29ffdb",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f3f8f2",
+      "textoSecundario": "#a9c5a0",
+      "borda": "rgba(117,240,76,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#7853ea",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#69fa38",
+        "#38faf0",
+        "#5538fa",
+        "#fa38b6",
+        "#faa338"
+      ]
+    }
+  },
+  {
+    "id": "azul-eletrico",
+    "nome": "Azul Elétrico",
+    "categoria": "Neon",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#03070f",
+      "superficie": "#050e1e",
+      "cartao": "rgba(7,18,39,0.72)",
+      "primaria": "#2970ff",
+      "primariaTexto": "#021014",
+      "secundaria": "#29ffff",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f4f8",
+      "textoSecundario": "#a0acc5",
+      "borda": "rgba(76,131,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ea6c53",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#3879fa",
+        "#e038fa",
+        "#fa4538",
+        "#c6fa38",
+        "#38fa93"
+      ]
+    }
+  },
+  {
+    "id": "laranja-laser",
+    "nome": "Laranja Laser",
+    "categoria": "Neon",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0f0803",
+      "superficie": "#1d1006",
+      "cartao": "rgba(38,20,8,0.72)",
+      "primaria": "#ff8229",
+      "primariaTexto": "#021014",
+      "secundaria": "#ff2994",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f4f2",
+      "textoSecundario": "#c5afa0",
+      "borda": "rgba(240,144,76,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#53eadd",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#fa8938",
+        "#82fa38",
+        "#38fad6",
+        "#3b38fa",
+        "#fa38d0"
+      ]
+    }
+  },
+  {
+    "id": "violeta-uv",
+    "nome": "Violeta UV",
+    "categoria": "Neon",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0a030f",
+      "superficie": "#14051e",
+      "cartao": "rgba(26,7,39,0.72)",
+      "primaria": "#a629ff",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#29dbff",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f5f2f8",
+      "textoSecundario": "#b6a0c5",
+      "borda": "rgba(172,76,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ddea53",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#a938fa",
+        "#fa3862",
+        "#faf738",
+        "#38fa5c",
+        "#38b0fa"
+      ]
+    }
+  },
+  {
+    "id": "ciano-radiante",
+    "nome": "Ciano Radiante",
+    "categoria": "Neon",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#030e0f",
+      "superficie": "#061c1d",
+      "cartao": "rgba(8,35,38,0.72)",
+      "primaria": "#29edff",
+      "primariaTexto": "#021014",
+      "secundaria": "#ff29ff",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f7f8",
+      "textoSecundario": "#a0c2c5",
+      "borda": "rgba(76,227,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ea5392",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#38eafa",
+        "#6f38fa",
+        "#fa389c",
+        "#fabd38",
+        "#4ffa38"
+      ]
+    }
+  },
+  {
+    "id": "magenta-pulso",
+    "nome": "Magenta Pulso",
+    "categoria": "Neon",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0f030e",
+      "superficie": "#1d061c",
+      "cartao": "rgba(38,8,35,0.72)",
+      "primaria": "#ff29ed",
+      "primariaTexto": "#021014",
+      "secundaria": "#ffed29",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f2f7",
+      "textoSecundario": "#c5a0c2",
+      "borda": "rgba(240,76,227,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#92ea53",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#fa38ea",
+        "#fa6f38",
+        "#9cfa38",
+        "#38fabd",
+        "#384ffa"
+      ]
+    }
+  },
+  {
+    "id": "limao-radioativo",
+    "nome": "Limão Radioativo",
+    "categoria": "Neon",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0c0e04",
+      "superficie": "#191d07",
+      "cartao": "rgba(32,37,9,0.72)",
+      "primaria": "#dbff29",
+      "primariaTexto": "#021014",
+      "secundaria": "#b829ff",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f7f8f2",
+      "textoSecundario": "#bfc5a0",
+      "borda": "rgba(213,240,76,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#5385ea",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#dafa38",
+        "#38fa7f",
+        "#388cfa",
+        "#cd38fa",
+        "#fa383f"
+      ]
+    }
+  },
+  {
+    "id": "vermelho-sinal",
+    "nome": "Vermelho Sinal",
+    "categoria": "Neon",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0f0304",
+      "superficie": "#1d0608",
+      "cartao": "rgba(38,8,11,0.72)",
+      "primaria": "#ff293b",
+      "primariaTexto": "#021014",
+      "secundaria": "#29c9ff",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f2f2",
+      "textoSecundario": "#c5a0a3",
+      "borda": "rgba(240,76,89,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#53ea92",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#fa3848",
+        "#e3fa38",
+        "#38fa75",
+        "#3896fa",
+        "#c338fa"
+      ]
+    }
+  },
+  {
+    "id": "amarelo-raio",
+    "nome": "Amarelo Raio",
+    "categoria": "Neon",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0e0d04",
+      "superficie": "#1d1a07",
+      "cartao": "rgba(37,33,9,0.72)",
+      "primaria": "#ffe229",
+      "primariaTexto": "#021014",
+      "secundaria": "#7029ff",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#f8f7f2",
+      "textoSecundario": "#c5c0a0",
+      "borda": "rgba(240,219,76,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#53b2ea",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#fae038",
+        "#38fa45",
+        "#38c6fa",
+        "#9338fa",
+        "#fa3879"
+      ]
+    }
+  },
+  {
+    "id": "savana",
+    "nome": "Savana",
+    "categoria": "Natural",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#faf9f5",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#c39713",
+      "primariaTexto": "#021014",
+      "secundaria": "#46b011",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#29220f",
+      "textoSecundario": "#6a6044",
+      "borda": "rgba(107,92,46,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#199cc8",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#c49a1c",
+        "#24c41c",
+        "#1cabc4",
+        "#571cc4",
+        "#c41c68"
+      ]
+    }
+  },
+  {
+    "id": "deserto",
+    "nome": "Deserto",
+    "categoria": "Natural",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#faf7f5",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#c36513",
+      "primariaTexto": "#021014",
+      "secundaria": "#1196b0",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#291b0f",
+      "textoSecundario": "#6a5544",
+      "borda": "rgba(107,74,46,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#19c8c2",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#c46b1c",
+        "#54c41c",
+        "#1cc4ae",
+        "#271cc4",
+        "#c41c97"
+      ]
+    }
+  },
+  {
+    "id": "aurora-polar",
+    "nome": "Aurora Polar",
+    "categoria": "Natural",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#081716",
+      "superficie": "#0d2624",
+      "cartao": "rgba(15,46,43,0.72)",
+      "primaria": "#45eddf",
+      "primariaTexto": "#021014",
+      "secundaria": "#683cec",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#f2f8f7",
+      "textoSecundario": "#a0c5c2",
+      "borda": "rgba(76,240,227,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ea53ab",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#4ce6d9",
+        "#5e4ce6",
+        "#e64cb5",
+        "#e69c4c",
+        "#78e64c"
+      ]
+    }
+  },
+  {
+    "id": "vulcao",
+    "nome": "Vulcão",
+    "categoria": "Natural",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#150c09",
+      "superficie": "#24130f",
+      "cartao": "rgba(43,23,18,0.72)",
+      "primaria": "#ed6745",
+      "primariaTexto": "#021014",
+      "secundaria": "#eca33c",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f3f2",
+      "textoSecundario": "#c5a7a0",
+      "borda": "rgba(240,109,76,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#53eabc",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#e66b4c",
+        "#a8e64c",
+        "#4ce6a8",
+        "#4c6be6",
+        "#e64ce6"
+      ]
+    }
+  },
+  {
+    "id": "pantano",
+    "nome": "Pântano",
+    "categoria": "Natural",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0e150a",
+      "superficie": "#182211",
+      "cartao": "rgba(29,41,20,0.72)",
+      "primaria": "#8bed45",
+      "primariaTexto": "#021014",
+      "secundaria": "#ecdd3c",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f4f8f2",
+      "textoSecundario": "#afc5a0",
+      "borda": "rgba(144,240,76,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#5f53ea",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#8ce64c",
+        "#4ce6c4",
+        "#4c4fe6",
+        "#e64cc9",
+        "#e6874c"
+      ]
+    }
+  },
+  {
+    "id": "campo-de-lavanda",
+    "nome": "Campo de Lavanda",
+    "categoria": "Natural",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f7f5fa",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#6b13c3",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#11b011",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#1c0f29",
+      "textoSecundario": "#57446a",
+      "borda": "rgba(77,46,107,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#c8c819",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#701cc4",
+        "#c41c4f",
+        "#c4b41c",
+        "#1cc42d",
+        "#1c92c4"
+      ]
+    }
+  },
+  {
+    "id": "jabuticaba",
+    "nome": "Jabuticaba",
+    "categoria": "Natural",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#150911",
+      "superficie": "#240f1d",
+      "cartao": "rgba(43,18,35,0.72)",
+      "primaria": "#ed45b5",
+      "primariaTexto": "#021014",
+      "secundaria": "#3cec77",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f2f6",
+      "textoSecundario": "#c5a0b9",
+      "borda": "rgba(240,76,186,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#6cea53",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#e64cb3",
+        "#e69e4c",
+        "#75e64c",
+        "#4ce6db",
+        "#614ce6"
+      ]
+    }
+  },
+  {
+    "id": "cerrado",
+    "nome": "Cerrado",
+    "categoria": "Natural",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#fafaf5",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#c3c313",
+      "primariaTexto": "#021014",
+      "secundaria": "#b05411",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#29290f",
+      "textoSecundario": "#6a6a44",
+      "borda": "rgba(107,107,46,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#1970c8",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#c4c41c",
+        "#1cc43e",
+        "#1c81c4",
+        "#811cc4",
+        "#c41c3e"
+      ]
+    }
+  },
+  {
+    "id": "mata-atlantica",
+    "nome": "Mata Atlântica",
+    "categoria": "Natural",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#08160c",
+      "superficie": "#0e2514",
+      "cartao": "rgba(17,44,24,0.72)",
+      "primaria": "#45ed6f",
+      "primariaTexto": "#021014",
+      "secundaria": "#a3ec3c",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f8f3",
+      "textoSecundario": "#a0c5a9",
+      "borda": "rgba(76,240,117,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#c453ea",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#4ce673",
+        "#4ca1e6",
+        "#b04ce6",
+        "#e64c63",
+        "#dee64c"
+      ]
+    }
+  },
+  {
+    "id": "recife-de-coral",
+    "nome": "Recife de Coral",
+    "categoria": "Natural",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#081417",
+      "superficie": "#0d2226",
+      "cartao": "rgba(15,41,46,0.72)",
+      "primaria": "#45d1ed",
+      "primariaTexto": "#021014",
+      "secundaria": "#ec593c",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f7f8",
+      "textoSecundario": "#a0bfc5",
+      "borda": "rgba(76,213,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#ea5385",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#4ccce6",
+        "#854ce6",
+        "#e64c8f",
+        "#e6c24c",
+        "#52e64c"
+      ]
+    }
+  },
+  {
+    "id": "mono-azul",
+    "nome": "Mono Azul",
+    "categoria": "Monocromático",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#070e18",
+      "superficie": "#0b1728",
+      "cartao": "rgba(14,28,47,0.72)",
+      "primaria": "#528de0",
+      "primariaTexto": "#021014",
+      "secundaria": "#86afea",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f4f8",
+      "textoSecundario": "#a0afc5",
+      "borda": "rgba(76,144,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#abc2e3",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#298da3",
+        "#328ec8",
+        "#5489d4",
+        "#788edd",
+        "#9d9ee7"
+      ]
+    }
+  },
+  {
+    "id": "mono-verde",
+    "nome": "Mono Verde",
+    "categoria": "Monocromático",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#08160e",
+      "superficie": "#0e2518",
+      "cartao": "rgba(17,44,28,0.72)",
+      "primaria": "#52e08d",
+      "primariaTexto": "#021014",
+      "secundaria": "#86eaaf",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f8f4",
+      "textoSecundario": "#a0c5af",
+      "borda": "rgba(76,240,144,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#abe3c2",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#29a32b",
+        "#32c852",
+        "#54d489",
+        "#78ddb7",
+        "#9de7d9"
+      ]
+    }
+  },
+  {
+    "id": "mono-roxo",
+    "nome": "Mono Roxo",
+    "categoria": "Monocromático",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#0f0816",
+      "superficie": "#1a0e25",
+      "cartao": "rgba(31,17,44,0.72)",
+      "primaria": "#9952e0",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#b886ea",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f5f2f8",
+      "textoSecundario": "#b3a0c5",
+      "borda": "rgba(158,76,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#c7abe3",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#3529a3",
+        "#5f32c8",
+        "#9454d4",
+        "#bf78dd",
+        "#df9de7"
+      ]
+    }
+  },
+  {
+    "id": "mono-rosa",
+    "nome": "Mono Rosa",
+    "categoria": "Monocromático",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#16080e",
+      "superficie": "#250e18",
+      "cartao": "rgba(44,17,28,0.72)",
+      "primaria": "#e0528d",
+      "primariaTexto": "#021014",
+      "secundaria": "#ea86af",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f2f4",
+      "textoSecundario": "#c5a0af",
+      "borda": "rgba(240,76,144,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#e3abc2",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#a3298d",
+        "#c8328e",
+        "#d45489",
+        "#dd788e",
+        "#e79d9e"
+      ]
+    }
+  },
+  {
+    "id": "mono-ciano",
+    "nome": "Mono Ciano",
+    "categoria": "Monocromático",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#081617",
+      "superficie": "#0d2426",
+      "cartao": "rgba(15,43,46,0.72)",
+      "primaria": "#52d4e0",
+      "primariaTexto": "#021014",
+      "secundaria": "#86e1ea",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f2f7f8",
+      "textoSecundario": "#a0c2c5",
+      "borda": "rgba(76,227,240,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#abdee3",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#29a37c",
+        "#32c8b6",
+        "#54c9d4",
+        "#78c1dd",
+        "#9dc3e7"
+      ]
+    }
+  },
+  {
+    "id": "mono-vermelho",
+    "nome": "Mono Vermelho",
+    "categoria": "Monocromático",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#16080a",
+      "superficie": "#250e10",
+      "cartao": "rgba(44,17,19,0.72)",
+      "primaria": "#e0525d",
+      "primariaTexto": "#021014",
+      "secundaria": "#ea868e",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f2f2",
+      "textoSecundario": "#c5a0a3",
+      "borda": "rgba(240,76,89,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#e3abb0",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#a32964",
+        "#c8325c",
+        "#d4545e",
+        "#dd8478",
+        "#e7b49d"
+      ]
+    }
+  },
+  {
+    "id": "mono-laranja",
+    "nome": "Mono Laranja",
+    "categoria": "Monocromático",
+    "modoBase": "escuro",
+    "cores": {
+      "fundo": "#160f08",
+      "superficie": "#25190e",
+      "cartao": "rgba(44,30,17,0.72)",
+      "primaria": "#e09452",
+      "primariaTexto": "#021014",
+      "secundaria": "#eab486",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#f8f5f2",
+      "textoSecundario": "#c5b1a0",
+      "borda": "rgba(240,153,76,0.2)",
+      "sucesso": "#22d3a0",
+      "alerta": "#f5a524",
+      "erro": "#f43f5e",
+      "destaque": "#e3c5ab",
+      "sombra": "rgba(0,0,0,0.45)",
+      "grafico": [
+        "#a33129",
+        "#c85a32",
+        "#d49054",
+        "#ddbc78",
+        "#e7dd9d"
+      ]
+    }
+  },
+  {
+    "id": "mono-teal",
+    "nome": "Mono Teal",
+    "categoria": "Monocromático",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f5faf9",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#20b69d",
+      "primariaTexto": "#021014",
+      "secundaria": "#1c9c87",
+      "secundariaTexto": "#021014",
+      "textoPrimario": "#0f2924",
+      "textoSecundario": "#446a63",
+      "borda": "rgba(46,107,97,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#267366",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#1d7242",
+        "#26976d",
+        "#2fbca4",
+        "#47cdd1",
+        "#6cc1da"
+      ]
+    }
+  },
+  {
+    "id": "mono-indigo",
+    "nome": "Mono Índigo",
+    "categoria": "Monocromático",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f5f5fa",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#2d20b6",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#261c9c",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#120f29",
+      "textoSecundario": "#47446a",
+      "borda": "rgba(51,46,107,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#2d2673",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#1d3872",
+        "#263397",
+        "#3b2fbc",
+        "#6e47d1",
+        "#a16cda"
+      ]
+    }
+  },
+  {
+    "id": "mono-prata",
+    "nome": "Mono Prata",
+    "categoria": "Monocromático",
+    "modoBase": "claro",
+    "cores": {
+      "fundo": "#f7f7f8",
+      "superficie": "#ffffff",
+      "cartao": "rgba(255,255,255,0.88)",
+      "primaria": "#205fb6",
+      "primariaTexto": "#ffffff",
+      "secundaria": "#1c519c",
+      "secundariaTexto": "#ffffff",
+      "textoPrimario": "#0f1a29",
+      "textoSecundario": "#44546a",
+      "borda": "rgba(46,71,107,0.16)",
+      "sucesso": "#0e9f6e",
+      "alerta": "#b7791f",
+      "erro": "#d6243f",
+      "destaque": "#264673",
+      "sombra": "rgba(15,23,42,0.12)",
+      "grafico": [
+        "#1d6372",
+        "#266c97",
+        "#2f6abc",
+        "#4765d1",
+        "#6c6eda"
+      ]
     }
   }
 ]

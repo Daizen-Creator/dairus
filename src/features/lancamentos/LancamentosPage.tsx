@@ -20,10 +20,11 @@ import { categoriaDoLancamento } from "../dashboard/categoriaIcone";
 import type { Agendamento, Conta, Lancamento, ResumoDashboard } from "../../types/accounting";
 import { AgendamentoForm } from "./AgendamentoForm";
 import { DespesaForm } from "./DespesaForm";
+import { ImportarExtratoForm } from "./ImportarExtratoForm";
 import { SeloEtiqueta, SeloStatus, type StatusPagamento } from "./Selos";
 import { TransferenciaForm } from "./TransferenciaForm";
 
-type Aba = "despesa" | "agendar" | "transferencia";
+type Aba = "despesa" | "agendar" | "transferencia" | "importar";
 
 const ORIGENS_LEGIVEIS: Record<string, string> = {
   MANUAL: "Manual",
@@ -161,6 +162,7 @@ export function LancamentosPage() {
     { id: "despesa", rotulo: "Nova despesa" },
     { id: "agendar", rotulo: "Agendar conta" },
     { id: "transferencia", rotulo: "Transferência entre contas" },
+    { id: "importar", rotulo: "Importar extrato" },
   ];
 
   return (
@@ -228,6 +230,14 @@ export function LancamentosPage() {
           )}
           {aba === "agendar" && <AgendamentoForm categoriasDespesa={categoriasDespesa} onCriado={carregar} />}
           {aba === "transferencia" && <TransferenciaForm contas={contasAtivas} onRegistrada={carregar} />}
+          {aba === "importar" && (
+            <ImportarExtratoForm
+              contasAtivas={contasAtivas}
+              categoriasDespesa={categoriasDespesa}
+              lancamentos={lancamentos}
+              onImportado={carregar}
+            />
+          )}
         </div>
       )}
 

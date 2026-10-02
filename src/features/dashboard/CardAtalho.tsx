@@ -24,7 +24,7 @@ export function CardAtalho({ to, titulo, valor, subtitulo, icone, cor }: CardAta
     >
       <div className="flex items-center gap-3">
         <BlocoIcone icone={icone} cor={cor} />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-texto-primario">{titulo}</span>
+        <span className="line-clamp-2 min-w-0 flex-1 text-sm font-medium leading-tight text-texto-primario">{titulo}</span>
         <ChevronRight size={16} className="shrink-0 text-texto-secundario transition-transform group-hover:translate-x-0.5" />
       </div>
       <p className="mt-3 text-xl font-bold tabular-nums text-texto-primario">{valor}</p>

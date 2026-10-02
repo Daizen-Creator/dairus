@@ -497,3 +497,79 @@ pub fn salvar_exportacao(app: AppHandle, nome_arquivo: String, conteudo: String)
     std::fs::write(&caminho, conteudo.as_bytes()).map_err(e)?;
     Ok(caminho.to_string_lossy().to_string())
 }
+
+#[cfg(test)]
+mod testes_backup {
+    use super::*;
+    use crate::accounting::engine;
+    use crate::accounting::models::{NovoLancamentoInput, PartidaInput, TipoPartida};
+
+    fn pasta_temp(nome: &str) -> PathBuf {
+        let p = std::env::temp_dir().join(format!("dairus-teste-{nome}-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    fn banco_com_despesa() -> Connection {
+        let conn = crate::db::abrir_conexao(Path::new(":memory:")).unwrap();
+        crate::db::executar_migracoes(&conn).unwrap();
+        conn
+    }
+
+    fn lancar(conn: &mut Connection, valor: i64) {
+        engine::criar_lancamento(
+            conn,
+            NovoLancamentoInput {
+                data: "2026-10-01".into(),
+                descricao: "Teste".into(),
+                observacao: None,
+                origem: "MANUAL".into(),
+                etiqueta: None,
+                partidas: vec![
+                    PartidaInput { conta_id: "despesa-outras".into(), tipo: TipoPartida::Debito, valor_centavos: valor },
+                    PartidaInput { conta_id: "ativo-dinheiro".into(), tipo: TipoPartida::Credito, valor_centavos: valor },
+                ],
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn backup_valido_e_restauracao_devolvem_o_estado_antigo() {
+        let pasta = pasta_temp("restore");
+        let mut conn = banco_com_despesa();
+        lancar(&mut conn, 1000);
+        let info = gravar_backup(&conn, &pasta, "dairus").unwrap();
+        validar_arquivo_backup(Path::new(&info.caminho)).unwrap();
+
+        lancar(&mut conn, 2500); // estado novo, posterior ao backup
+        assert_eq!(engine::saldo_conta(&conn, "ativo-dinheiro").unwrap(), -3500);
+
+        conn.restore(rusqlite::MAIN_DB, &info.caminho, None::<fn(rusqlite::backup::Progress)>).unwrap();
+        crate::db::executar_migracoes(&conn).unwrap();
+        assert_eq!(engine::saldo_conta(&conn, "ativo-dinheiro").unwrap(), -1000);
+        std::fs::remove_dir_all(pasta).ok();
+    }
+
+    #[test]
+    fn rejeita_arquivos_que_nao_sao_backup_do_dairus() {
+        let pasta = pasta_temp("invalido");
+        let lixo = pasta.join("lixo.db");
+        std::fs::write(&lixo, b"isto nao e um banco sqlite").unwrap();
+        assert!(validar_arquivo_backup(&lixo).is_err());
+
+        let vazio = pasta.join("vazio.db");
+        Connection::open(&vazio).unwrap().execute_batch("CREATE TABLE outra (x INTEGER);").unwrap();
+        assert!(validar_arquivo_backup(&vazio).is_err());
+        std::fs::remove_dir_all(pasta).ok();
+    }
+
+    #[test]
+    fn nomes_de_arquivo_perigosos_sao_recusados() {
+        assert!(nome_seguro("dairus-20261002-093643.db").is_ok());
+        assert!(nome_seguro(r"..\..\Windows\sistema.db").is_err());
+        assert!(nome_seguro("../x.db").is_err());
+        assert!(nome_seguro("C:/x.db").is_err());
+        assert!(nome_seguro("").is_err());
+    }
+}
