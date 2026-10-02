@@ -4,6 +4,7 @@ mod conta;
 mod db;
 mod extras;
 mod planilha;
+mod sincronizacao;
 mod sistema;
 
 use std::sync::Mutex;
@@ -98,6 +99,8 @@ pub fn run() {
             extras::salvar_exportacao,
             planilha::exportar_xlsx,
             sistema::atualizar_bandeja,
+            sincronizacao::impressao_dados,
+            sincronizacao::gerar_copia_sync,
             sistema::pasta_de_logs,
             sistema::ler_log,
             extras::salvar_exportacao_binaria,

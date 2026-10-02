@@ -902,14 +902,18 @@ pub fn verificar_backup(app: AppHandle, nome: String) -> Res<()> {
 /// "antes-de-restaurar" nunca são apagados automaticamente). Devolve quantos removeu.
 #[tauri::command]
 pub fn aplicar_retencao(app: AppHandle, manter: usize) -> Res<usize> {
-    let manter = manter.max(1);
     let pasta = pasta_dairus(&app, "Backups")?;
-    let mut lista: Vec<(String, PathBuf)> = std::fs::read_dir(&pasta)
+    // Cópias de segurança automáticas (antes de restaurar/sincronizar) ficam nas 5 mais recentes.
+    Ok(podar_backups(&pasta, "dairus-", manter.max(1))? + podar_backups(&pasta, "antes-de-restaurar-", 5)?)
+}
+
+fn podar_backups(pasta: &Path, prefixo: &str, manter: usize) -> Res<usize> {
+    let mut lista: Vec<(String, PathBuf)> = std::fs::read_dir(pasta)
         .map_err(e)?
         .filter_map(|ent| ent.ok())
         .map(|ent| ent.path())
         .filter(|p| p.extension().is_some_and(|x| x == "db"))
-        .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("dairus-")))
+        .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(prefixo)))
         .filter_map(|p| info_do_arquivo(&p).map(|i| (i.criado_em, p)))
         .collect();
     lista.sort_by(|a, b| b.0.cmp(&a.0));
