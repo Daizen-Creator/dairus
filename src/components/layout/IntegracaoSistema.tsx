@@ -25,6 +25,29 @@ export async function sincronizarEmSegundoPlano(manual = false): Promise<void> {
   }
 }
 
+/** Alertas da carteira: preço-alvo, vencimento de renda fixa e lembrete de aporte (cotações atualizadas antes, se ligado). */
+async function avisosDeInvestimentos(hoje: string) {
+  const { investimentos } = await import("../../services/investimentos");
+  const { alertasCarteira } = await import("../../features/investimentos/calculos");
+  let ativos = await investimentos.listarAtivos().catch(() => []);
+  if (!ativos.length) return [];
+  if ((await lerPreferencia<boolean>("invest_cotacoes_auto")) !== false) {
+    const { atualizarCotacoesCarteira } = await import("../../features/investimentos/mercado");
+    await atualizarCotacoesCarteira(ativos).catch(() => null);
+    ativos = await investimentos.listarAtivos().catch(() => ativos);
+  }
+  const avisos = alertasCarteira(ativos, hoje);
+  const dia = (await lerPreferencia<number>("invest_dia_aporte")) ?? 0;
+  if (dia > 0) {
+    const ultimoDia = new Date(+hoje.slice(0, 4), +hoje.slice(5, 7), 0).getDate();
+    if (Number(hoje.slice(8, 10)) === Math.min(dia, ultimoDia)) {
+      const valor = (await lerPreferencia<string>("invest_valor_aporte")) ?? "";
+      avisos.push({ id: `aporte-${hoje.slice(0, 7)}`, titulo: "Dia do aporte nos investimentos", corpo: valor ? `Planejado: R$ ${valor}. Registre em Investimentos → Lançar.` : "Registre o aporte em Investimentos → Lançar." });
+    }
+  }
+  return avisos;
+}
+
 /** Verifica os avisos agora: manda ao Windows os que ainda não foram mostrados hoje e atualiza a bandeja. */
 export async function verificarAvisosAgora(): Promise<number> {
   const hoje = dataAtualISO();
@@ -39,7 +62,8 @@ export async function verificarAvisosAgora(): Promise<number> {
 
   if ((await lerPreferencia<boolean>("avisos_windows")) === false) return 0;
   const enviados = (await lerPreferencia<Record<string, string>>("avisos_enviados")) ?? {};
-  const { novos, registro } = filtrarNovos(calcularAvisos({ hoje, contas, agendamentos, lancamentos, orcamentos }), enviados, hoje);
+  const avisos = [...calcularAvisos({ hoje, contas, agendamentos, lancamentos, orcamentos }), ...(await avisosDeInvestimentos(hoje))];
+  const { novos, registro } = filtrarNovos(avisos, enviados, hoje);
   // Muitos de uma vez viram um resumo, para não encher a tela de notificações.
   if (novos.length > 3) {
     await notificar(`Dairus: ${novos.length} avisos`, novos.slice(0, 4).map((a) => `• ${a.titulo}`).join("\n"));
