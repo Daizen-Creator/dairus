@@ -747,6 +747,7 @@ dependencies = [
  "aes-gcm",
  "anyhow",
  "argon2",
+ "base64 0.22.1",
  "chrono",
  "log",
  "rusqlite",

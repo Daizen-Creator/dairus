@@ -38,3 +38,9 @@ skills-lock.json
 /src-tauri/gen/android
 /src-tauri/gen/apple
 prints-teste/
+
+# Chaves e certificados
+*.pem
+*.key
+*.pfx
+*.p12

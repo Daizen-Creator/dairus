@@ -20,12 +20,29 @@ async function derivar(pin: string, saltHex: string): Promise<string> {
   return paraHex(bits);
 }
 
+/** Erros seguidos livres; depois, espera que dobra a cada erro (1 min → 1 h). Igual ao limite da senha do banco. */
+export const PIN_TENTATIVAS_LIVRES = 5;
+export function esperaDoPin(falhas: number): number {
+  if (falhas < PIN_TENTATIVAS_LIVRES) return 0;
+  return Math.min(3600, 60 * 2 ** Math.min(10, falhas - PIN_TENTATIVAS_LIVRES));
+}
+
+/** Compara sem parar no primeiro caractere diferente. */
+export function iguaisTempoConstante(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let dif = 0;
+  for (let i = 0; i < a.length; i++) dif |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return dif === 0;
+}
+
 interface SegurancaState {
   carregado: boolean;
   pinAtivo: boolean;
   bloqueado: boolean;
   minutosInatividade: number;
   falhas: number;
+  /** Momento (ms) até quando o PIN não é aceito. */
+  bloqueadoAte: number;
   inicializar: () => Promise<void>;
   definirPin: (pin: string) => Promise<void>;
   removerPin: (pin: string) => Promise<boolean>;
@@ -40,18 +57,24 @@ export const useSegurancaStore = create<SegurancaState>((set, get) => ({
   bloqueado: false,
   minutosInatividade: 5,
   falhas: 0,
+  bloqueadoAte: 0,
 
   async inicializar() {
     const hash = await lerPreferencia<string>("pin_hash");
     const minutos = (await lerPreferencia<number>("pin_minutos")) ?? 5;
-    set({ carregado: true, pinAtivo: !!hash, bloqueado: !!hash, minutosInatividade: minutos });
+    // Falhas gravadas: fechar e abrir o app não zera a contagem.
+    const falhas = (await lerPreferencia<number>("pin_falhas")) ?? 0;
+    const bloqueadoAte = (await lerPreferencia<number>("pin_bloqueado_ate")) ?? 0;
+    set({ carregado: true, pinAtivo: !!hash, bloqueado: !!hash, minutosInatividade: minutos, falhas, bloqueadoAte });
   },
 
   async definirPin(pin) {
     const salt = paraHex(crypto.getRandomValues(new Uint8Array(16)).buffer);
     await salvarPreferencia("pin_salt", salt);
     await salvarPreferencia("pin_hash", await derivar(pin, salt));
-    set({ pinAtivo: true, bloqueado: false, falhas: 0 });
+    await salvarPreferencia("pin_falhas", 0);
+    await salvarPreferencia("pin_bloqueado_ate", 0);
+    set({ pinAtivo: true, bloqueado: false, falhas: 0, bloqueadoAte: 0 });
   },
 
   async removerPin(pin) {
@@ -66,8 +89,14 @@ export const useSegurancaStore = create<SegurancaState>((set, get) => ({
     const hash = await lerPreferencia<string>("pin_hash");
     const salt = await lerPreferencia<string>("pin_salt");
     if (!hash || !salt) return true;
-    const ok = (await derivar(pin, salt)) === hash;
-    set(ok ? { bloqueado: false, falhas: 0 } : { falhas: get().falhas + 1 });
+    if (Date.now() < get().bloqueadoAte) return false;
+    const ok = iguaisTempoConstante(await derivar(pin, salt), hash);
+    const falhas = ok ? 0 : get().falhas + 1;
+    const espera = esperaDoPin(falhas);
+    const bloqueadoAte = espera ? Date.now() + espera * 1000 : 0;
+    await salvarPreferencia("pin_falhas", falhas);
+    await salvarPreferencia("pin_bloqueado_ate", bloqueadoAte);
+    set(ok ? { bloqueado: false, falhas: 0, bloqueadoAte: 0 } : { falhas, bloqueadoAte });
     return ok;
   },
 

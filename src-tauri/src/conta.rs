@@ -134,7 +134,7 @@ fn abrir_cifrado(
 pub fn abrir_conta_com_senha(app: AppHandle, state: State<AppState>, usuario_id: String, senha: String) -> Res<()> {
     let id = id_valido(&usuario_id)?.to_string();
     let bytes = std::fs::read(caminho_cripto(&app, &id)?).map_err(|_| "Banco criptografado não encontrado.".to_string())?;
-    let (chaves, texto) = crate::cripto::abrir_com_senha(&bytes, &senha)?;
+    let (chaves, texto) = crate::limitador::tentar(&app, &format!("senha:{id}"), crate::limitador::erro_de_senha, || crate::cripto::abrir_com_senha(&bytes, &senha))?;
     abrir_cifrado(&app, &state, id, chaves, &texto, &senha)
 }
 
@@ -144,7 +144,7 @@ pub fn recuperar_conta_com_codigo(app: AppHandle, state: State<AppState>, usuari
     crate::cripto::validar_senha(&nova_senha)?;
     let id = id_valido(&usuario_id)?.to_string();
     let bytes = std::fs::read(caminho_cripto(&app, &id)?).map_err(|_| "Banco criptografado não encontrado.".to_string())?;
-    let (chaves, texto) = crate::cripto::abrir_com_codigo(&bytes, &codigo)?;
+    let (chaves, texto) = crate::limitador::tentar(&app, &format!("codigo:{id}"), crate::limitador::erro_de_senha, || crate::cripto::abrir_com_codigo(&bytes, &codigo))?;
     let chaves = chaves.com_nova_senha(&nova_senha)?;
     abrir_cifrado(&app, &state, id, chaves, &texto, &nova_senha)
 }
@@ -186,9 +186,9 @@ pub fn desativar_criptografia(app: AppHandle, state: State<AppState>, senha: Str
     if !crate::cripto::ativa() {
         return Err("A criptografia não está ligada.".into());
     }
-    if !crate::cripto::senha_confere(&senha) {
-        return Err("Senha incorreta.".into());
-    }
+    crate::limitador::tentar(&app, &format!("senha:{id}"), crate::limitador::erro_de_senha, || {
+        if crate::cripto::senha_confere(&senha) { Ok(()) } else { Err("Senha incorreta.".to_string()) }
+    })?;
     if let Ok(pasta) = crate::extras::pasta_dairus(&app, "Backups") {
         crate::cripto::converter_backups(&pasta, false);
     }
@@ -208,9 +208,10 @@ pub fn desativar_criptografia(app: AppHandle, state: State<AppState>, senha: Str
 }
 
 #[tauri::command]
-pub fn trocar_senha_banco(state: State<AppState>, atual: String, nova: String) -> Res<()> {
+pub fn trocar_senha_banco(app: AppHandle, state: State<AppState>, atual: String, nova: String) -> Res<()> {
+    let id = USUARIO_ATUAL.lock().expect("mutex envenenado").clone().unwrap_or_default();
     let conn = state.conn.lock().expect("mutex envenenado");
-    crate::cripto::trocar_senha(&conn, &atual, &nova)
+    crate::limitador::tentar(&app, &format!("senha:{id}"), crate::limitador::erro_de_senha, || crate::cripto::trocar_senha(&conn, &atual, &nova))
 }
 
 #[tauri::command]
@@ -286,6 +287,19 @@ fn escapar_html(texto: &str) -> String {
     texto.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")
 }
 
+/// Único script da página de retorno (contagem e fechar a aba). A CSP só libera
+/// exatamente este texto, pelo hash SHA-256.
+const SCRIPT_FECHAR: &str = "let n=8;const e=document.getElementById('s');const t=setInterval(()=>{n--;if(e)e.textContent=n;if(n<=0){clearInterval(t);window.close();}},1000);";
+
+/// Content-Security-Policy da página de retorno: nada de rede, nada de frames,
+/// só o estilo embutido, imagens em data URI e o script acima.
+fn csp_retorno() -> String {
+    use base64::Engine;
+    use sha2::Digest;
+    let hash = base64::engine::general_purpose::STANDARD.encode(sha2::Sha256::digest(SCRIPT_FECHAR.as_bytes()));
+    format!("default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'sha256-{hash}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+}
+
 /// Página mostrada no navegador depois do login (sucesso ou erro).
 pub fn pagina_retorno(ok: bool, detalhe: Option<&str>) -> String {
     let logo = svg_em_data_uri(LOGO_SVG);
@@ -300,11 +314,7 @@ pub fn pagina_retorno(ok: bool, detalhe: Option<&str>) -> String {
     } else {
         "<ol><li>Confira se escolheu a conta Google certa.</li><li>Se o navegador bloqueou pop-ups ou cookies, libere para accounts.google.com.</li><li>Tente de novo pelo Dairus.</li></ol>"
     };
-    let script = if ok {
-        "<script>let n=8;const e=document.getElementById('s');const t=setInterval(()=>{n--;if(e)e.textContent=n;if(n<=0){clearInterval(t);window.close();}},1000);</script>"
-    } else {
-        ""
-    };
+    let script = if ok { format!("<script>{SCRIPT_FECHAR}</script>") } else { String::new() };
     format!(
         r#"<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{titulo} · Dairus</title><link rel="icon" type="image/svg+xml" href="{logo}">
@@ -329,12 +339,43 @@ ol{{text-align:left;margin:22px 0 0;padding:16px 16px 16px 36px;border-radius:14
 }
 
 fn responder(stream: &mut std::net::TcpStream, status: &str, corpo: &str) {
-    let resposta = format!(
-        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{corpo}",
-        corpo.len()
-    );
+    let resposta = format!("HTTP/1.1 {status}\r\n{}Content-Length: {}\r\nConnection: close\r\n\r\n{corpo}", cabecalhos_seguros(), corpo.len());
     let _ = stream.write_all(resposta.as_bytes());
     let _ = stream.flush();
+}
+
+/// Cabeçalhos de segurança de toda resposta do servidor local: a URL tem o código
+/// de login, então nada de cache, de Referer, de frames nem de adivinhar o tipo.
+fn cabecalhos_seguros() -> String {
+    format!(
+        "Content-Type: text/html; charset=utf-8\r\nContent-Security-Policy: {}\r\nX-Frame-Options: DENY\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nCache-Control: no-store, max-age=0\r\nPragma: no-cache\r\nCross-Origin-Opener-Policy: same-origin\r\nCross-Origin-Resource-Policy: same-origin\r\nPermissions-Policy: camera=(), microphone=(), geolocation=()\r\n",
+        csp_retorno()
+    )
+}
+
+/// Código de login aceito: o do Supabase (UUID), com folga, mas só caracteres seguros.
+fn codigo_valido(codigo: &str) -> bool {
+    (8..=512).contains(&codigo.len()) && codigo.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.')
+}
+
+/// Só aceita o retorno quando é o navegador abrindo a página (navegação GET),
+/// não um `fetch`/imagem disparado por outro site para atrapalhar o login.
+fn pedido_de_navegacao(pedido: &str) -> bool {
+    let mut linhas = pedido.lines();
+    if !linhas.next().is_some_and(|l| l.starts_with("GET ")) {
+        return false;
+    }
+    for linha in linhas {
+        let Some((nome, valor)) = linha.split_once(':') else { continue };
+        let (nome, valor) = (nome.trim().to_ascii_lowercase(), valor.trim().to_ascii_lowercase());
+        if nome == "sec-fetch-dest" && valor != "document" {
+            return false;
+        }
+        if nome == "sec-fetch-mode" && valor != "navigate" {
+            return false;
+        }
+    }
+    true
 }
 
 /// Depois do login, traz a janela do Dairus para a frente (o usuário estava no navegador).
@@ -372,8 +413,14 @@ pub async fn aguardar_retorno_login(app: AppHandle) -> Res<String> {
                         responder(&mut stream, "404 Not Found", "");
                         continue;
                     };
+                    if !pedido_de_navegacao(&pedido) {
+                        // Outro site/programa tentando cancelar ou injetar o login: ignora e continua esperando.
+                        log::warn!("retorno de login ignorado: não é uma navegação do navegador");
+                        responder(&mut stream, "403 Forbidden", "");
+                        continue;
+                    }
                     let query = resto.strip_prefix('?').unwrap_or("");
-                    if let Some(codigo) = parametro(query, "code") {
+                    if let Some(codigo) = parametro(query, "code").filter(|c| codigo_valido(c)) {
                         responder(&mut stream, "200 OK", &pagina_retorno(true, None));
                         trazer_para_frente(&app);
                         return Ok(codigo);
@@ -426,9 +473,23 @@ mod testes {
         assert!(ok.contains("rel=\"icon\""));
         assert!(ok.contains("data:image/svg+xml,"));
         assert!(ok.contains("Login concluído"));
+        assert!(csp_retorno().contains("script-src 'sha256-"));
+        assert!(cabecalhos_seguros().contains("X-Frame-Options: DENY"));
         let erro = pagina_retorno(false, Some("<script>x</script>"));
         assert!(erro.contains("&lt;script&gt;"));
         assert!(!erro.contains("<script>x"));
+    }
+
+    #[test]
+    fn so_aceita_navegacao_e_codigo_seguro() {
+        assert!(pedido_de_navegacao("GET /callback?code=a HTTP/1.1\r\nHost: x\r\nSec-Fetch-Dest: document\r\nSec-Fetch-Mode: navigate\r\n"));
+        assert!(pedido_de_navegacao("GET /callback?code=a HTTP/1.1\r\nHost: x\r\n"));
+        assert!(!pedido_de_navegacao("GET /callback?error=x HTTP/1.1\r\nSec-Fetch-Dest: image\r\n"));
+        assert!(!pedido_de_navegacao("GET /callback?error=x HTTP/1.1\r\nSec-Fetch-Mode: no-cors\r\n"));
+        assert!(!pedido_de_navegacao("POST /callback HTTP/1.1\r\n"));
+        assert!(codigo_valido("aa3c42b7-b468-48f9-bbc1-97f3673a419e"));
+        assert!(!codigo_valido("abc"));
+        assert!(!codigo_valido("aa3c42b7<script>-b468-48f9"));
     }
 }
 

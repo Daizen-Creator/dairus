@@ -1,0 +1,5 @@
+# Avisos aceitos (não são vulnerabilidades exploráveis no Dairus):
+# - RUSTSEC-2024-0370: proc-macro-error sem manutenção (só em tempo de compilação, via gtk).
+# - RUSTSEC-2024-0429: glib, usado só na versão Linux do Tauri; o app é distribuído para Windows.
+[advisories]
+ignore = ["RUSTSEC-2024-0370", "RUSTSEC-2024-0429"]

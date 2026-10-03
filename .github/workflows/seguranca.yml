@@ -1,0 +1,51 @@
+name: Segurança
+
+# Procura vulnerabilidades conhecidas nas bibliotecas (npm e Rust) e segredos
+# vazados no código. Roda a cada push, em pull requests e todo dia (bibliotecas
+# ganham alertas novos mesmo sem o código mudar).
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  npm:
+    name: Bibliotecas do app (npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      # Falha só com gravidade alta/crítica nas bibliotecas que vão no app.
+      - run: npm audit --omit=dev --audit-level=high
+
+  rust:
+    name: Bibliotecas do motor (cargo audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Instalar cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: cargo audit
+        working-directory: src-tauri
+        run: cargo audit
+
+  segredos:
+    name: Segredos no código (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
