@@ -39,6 +39,8 @@ import { calcularCiclo } from "./ciclo";
 import { NovaContaForm } from "./NovaContaForm";
 import { dividirEmParcelas, parcelamentoDe } from "./parcelas";
 import { DetalhesCartao } from "./DetalhesCartao";
+import { FerramentasCartao } from "./FerramentasCartao";
+import { PainelConta } from "./PainelConta";
 import { ciclosFechados } from "./faturas";
 import { cartoes as servicoCartoes, type Adicional, type Fatura } from "../../services/cartoes";
 import type { Conta, Lancamento } from "../../types/accounting";
@@ -48,7 +50,7 @@ const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "O
 
 type Ordem = "NOME" | "FATURA" | "USO";
 
-interface CompraCartao {
+export interface CompraCartao {
   l: Lancamento;
   /** Data em que o valor entra na fatura (para parcelas, o mês de cada uma). */
   data: string;
@@ -96,6 +98,8 @@ export function CartoesPage() {
   const [comprando, setComprando] = useState<string | null>(null);
   const [cp, setCp] = useState({ descricao: "", valor: "", categoriaId: "despesa-outras", parcelas: "1", portador: "" });
   const [detalhe, setDetalhe] = useState<string | null>(null);
+  const [coresCartoes] = usePreferencia<Record<string, string>>("cores_contas", {});
+  const [tetos] = usePreferencia<Record<string, number>>("teto_cartoes", {});
 
   useAoAlterarDados(() => {
     carregar().catch(() => {});
@@ -370,9 +374,9 @@ export function CartoesPage() {
         key={cartao.id}
         className="rounded-xl border bg-cartao p-4"
         style={{
-          borderColor: "color-mix(in srgb, #f43f5e 40%, transparent)",
-          backgroundImage: "linear-gradient(135deg, color-mix(in srgb, #f43f5e 14%, transparent), transparent 60%)",
-          boxShadow: "0 8px 24px -16px #f43f5e",
+          borderColor: `color-mix(in srgb, ${coresCartoes[cartao.id] ?? "#f43f5e"} 40%, transparent)`,
+          backgroundImage: `linear-gradient(135deg, color-mix(in srgb, ${coresCartoes[cartao.id] ?? "#f43f5e"} 14%, transparent), transparent 60%)`,
+          boxShadow: `0 8px 24px -16px ${coresCartoes[cartao.id] ?? "#f43f5e"}`,
         }}
       >
         <div className="flex items-start justify-between gap-2">
@@ -453,6 +457,11 @@ export function CartoesPage() {
             </p>
           </div>
         </div>
+        {tetos[cartao.id] !== undefined && d.atual > tetos[cartao.id] * 0.8 && (
+          <p className={`mt-2 flex items-center gap-1 text-xs font-medium ${d.atual > tetos[cartao.id] ? "text-erro" : "text-alerta"}`}>
+            <TriangleAlert size={12} /> {d.atual > tetos[cartao.id] ? "Passou do teto" : "Perto do teto"} de {dinheiro(tetos[cartao.id])} nesta fatura
+          </p>
+        )}
         {d.futuras > 0 && (
           <p className="mt-2 text-[11px] text-texto-secundario">
             Parcelas das próximas faturas: <strong className="text-texto-primario">{dinheiro(d.futuras)}</strong> (já ocupam o limite)
@@ -549,6 +558,8 @@ export function CartoesPage() {
               dinheiro={dinheiro}
               onAlterado={carregar}
             />
+            <FerramentasCartao cartao={cartao} compras={d.compras} atual={Math.max(0, d.atual)} dinheiro={dinheiro} onAlterado={carregar} />
+            <PainelConta conta={cartao} outras={todos.filter((x) => x.id !== cartao.id)} lancamentos={lancamentos} dinheiro={dinheiro} rotulo="cartão" onAlterado={() => { setDetalhe(null); carregar(); }} />
             {d.compras.length === 0 ? (
               <p className="text-xs text-texto-secundario">Nenhuma compra neste cartão ainda.</p>
             ) : (

@@ -102,7 +102,7 @@ export function PainelConta({ conta, outras, lancamentos, dinheiro, onAlterado, 
       const cat = todas.find((c) => c.tipo === "DESPESA" && c.nome.toLowerCase() === "tarifas bancárias")?.id ?? (await extras.criarCategoria("Tarifas bancárias", "DESPESA"));
       const base = `${hoje.slice(0, 8)}${String(dia).padStart(2, "0")}`;
       const venc = base >= hoje ? base : new Date(Date.UTC(+hoje.slice(0, 4), +hoje.slice(5, 7), dia)).toISOString().slice(0, 10);
-      await contabilidade.criarAgendamento({ descricao: `Tarifa — ${conta.nome}`, valor_centavos: v, vencimento: venc, categoria_despesa_id: cat, recorrencia: "MENSAL", etiqueta: "FIXO", tipo: "PAGAR", automatico: true, conta_id: conta.id });
+      await contabilidade.criarAgendamento({ descricao: `${conta.tipo === "ATIVO" ? "Tarifa" : "Anuidade"} — ${conta.nome}`, valor_centavos: v, vencimento: venc, categoria_despesa_id: cat, recorrencia: "MENSAL", etiqueta: "FIXO", tipo: "PAGAR", automatico: true, conta_id: conta.id });
     }, "Tarifa mensal agendada: será lançada sozinha todo mês.");
     setTarifa({ ...tarifa, valor: "" });
   }
@@ -211,29 +211,31 @@ export function PainelConta({ conta, outras, lancamentos, dinheiro, onAlterado, 
 
       {aba === "mais" && (
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-1.5">
+          {conta.tipo === "ATIVO" && <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-texto-secundario">Avisar quando o saldo ficar abaixo de</span>
             <input value={minimo} onChange={(e) => setMinimo(e.target.value)} inputMode="decimal" placeholder="R$" aria-label="Saldo mínimo" className={`${CLASSE_INPUT} w-24 py-1`} />
             <Button tamanho="pequeno" variante="secundaria" onClick={() => { const m = { ...minimos }; if (minimo.trim()) m[conta.id] = valorInputParaCentavos(minimo); else delete m[conta.id]; setMinimos(m); toast.success(minimo.trim() ? "Alerta de saldo mínimo salvo." : "Alerta removido."); }}>Salvar</Button>
-          </div>
+          </div>}
           <div className="flex flex-wrap items-center gap-1.5">
             <Palette size={13} className="text-texto-secundario" />
             {CORES.map((c) => <button key={c} onClick={() => setCores({ ...cores, [conta.id]: c })} aria-label={`Cor ${c}`} className={`h-5 w-5 rounded-full border-2 ${cores[conta.id] === c ? "border-texto-primario" : "border-transparent"}`} style={{ background: c }} />)}
             {cores[conta.id] && <button onClick={() => { const n = { ...cores }; delete n[conta.id]; setCores(n); }} className="text-texto-secundario hover:underline">padrão</button>}
           </div>
-          {conta.tipo === "ATIVO" && (
+          {(conta.tipo === "ATIVO" || conta.subtipo === "CARTAO_CREDITO") && (
             <>
+              {conta.tipo === "ATIVO" && (
               <div className="flex flex-wrap items-center gap-1.5">
                 <PiggyBank size={13} className="text-texto-secundario" />
                 <input value={rendimento} onChange={(e) => setRendimento(e.target.value)} inputMode="decimal" placeholder="Rendimento (R$)" aria-label="Rendimento" className={`${CLASSE_INPUT} w-28 py-1`} />
                 <Button tamanho="pequeno" variante="secundaria" onClick={lancarRendimento}>Lançar rendimento</Button>
               </div>
+              )}
               <div className="flex flex-wrap items-center gap-1.5">
                 <ReceiptText size={13} className="text-texto-secundario" />
-                <input value={tarifa.valor} onChange={(e) => setTarifa({ ...tarifa, valor: e.target.value })} inputMode="decimal" placeholder="Tarifa mensal (R$)" aria-label="Tarifa mensal" className={`${CLASSE_INPUT} w-32 py-1`} />
+                <input value={tarifa.valor} onChange={(e) => setTarifa({ ...tarifa, valor: e.target.value })} inputMode="decimal" placeholder={conta.tipo === "ATIVO" ? "Tarifa mensal (R$)" : "Anuidade mensal (R$)"} aria-label="Tarifa mensal" className={`${CLASSE_INPUT} w-32 py-1`} />
                 <span className="text-texto-secundario">dia</span>
                 <input value={tarifa.dia} onChange={(e) => setTarifa({ ...tarifa, dia: e.target.value })} inputMode="numeric" aria-label="Dia da tarifa" className={`${CLASSE_INPUT} w-12 py-1`} />
-                <Button tamanho="pequeno" variante="secundaria" onClick={agendarTarifa}>Agendar tarifa</Button>
+                <Button tamanho="pequeno" variante="secundaria" onClick={agendarTarifa}>{conta.tipo === "ATIVO" ? "Agendar tarifa" : "Agendar anuidade"}</Button>
               </div>
             </>
           )}

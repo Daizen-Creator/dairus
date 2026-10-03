@@ -9,6 +9,7 @@ import { useSegurancaStore } from "../../state/seguranca-store";
 import { lerEstadoLocal, pendenteDeEnvio, sincronizar } from "../../services/sincronizacao";
 import { toast } from "sonner";
 import { EVENTO_CONFLITO } from "./AvisoSincronizacao";
+import type { Conta, Lancamento } from "../../types/accounting";
 
 const INTERVALO_AVISOS = 30 * 60_000;
 const INTERVALO_SYNC = 5 * 60_000;
@@ -49,6 +50,24 @@ async function avisosDeInvestimentos(hoje: string) {
 }
 
 /** Verifica os avisos agora: manda ao Windows os que ainda não foram mostrados hoje e atualiza a bandeja. */
+/** Cartões com teto de gasto: avisa ao passar de 80% e de 100% na fatura aberta. */
+async function avisosDeTeto(hoje: string, contas: Conta[], lancamentos: Lancamento[]) {
+  const tetos = (await lerPreferencia<Record<string, number>>("teto_cartoes")) ?? {};
+  if (!Object.keys(tetos).length) return [];
+  const { comprasDoCartao } = await import("../../features/contas/CartoesPage");
+  const { calcularCiclo } = await import("../../features/contas/ciclo");
+  const porId = new Map(contas.map((c) => [c.id, c]));
+  const avisos = [];
+  for (const c of contas.filter((x) => tetos[x.id] !== undefined && x.ativa)) {
+    const ciclo = calcularCiclo(c.dia_fechamento_fatura ?? 1, c.dia_vencimento_fatura ?? 10, hoje);
+    const gasto = comprasDoCartao(c, lancamentos, porId).filter((x) => x.data >= ciclo.inicioAtual && x.data <= ciclo.proximoFechamento).reduce((s, x) => s + x.valor, 0);
+    const teto = tetos[c.id];
+    if (gasto > teto) avisos.push({ id: `teto100-${c.id}-${ciclo.proximoFechamento}`, titulo: `${c.nome}: passou do teto`, corpo: `Fatura aberta com ${(gasto / 100).toFixed(2).replace(".", ",")} (teto ${(teto / 100).toFixed(2).replace(".", ",")}).` });
+    else if (gasto > teto * 0.8) avisos.push({ id: `teto80-${c.id}-${ciclo.proximoFechamento}`, titulo: `${c.nome}: 80% do teto`, corpo: `Fatura aberta com ${(gasto / 100).toFixed(2).replace(".", ",")} de ${(teto / 100).toFixed(2).replace(".", ",")}.` });
+  }
+  return avisos;
+}
+
 export async function verificarAvisosAgora(): Promise<number> {
   const hoje = dataAtualISO();
   // Receitas e contas marcadas como "lançar sozinho" que já chegaram no dia.
@@ -138,6 +157,7 @@ export async function verificarAvisosAgora(): Promise<number> {
     ...(await avisosDeInvestimentos(hoje)),
     ...(await avisosDePlanejamento(hoje).catch(() => [])),
     ...(await rel.avisosDeRelatorios(hoje).catch(() => [])),
+    ...(await avisosDeTeto(hoje, contas, lancamentos).catch(() => [])),
     ...(await import("../../features/contas/ferramentasContas").then(async (m) =>
       m.abaixoDoMinimo(contas, (await lerPreferencia<Record<string, number>>("saldo_minimo_contas")) ?? {}).map((x) => ({
         id: `minimo-${x.conta.id}`,
