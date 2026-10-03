@@ -58,7 +58,7 @@ const CHAVES_EXPORTAVEIS = [
   "meta_sobra", "meta_arredondar", "meta_lembrete", "desafios", "categorias_superfluas",
   "resumo_semanal", "resumo_semanal_ia", "pdf_mensal_auto", "pdf_mensal_nuvem", "pdf_secoes", "diagnostico_ia_auto",
   "tema_auto_horario", "verificacao_semanal", "dashboard_coluna_recolhida", "avisos_grupos_desligados", "dias_aviso_contas",
-  "avisos_silencio", "menu_oculto", "ui_compacto", "widgets_inicio", "atalhos_inicio", "necessidades", "teto_cartoes", "cores_contas",
+  "avisos_silencio", "menu_oculto", "ui_compacto", "widgets_inicio", "widgets_tamanhos", "widgets_layout", "widget_contagem", "atalhos_inicio", "necessidades", "teto_cartoes", "cores_contas",
 ];
 
 export function ConfiguracoesPage() {

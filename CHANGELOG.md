@@ -5,6 +5,9 @@ mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 
 ## Próxima versão
 
+- Início: "Editar layout" direto na tela: arraste os widgets para mudar a ordem, escolha o tamanho (P, M ou G = linha inteira), remova e adicione na hora.
+- Temas e aparência → nova aba "Widgets e layout": 6 modelos prontos (Padrão, Contas em dia, Economizar, Investidor, Minimalista, Painel completo), colunas (2, 3 ou 4), espaço entre widgets, prévia ao vivo e lista para ordenar com o mouse ou as setas.
+- 13 widgets novos: contas a pagar (7 dias), orçamento do mês, maiores gastos, últimos lançamentos, saldos das contas, patrimônio líquido, reserva de emergência, quanto sobrou no mês, calendário do mês, dólar e euro, contagem regressiva (salário ou data), calculadora e dica do dia.
 - Correção importante: "Reiniciar e atualizar" e "instalar ao fechar" fechavam o Dairus sem instalar a versão nova. Agora o instalador é aberto direto e reabre o app no fim.
 - Tela de atualização: ao abrir o Dairus com versão nova, mostra baixando (MB, velocidade e tempo restante), conferindo, backup, instalando e reiniciando, bloqueando o app enquanto atualiza. Em caso de falha, mensagem clara com "Tentar de novo", "Baixar pelo site" ou "Continuar sem atualizar"; e, se a instalação não terminar, o app avisa na abertura seguinte.
 - Segurança: limite de tentativas gravado para senha do banco, código de recuperação e PIN (pausa de 1 min a 1 h), página de login local com cabeçalhos de segurança e só aceitando o navegador, validação dos lançamentos, teste contra SQL injection e auditoria automática de bibliotecas e segredos.

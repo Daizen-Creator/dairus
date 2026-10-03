@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import { Brush, LayoutPanelLeft, Palette, Sparkles, Type, Wallpaper } from "lucide-react";
+import { Brush, LayoutGrid, LayoutPanelLeft, Palette, Sparkles, Type, Wallpaper } from "lucide-react";
 import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { AlertaContraste } from "../aparencia/AlertaContraste";
 import { PainelFundo } from "../aparencia/PainelFundo";
 import { PainelMenu } from "../aparencia/PainelMenu";
 import { PainelPredefinicoes } from "../aparencia/PainelPredefinicoes";
 import { PainelTexto } from "../aparencia/PainelTexto";
+import { PainelWidgets } from "../aparencia/PainelWidgets";
 import { toast } from "sonner";
 import { useThemeStore } from "../../state/theme-store";
 import { Button } from "../../components/ui/Button";
@@ -270,9 +271,9 @@ function ListaTemas() {
   );
 }
 
-type AbaAparencia = "predefinicoes" | "temas" | "fundo" | "menu" | "texto";
+type AbaAparencia = "predefinicoes" | "temas" | "fundo" | "menu" | "texto" | "widgets";
 
-/** Temas e aparência: predefinições, temas de cores, fundo, menu e texto/formas. Tudo muda na hora. */
+/** Temas e aparência: predefinições, temas de cores, fundo, menu, texto/formas e widgets do Início. Tudo muda na hora. */
 export function TemasPage() {
   const [aba, setAba] = useAbaDaPagina<AbaAparencia>("temas", "predefinicoes");
   return (
@@ -290,6 +291,7 @@ export function TemasPage() {
           { id: "fundo", rotulo: "Fundo", icone: Wallpaper },
           { id: "menu", rotulo: "Menu", icone: LayoutPanelLeft },
           { id: "texto", rotulo: "Texto e formas", icone: Type },
+          { id: "widgets", rotulo: "Widgets e layout", icone: LayoutGrid },
         ]}
       />
       <AlertaContraste />
@@ -298,6 +300,7 @@ export function TemasPage() {
       {aba === "fundo" && <PainelFundo />}
       {aba === "menu" && <PainelMenu />}
       {aba === "texto" && <PainelTexto />}
+      {aba === "widgets" && <PainelWidgets />}
     </div>
   );
 }

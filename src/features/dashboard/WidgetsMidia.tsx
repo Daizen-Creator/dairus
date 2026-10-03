@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Clock, Film, Image as ImageIcon, Maximize2, Minimize2, Pause, Play, Plus, Settings2, Trash2, Volume2, VolumeX, Wallpaper } from "lucide-react";
 import { toast } from "sonner";
 import { usePreferencia } from "../../state/usePreferencia";
+import { useWidgetsStore } from "../../state/widgets-store";
 import { useAparenciaStore } from "../../state/aparencia-store";
 import { apagarMidia, listarMidias, salvarMidia, urlDaMidia, type InfoMidia } from "../aparencia/midia";
 
@@ -9,7 +10,7 @@ import { apagarMidia, listarMidias, salvarMidia, urlDaMidia, type InfoMidia } fr
 function Moldura({ titulo, icone: Icone, largo, onLargo, ajustes, children, semPadding = false }: { titulo: string; icone: typeof Clock; largo: boolean; onLargo: () => void; ajustes?: React.ReactNode; children: React.ReactNode; semPadding?: boolean }) {
   const [abrirAjustes, setAbrirAjustes] = useState(false);
   return (
-    <div className={`flex flex-col overflow-hidden rounded-xl border border-borda bg-cartao ${largo ? "sm:col-span-2" : ""}`}>
+    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-borda bg-cartao">
       <div className="flex items-center justify-between gap-2 px-3 pt-2.5">
         <p className="flex items-center gap-1.5 text-xs font-semibold text-texto-secundario"><Icone size={13} className="text-primaria" /> {titulo}</p>
         <span className="flex items-center gap-1">
@@ -23,9 +24,11 @@ function Moldura({ titulo, icone: Icone, largo, onLargo, ajustes, children, semP
   );
 }
 
-function useLargo(id: string): [boolean, () => void] {
-  const [largos, setLargos] = usePreferencia<string[]>("widgets_largos", []);
-  return [largos.includes(id), () => setLargos(largos.includes(id) ? largos.filter((x) => x !== id) : [...largos, id])];
+/** Largo = ocupa 2 ou mais colunas (o mesmo tamanho do "Editar layout" do Início). */
+function useLargo(id: "relogio" | "fotos" | "video"): [boolean, () => void] {
+  const tamanho = useWidgetsStore((s) => s.tamanhoDe(id));
+  const definir = useWidgetsStore((s) => s.definirTamanho);
+  return [tamanho >= 2, () => definir(id, tamanho >= 2 ? 1 : 2)];
 }
 
 // ---------------------------------------------------------------------------

@@ -339,7 +339,7 @@ export function DashboardPage() {
               cor="destaque"
             />
           </div>
-          <WidgetsInicio contas={contas} lancamentos={lancamentos} agendamentos={agendamentos} metas={metas} hoje={hoje} dinheiro={dinheiro} />
+          <WidgetsInicio contas={contas} lancamentos={lancamentos} agendamentos={agendamentos} metas={metas} orcamentos={orcamentos} hoje={hoje} dinheiro={dinheiro} />
 
           </>)}
 
