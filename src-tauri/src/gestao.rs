@@ -54,7 +54,7 @@ pub fn uso_da_conta_db(conn: &Connection, id: &str) -> Res<UsoDaConta> {
 }
 
 /// Apaga lançamentos inteiros (com estornos e correções ligados a eles) e solta as referências.
-fn apagar_lancamentos(conn: &Connection, iniciais: Vec<String>) -> Res<usize> {
+pub(crate) fn apagar_lancamentos(conn: &Connection, iniciais: Vec<String>) -> Res<usize> {
     let mut todos: HashSet<String> = iniciais.into_iter().collect();
     // Estornos/correções apontam para o original com RESTRICT: entram juntos.
     loop {

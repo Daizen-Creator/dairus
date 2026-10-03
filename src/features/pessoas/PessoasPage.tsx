@@ -13,6 +13,7 @@ import { planejamento, type AReceber } from "../../services/planejamento";
 import { usePreferencia } from "../../state/usePreferencia";
 import { avisarDadosAlterados } from "../../state/useAoAlterarDados";
 import type { Conta } from "../../types/accounting";
+import { AbaEuDevo, AbaHistoricoPessoas, AcoesItem, AcoesPessoa } from "./ExtrasPessoas";
 
 /** Divide `total` igualmente entre `n` pessoas; os centavos que sobram ficam com as primeiras. */
 export function dividirIgual(total: number, n: number): number[] {
@@ -29,7 +30,7 @@ export function mensagemCobranca(pessoa: string, itens: AReceber[], chavePix: st
 }
 
 export function PessoasPage() {
-  const [secao, setSecao] = useAbaDaPagina<"devem" | "dividir">("pessoas", "devem");
+  const [secao, setSecao] = useAbaDaPagina<"devem" | "dividir" | "devo" | "historico">("pessoas", "devem");
   const [contas, setContas] = useState<Conta[]>([]);
   const [itens, setItens] = useState<AReceber[]>([]);
   const [chavePix, setChavePix] = usePreferencia<string>("chave_pix", "");
@@ -102,7 +103,10 @@ export function PessoasPage() {
   return (
     <div className="space-y-4">
       <h1 className="flex items-center gap-2 text-xl font-semibold text-texto-primario"><Users size={22} className="text-primaria" /> Pessoas e divisões</h1>
-      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "devem", rotulo: "Quem me deve", icone: HandCoins, contador: porPessoa.size }, { id: "dividir", rotulo: "Rachar uma conta ou emprestar", icone: Users }]} />
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "devem", rotulo: "Quem me deve", icone: HandCoins, contador: porPessoa.size }, { id: "dividir", rotulo: "Rachar uma conta ou emprestar", icone: Users }, { id: "devo", rotulo: "Eu devo", icone: HandCoins }, { id: "historico", rotulo: "Histórico", icone: Users }]} />
+
+      {secao === "devo" && <AbaEuDevo contas={contas} />}
+      {secao === "historico" && <AbaHistoricoPessoas itens={itens} />}
 
       {secao === "dividir" && <FormDivisao contas={contas} contasAtivas={contasAtivas} onFeito={() => { carregar(); setSecao("devem"); avisarDadosAlterados(); }} />}
 
@@ -129,10 +133,11 @@ export function PessoasPage() {
                       {lista.map((i) => (
                         <li key={i.id} className="flex items-center justify-between gap-2">
                           <label className="flex items-center gap-2"><input type="checkbox" checked={selecionados.has(i.id)} onChange={() => setSelecionados((s) => { const n = new Set(s); if (n.has(i.id)) n.delete(i.id); else n.add(i.id); return n; })} className="h-4 w-4 accent-[var(--cor-primaria)]" />{i.descricao} <span className="text-xs text-texto-secundario">· {formatarDataISOParaBR(i.data)}</span></label>
-                          <span className="flex items-center gap-2 tabular-nums">{formatarCentavos(i.valor_centavos)}<button onClick={() => perdoar(i.id)} title="Perdoar (vira despesa)" aria-label={`Perdoar ${i.descricao}`} className="text-texto-secundario hover:text-erro"><Trash2 size={12} /></button></span>
+                          <span className="flex items-center gap-2 tabular-nums"><AcoesItem item={i} contaId={contaReceber || destinos[0]?.id || ""} onAlterado={carregar} />{formatarCentavos(i.valor_centavos)}<button onClick={() => perdoar(i.id)} title="Perdoar (vira despesa)" aria-label={`Perdoar ${i.descricao}`} className="text-texto-secundario hover:text-erro"><Trash2 size={12} /></button></span>
                         </li>
                       ))}
                     </ul>
+                    <AcoesPessoa pessoa={pessoa} mensagem={msg} onAlterado={carregar} />
                     <textarea value={msg} onChange={(e) => setMensagens((m) => ({ ...m, [pessoa]: e.target.value }))} rows={5} aria-label={`Mensagem para ${pessoa}`} className={`${CLASSE_INPUT} mt-3 w-full resize-none text-xs`} />
                     <div className="mt-2 flex gap-2">
                       <Button tamanho="pequeno" variante="secundaria" onClick={() => navigator.clipboard.writeText(msg).then(() => toast.success("Mensagem copiada."))}><Copy size={13} /> Copiar cobrança</Button>

@@ -50,6 +50,19 @@ async function avisosDeInvestimentos(hoje: string) {
 }
 
 /** Verifica os avisos agora: manda ao Windows os que ainda não foram mostrados hoje e atualiza a bandeja. */
+/** Lembretes de cobrança marcados em Pessoas: avisa no dia (se a pessoa ainda deve). */
+async function avisosDeCobranca(hoje: string) {
+  const contatos = (await lerPreferencia<Record<string, { lembrete?: string }>>("contatos_pessoas")) ?? {};
+  const devidas = Object.entries(contatos).filter(([, c]) => c.lembrete && c.lembrete <= hoje);
+  if (!devidas.length) return [];
+  const { planejamento } = await import("../../services/planejamento");
+  const abertos = (await planejamento.listarAReceber()).filter((i) => !i.recebido_em && !i.perdoado);
+  return devidas
+    .map(([pessoa, c]) => ({ pessoa, c, total: abertos.filter((i) => i.pessoa === pessoa).reduce((s, i) => s + i.valor_centavos, 0) }))
+    .filter((x) => x.total > 0)
+    .map((x) => ({ id: `cobranca-${x.pessoa}-${x.c.lembrete}`, titulo: `Cobrar ${x.pessoa}`, corpo: `${x.pessoa} ainda deve ${(x.total / 100).toFixed(2).replace(".", ",")}. A mensagem está pronta em Pessoas e Divisões.` }));
+}
+
 /** Cartões com teto de gasto: avisa ao passar de 80% e de 100% na fatura aberta. */
 async function avisosDeTeto(hoje: string, contas: Conta[], lancamentos: Lancamento[]) {
   const tetos = (await lerPreferencia<Record<string, number>>("teto_cartoes")) ?? {};
@@ -158,6 +171,7 @@ export async function verificarAvisosAgora(): Promise<number> {
     ...(await avisosDePlanejamento(hoje).catch(() => [])),
     ...(await rel.avisosDeRelatorios(hoje).catch(() => [])),
     ...(await avisosDeTeto(hoje, contas, lancamentos).catch(() => [])),
+    ...(await avisosDeCobranca(hoje).catch(() => [])),
     ...(await import("../../features/contas/ferramentasContas").then(async (m) =>
       m.abaixoDoMinimo(contas, (await lerPreferencia<Record<string, number>>("saldo_minimo_contas")) ?? {}).map((x) => ({
         id: `minimo-${x.conta.id}`,
