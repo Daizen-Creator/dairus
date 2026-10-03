@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { Archive, ArchiveRestore, Pencil, RefreshCw, TriangleAlert } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronDown, ChevronRight, Pencil, RefreshCw, Search, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
 import { Secao } from "../../components/ui/Campos";
@@ -13,6 +13,7 @@ import { ROTULO_CLASSE, type AtivoInvest } from "../../types/investimentos";
 import { acumularDiario, acumularMensal, concentracoes, dividirPor, rendaPassivaMensal } from "./calculos";
 import { totalPorTipo } from "../dashboard/inteligencia";
 import { FormAtivo } from "./Formularios";
+import { ExtrasCarteira, PainelAtivo } from "./FerramentasInvest";
 import { atualizarCotacoesCarteira, serieBcb } from "./mercado";
 import type { Carteira } from "./useCarteira";
 
@@ -33,10 +34,19 @@ export function AbaCarteira({ carteira, onEditar }: { carteira: Carteira; onEdit
   const [editando, setEditando] = useState<AtivoInvest | null>(null);
   const [atualizando, setAtualizando] = useState(false);
   const [verArquivados, setVerArquivados] = useState(false);
+  const [painel, setPainel] = useState<string | null>(null);
+  const [buscaAtivo, setBuscaAtivo] = useState("");
+  const [classeFiltro, setClasseFiltro] = useState("TODAS");
+  const [ordemAtivos, setOrdemAtivos] = useState("VALOR");
   const [bench, setBench] = useState<{ cdi: number | null; ipca: number | null; poupanca: number | null }>({ cdi: null, ipca: null, poupanca: null });
 
   const objetivos = [...new Set(posicoes.map((p) => p.ativo.objetivo).filter((o): o is string => !!o))];
-  const visiveis = posicoes.filter((p) => (verArquivados ? !p.ativo.ativo : p.ativo.ativo)).filter((p) => objetivo === "TODOS" || (p.ativo.objetivo ?? "") === objetivo);
+  const visiveis = posicoes
+    .filter((p) => (verArquivados ? !p.ativo.ativo : p.ativo.ativo))
+    .filter((p) => objetivo === "TODOS" || (p.ativo.objetivo ?? "") === objetivo)
+    .filter((p) => classeFiltro === "TODAS" || p.ativo.classe === classeFiltro)
+    .filter((p) => !buscaAtivo.trim() || `${p.ativo.codigo} ${p.ativo.nome ?? ""}`.toLowerCase().includes(buscaAtivo.trim().toLowerCase()))
+    .sort((x, y) => (ordemAtivos === "RESULTADO" ? y.rent.resultadoTotal - x.rent.resultadoTotal : ordemAtivos === "RENT" ? (y.rent.percentual ?? -9) - (x.rent.percentual ?? -9) : ordemAtivos === "CODIGO" ? x.ativo.codigo.localeCompare(y.ativo.codigo) : y.valor - x.valor));
   const comPosicao = visiveis.filter((p) => p.ativo.quantidade > 0);
   const total = comPosicao.reduce((s, p) => s + p.valor, 0);
   const custo = comPosicao.reduce((s, p) => s + p.ativo.custo_centavos, 0);
@@ -124,6 +134,9 @@ export function AbaCarteira({ carteira, onEditar }: { carteira: Carteira; onEdit
           titulo={`Posições (${comPosicao.length})`}
           acao={
             <div className="flex flex-wrap items-center gap-2">
+              <span className="relative"><Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-texto-secundario" /><input value={buscaAtivo} onChange={(e) => setBuscaAtivo(e.target.value)} placeholder="Buscar" aria-label="Buscar ativo" className="w-28 rounded-lg border border-borda bg-fundo py-1.5 pl-6 pr-2 text-xs text-texto-primario outline-none focus:border-primaria" /></span>
+              <Select aria-label="Tipo de ativo" value={classeFiltro} onValueChange={setClasseFiltro} options={[{ value: "TODAS", label: "Todos os tipos" }, ...[...new Set(posicoes.map((p) => p.ativo.classe))].map((c) => ({ value: c, label: ROTULO_CLASSE[c] }))]} className="w-36" />
+              <Select aria-label="Ordenar ativos" value={ordemAtivos} onValueChange={setOrdemAtivos} options={[{ value: "VALOR", label: "Maior valor" }, { value: "RESULTADO", label: "Maior resultado" }, { value: "RENT", label: "Maior %" }, { value: "CODIGO", label: "Código" }]} className="w-36" />
               {objetivos.length > 0 && <Select aria-label="Objetivo" value={objetivo} onValueChange={setObjetivo} options={[{ value: "TODOS", label: "Todos os objetivos" }, ...objetivos.map((o) => ({ value: o, label: o }))]} className="w-44" />}
               <Button tamanho="pequeno" variante="secundaria" onClick={atualizar} disabled={atualizando}><RefreshCw size={13} className={atualizando ? "animate-spin" : ""} /> Atualizar cotações</Button>
             </div>
@@ -152,10 +165,10 @@ export function AbaCarteira({ carteira, onEditar }: { carteira: Carteira; onEdit
                   </tr>
                 </thead>
                 <tbody>
-                  {visiveis.map((p) => (
-                    <tr key={p.ativo.id} className="border-t border-borda">
+                  {visiveis.map((p) => (<Fragment key={p.ativo.id}>
+                    <tr className="border-t border-borda">
                       <td className="py-2 pr-3">
-                        <p className="font-medium text-texto-primario">{p.ativo.codigo}</p>
+                        <button onClick={() => setPainel(painel === p.ativo.id ? null : p.ativo.id)} className="flex items-center gap-1 font-medium text-texto-primario hover:text-primaria">{painel === p.ativo.id ? <ChevronDown size={13} /> : <ChevronRight size={13} />}{p.ativo.codigo}</button>
                         <p className="text-[11px] text-texto-secundario">{ROTULO_CLASSE[p.ativo.classe]}{p.ativo.indexador ? ` · ${p.ativo.taxa ?? ""}${p.ativo.indexador === "CDI" || p.ativo.indexador === "SELIC" ? "% " : " "}${p.ativo.indexador}` : ""}{p.ativo.vencimento ? ` · vence ${formatarDataISOParaBR(p.ativo.vencimento)}` : ""}</p>
                       </td>
                       <td className="py-2 pr-3 text-right tabular-nums">{p.ativo.quantidade.toLocaleString("pt-BR", { maximumFractionDigits: 8 })}</td>
@@ -174,7 +187,10 @@ export function AbaCarteira({ carteira, onEditar }: { carteira: Carteira; onEdit
                         <button onClick={() => arquivar(p.ativo)} aria-label={p.ativo.ativo ? `Arquivar ${p.ativo.codigo}` : `Reativar ${p.ativo.codigo}`} className="rounded p-1 text-texto-secundario hover:text-alerta">{p.ativo.ativo ? <Archive size={14} /> : <ArchiveRestore size={14} />}</button>
                       </td>
                     </tr>
-                  ))}
+                    {painel === p.ativo.id && (
+                      <tr><td colSpan={8} className="pb-3"><PainelAtivo posicao={p} carteira={carteira} /></td></tr>
+                    )}
+                  </Fragment>))}
                 </tbody>
               </table>
             </div>
@@ -212,6 +228,7 @@ export function AbaCarteira({ carteira, onEditar }: { carteira: Carteira; onEdit
       <p className="text-xs text-texto-secundario">
         O total investido (pelo custo) entra no patrimônio líquido do Dairus pela conta “Carteira de Investimentos”. Valores de renda fixa são estimados pelo indexador; o extrato da corretora é o valor oficial.
       </p>
+      <ExtrasCarteira carteira={carteira} />
     </div>
   );
 }

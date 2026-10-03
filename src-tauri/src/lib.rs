@@ -200,6 +200,8 @@ pub fn run() {
             gestao::excluir_lancamentos,
             gestao::definir_categoria_pai,
             gestao::renomear_categoria,
+            gestao::desdobrar_ativo,
+            gestao::excluir_ativo_completo,
             conta::abrir_conta_com_senha,
             conta::recuperar_conta_com_codigo,
             conta::ativar_criptografia,

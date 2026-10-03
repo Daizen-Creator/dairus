@@ -324,6 +324,52 @@ pub fn renomear_categoria(state: State<AppState>, conta_id: String, nome: String
     renomear_categoria_db(&conn, &conta_id, &nome)
 }
 
+/// Desdobramento (fator 2 = cada ação vira 2) ou grupamento (fator 0,5): ajusta quantidade e
+/// preço das compras/vendas até a data, mantendo o valor investido e o preço médio coerente.
+pub fn desdobrar_ativo_db(conn: &mut Connection, ativo_id: &str, fator: f64, data: &str) -> Res<usize> {
+    if !(fator.is_finite() && fator > 0.0) || (fator - 1.0).abs() < 1e-9 {
+        return Err("Fator inválido (ex.: 2 para desdobramento 1:2, 0,1 para grupamento 10:1).".into());
+    }
+    let tx = conn.transaction().map_err(e)?;
+    let n = tx
+        .execute(
+            "UPDATE operacoes_invest SET quantidade = quantidade * ?2, preco_unitario = preco_unitario / ?2
+             WHERE ativo_id = ?1 AND data <= ?3 AND tipo IN ('COMPRA', 'VENDA')",
+            params![ativo_id, fator, data],
+        )
+        .map_err(e)?;
+    tx.execute("UPDATE ativos_invest SET cotacao = cotacao / ?2 WHERE id = ?1 AND cotacao IS NOT NULL AND (cotacao_em IS NULL OR cotacao_em <= ?3)", params![ativo_id, fator, data]).map_err(e)?;
+    tx.commit().map_err(e)?;
+    Ok(n)
+}
+
+/// Exclui o ativo com todas as operações e os lançamentos que elas geraram.
+pub fn excluir_ativo_completo_db(conn: &mut Connection, ativo_id: &str) -> Res<usize> {
+    let tx = conn.transaction().map_err(e)?;
+    let ids: Vec<String> = {
+        let mut stmt = tx.prepare("SELECT lancamento_id FROM operacoes_invest WHERE ativo_id = ?1 AND lancamento_id IS NOT NULL").map_err(e)?;
+        let v = stmt.query_map([ativo_id], |r| r.get(0)).map_err(e)?.collect::<rusqlite::Result<Vec<String>>>().map_err(e)?;
+        v
+    };
+    let n = tx.execute("DELETE FROM operacoes_invest WHERE ativo_id = ?1", [ativo_id]).map_err(e)?;
+    apagar_lancamentos(&tx, ids)?;
+    tx.execute("DELETE FROM ativos_invest WHERE id = ?1", [ativo_id]).map_err(e)?;
+    tx.commit().map_err(e)?;
+    Ok(n)
+}
+
+#[tauri::command]
+pub fn desdobrar_ativo(state: State<AppState>, ativo_id: String, fator: f64, data: String) -> Res<usize> {
+    let mut conn = state.conn.lock().expect("mutex envenenado");
+    desdobrar_ativo_db(&mut conn, &ativo_id, fator, &data)
+}
+
+#[tauri::command]
+pub fn excluir_ativo_completo(state: State<AppState>, ativo_id: String) -> Res<usize> {
+    let mut conn = state.conn.lock().expect("mutex envenenado");
+    excluir_ativo_completo_db(&mut conn, &ativo_id)
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -425,5 +471,20 @@ mod testes {
         let nome: String = conn.query_row("SELECT nome FROM contas_contabeis WHERE id = 'despesa-alimentacao'", [], |r| r.get(0)).unwrap();
         assert_eq!(nome, "Comida");
         assert!(renomear_categoria_db(&conn, "ativo-dinheiro", "X").is_err());
+    }
+
+    #[test]
+    fn desdobra_e_exclui_ativo() {
+        use crate::investimentos::{listar_ativos, registrar_operacao, salvar_ativo, AtivoInput, OperacaoInput};
+        let mut conn = banco();
+        let id = salvar_ativo(&conn, serde_json::from_value::<AtivoInput>(serde_json::json!({"codigo": "ABCD3", "classe": "ACAO"})).unwrap()).unwrap();
+        registrar_operacao(&mut conn, serde_json::from_value::<OperacaoInput>(serde_json::json!({"ativo_id": id, "tipo": "COMPRA", "data": "2026-01-10", "quantidade": 10.0, "preco_unitario": 20.0})).unwrap()).unwrap();
+        assert_eq!(desdobrar_ativo_db(&mut conn, &id, 2.0, "2026-02-01").unwrap(), 1);
+        let a = listar_ativos(&conn).unwrap().into_iter().find(|x| x.id == id).unwrap();
+        assert!((a.quantidade - 20.0).abs() < 1e-9);
+        assert!((a.preco_medio - 10.0).abs() < 1e-6);
+        assert!(desdobrar_ativo_db(&mut conn, &id, 1.0, "2026-02-01").is_err());
+        assert_eq!(excluir_ativo_completo_db(&mut conn, &id).unwrap(), 1);
+        assert!(listar_ativos(&conn).unwrap().iter().all(|x| x.id != id));
     }
 }
