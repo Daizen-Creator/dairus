@@ -1,5 +1,6 @@
 mod accounting;
 mod atualizacao;
+mod cartoes;
 mod commands;
 mod conta;
 mod cripto;
@@ -138,6 +139,18 @@ pub fn run() {
             lancamentos_extras::excluir_regra,
             lancamentos_extras::processar_agendamentos_automaticos,
             lancamentos_extras::listar_pasta_importar,
+            cartoes::listar_faturas,
+            cartoes::congelar_fatura,
+            cartoes::listar_config_cartoes,
+            cartoes::definir_juros_cartao,
+            cartoes::lancar_encargos,
+            cartoes::listar_adicionais,
+            cartoes::criar_adicional,
+            cartoes::excluir_adicional,
+            cartoes::definir_portador,
+            cartoes::listar_portadores,
+            cartoes::listar_reembolsos,
+            cartoes::registrar_reembolso,
             lancamentos_extras::marcar_extrato_importado,
             lancamentos_extras::caminho_pasta_importar,
             atualizacao::verificar_atualizacao,
