@@ -78,6 +78,7 @@ export function App() {
       document.documentElement.style.fontSize = f && f >= 85 && f <= 125 ? `${f}%` : "";
     });
     lerPreferencia<boolean>("ui_sem_animacoes").then((v) => document.documentElement.classList.toggle("sem-animacoes", !!v));
+    lerPreferencia<string>("ui_fonte_familia").then((f) => { document.body.style.fontFamily = f ?? ""; });
     lerPreferencia<boolean>("ui_compacto").then((v) => document.documentElement.classList.toggle("compacto", !!v));
     lerPreferencia<string>("pagina_inicial").then((rota) => {
       if (rota && rota !== "/" && (window.location.hash === "" || window.location.hash === "#/")) window.location.hash = `#${rota}`;

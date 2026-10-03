@@ -2,6 +2,7 @@ import { create } from "zustand";
 import temasCatalogo from "../styles/themes.json";
 import { lerPreferencia, salvarPreferencia } from "../services/armazenamento";
 import type { Tema } from "../types/theme";
+import { temaDoDia } from "../features/temas/temasExtras";
 
 const CATALOGO = temasCatalogo as Tema[];
 
@@ -19,8 +20,17 @@ const TEMA_ESCURO_PADRAO = "noite-urbana";
 // qualquer coisa na tela de Temas — escuro/neon, como o design de referência.
 const TEMA_PADRAO_INICIAL = TEMA_ESCURO_PADRAO;
 
-function aplicarVariaveisCss(tema: Tema) {
+let corPrimariaPersonalizada: string | null = null;
+
+/** Troca a cor primária de qualquer tema (null volta à do tema). */
+export function definirCorPrimaria(cor: string | null) {
+  corPrimariaPersonalizada = cor;
+  aplicarVariaveisCss(useThemeStore.getState().temaAtivo());
+}
+
+function aplicarVariaveisCss(temaBase: Tema) {
   const raiz = document.documentElement;
+  const tema = corPrimariaPersonalizada ? { ...temaBase, cores: { ...temaBase.cores, primaria: corPrimariaPersonalizada } } : temaBase;
   const c = tema.cores;
   raiz.style.setProperty("--cor-fundo", c.fundo);
   raiz.style.setProperty("--cor-superficie", c.superficie);
@@ -103,6 +113,8 @@ export const useThemeStore = create<EstadoTema>((set, get) => ({
   },
 
   inicializar: async () => {
+    corPrimariaPersonalizada = (await lerPreferencia<string>("cor_primaria_custom")) || null;
+    const temaDoDiaLigado = (await lerPreferencia<boolean>("tema_do_dia")) ?? false;
     const [temaId, modoAuto, preferidoClaro, preferidoEscuro, favoritos, personalizados, autoHorario] =
       await Promise.all([
         lerPreferencia<string>(CHAVE_TEMA_ID),
@@ -115,7 +127,7 @@ export const useThemeStore = create<EstadoTema>((set, get) => ({
       ]);
 
     set({
-      temaSelecionadoId: temaId ?? TEMA_PADRAO_INICIAL,
+      temaSelecionadoId: (temaDoDiaLigado && favoritos?.length ? temaDoDia(favoritos, new Date().toISOString().slice(0, 10)) : null) ?? temaId ?? TEMA_PADRAO_INICIAL,
       modoAutomatico: modoAuto ?? false,
       temaPreferidoClaroId: preferidoClaro ?? TEMA_CLARO_PADRAO,
       temaPreferidoEscuroId: preferidoEscuro ?? TEMA_ESCURO_PADRAO,
