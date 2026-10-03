@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Command } from "cmdk";
 import { useNavigate } from "react-router-dom";
-import { CalendarClock, CreditCard, Landmark, Palette, Radar, Receipt, Search, Target } from "lucide-react";
+import { CalendarClock, CreditCard, FileText, Landmark, Palette, Radar, Receipt, Search, Target } from "lucide-react";
 import { IconeCoisa } from "../ui/IconeCoisa";
 import { NAVEGACAO } from "../../app/navegacao";
 import { contabilidade } from "../../services/contabilidade";
@@ -9,6 +9,7 @@ import { extras } from "../../services/extras";
 import { formatarCentavos, formatarDataISOParaBR } from "../../services/formato";
 import type { Agendamento, Conta, Lancamento } from "../../types/accounting";
 import type { ItemRadar, Meta } from "../../types/extras";
+import { documentos as servicoDocumentos, type Documento } from "../../services/documentos";
 
 interface GlobalSearchProps {
   open: boolean;
@@ -21,9 +22,10 @@ interface Dados {
   agendamentos: Agendamento[];
   metas: Meta[];
   radar: ItemRadar[];
+  documentos: Documento[];
 }
 
-const VAZIO: Dados = { contas: [], lancamentos: [], agendamentos: [], metas: [], radar: [] };
+const VAZIO: Dados = { contas: [], lancamentos: [], agendamentos: [], metas: [], radar: [], documentos: [] };
 
 const ESTILO_GRUPO = "px-2 py-1 text-xs text-texto-secundario [&_[cmdk-group-heading]]:px-1 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:font-semibold";
 const ESTILO_ITEM =
@@ -43,8 +45,9 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
       contabilidade.listarAgendamentos(),
       extras.listarMetas(),
       extras.listarRadar(),
+      servicoDocumentos.listar().catch(() => [] as Documento[]),
     ])
-      .then(([contas, lancamentos, agendamentos, metas, radar]) => setDados({ contas, lancamentos, agendamentos, metas, radar }))
+      .then(([contas, lancamentos, agendamentos, metas, radar, documentos]) => setDados({ contas, lancamentos, agendamentos, metas, radar, documentos }))
       .catch(() => setDados(VAZIO));
   }, [open]);
 
@@ -128,6 +131,20 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
                     {m.nome}
                   </span>
                   <span className="text-xs opacity-80">{Math.min(100, Math.round((m.guardado_centavos / m.valor_alvo_centavos) * 100))}%</span>
+                </Command.Item>
+              ))}
+            </Command.Group>
+          )}
+
+          {dados.documentos.length > 0 && (
+            <Command.Group heading="Garantias e documentos" className={ESTILO_GRUPO}>
+              {dados.documentos.filter((d) => !d.arquivado).map((d) => (
+                <Command.Item key={d.id} value={`documento garantia ${d.titulo} ${d.loja ?? ""} ${d.numero ?? ""}`} onSelect={() => irPara("/documentos")} className={ESTILO_ITEM}>
+                  <span className="flex items-center gap-2">
+                    <FileText size={14} />
+                    {d.titulo}
+                  </span>
+                  {d.vencimento && <span className="text-xs opacity-80">{formatarDataISOParaBR(d.vencimento)}</span>}
                 </Command.Item>
               ))}
             </Command.Group>

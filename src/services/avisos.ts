@@ -117,6 +117,7 @@ export function grupoDoAviso(id: string): string {
   if (/^(invest|cotacao|aporte|darf|vencimento-rf|alerta)/.test(id)) return "investimentos";
   if (/^cobranca/.test(id)) return "pessoas";
   if (/^backup/.test(id)) return "backup";
+  if (/^documento/.test(id)) return "documentos";
   if (/^(saldo|minimo|risco|negativo)/.test(id)) return "saldo";
   return "outros";
 }

@@ -14,6 +14,7 @@ import {
   ChartNoAxesCombined,
   Sparkles,
   ShieldCheck,
+  FileCheck2,
   Settings,
   CircleHelp,
   type LucideIcon,
@@ -70,6 +71,7 @@ export const NAVEGACAO: ItemNavegacao[] = [
     rotulo: "Radar de Compras",
     icone: Radar,
   },
+  { rota: "/documentos", rotulo: "Garantias e Docs", icone: FileCheck2 },
   { rota: "/configuracoes", rotulo: "Configurações", icone: Settings },
   {
     rota: "/backup",

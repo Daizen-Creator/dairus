@@ -28,6 +28,17 @@
     conta({ id: "despesa-assinaturas", codigo: "5.10", nome: "Assinaturas", tipo: "DESPESA" }),
   ];
   const lancamentos = [];
+  const docMock = (o) => ({ numero: null, loja: null, valor_centavos: null, data_compra: null, garantia_meses: null, garantia_estendida_meses: 0, vencimento: null, repete: null, avisar_dias: 30, lancamento_id: null, observacao: null, arquivado: false, criado_em: hoje, atualizado_em: hoje, arquivos: 0, ...o });
+  const documentosMock = [
+    docMock({ id: "doc-tv", tipo: "GARANTIA", categoria: "Eletrônicos", titulo: "TV Samsung 55\" Crystal", loja: "Magazine Luiza", numero: "NF 48213", valor_centavos: 289900, data_compra: dia(-200), garantia_meses: 12, garantia_estendida_meses: 12, vencimento: dia(530), arquivos: 2 }),
+    docMock({ id: "doc-cel", tipo: "GARANTIA", categoria: "Celular e informática", titulo: "iPhone 15", loja: "Apple", valor_centavos: 529900, data_compra: dia(-340), garantia_meses: 12, vencimento: dia(25), arquivos: 1, observacao: "AppleCare: 0800 761 0880" }),
+    docMock({ id: "doc-gel", tipo: "GARANTIA", categoria: "Eletrodomésticos", titulo: "Geladeira Brastemp Frost Free", loja: "Casas Bahia", valor_centavos: 349000, data_compra: dia(-60), garantia_meses: 12, vencimento: dia(305) }),
+    docMock({ id: "doc-ipva", tipo: "DOCUMENTO", categoria: "Veículo", titulo: "IPVA do carro", numero: "ABC1D23", loja: "Sefaz", valor_centavos: 184000, vencimento: dia(9), repete: "ANUAL", avisar_dias: 15, arquivos: 1 }),
+    docMock({ id: "doc-seg", tipo: "DOCUMENTO", categoria: "Seguro", titulo: "Seguro do carro", numero: "Apólice 7781-22", loja: "Porto Seguro", valor_centavos: 238000, vencimento: dia(120), repete: "ANUAL", arquivos: 1 }),
+    docMock({ id: "doc-alu", tipo: "DOCUMENTO", categoria: "Moradia", titulo: "Contrato de aluguel", loja: "Imobiliária Lar", vencimento: dia(410), avisar_dias: 60, arquivos: 1 }),
+    docMock({ id: "doc-cnh", tipo: "DOCUMENTO", categoria: "Pessoal", titulo: "CNH", numero: "0123456789", vencimento: dia(-4), avisar_dias: 60 }),
+    docMock({ id: "doc-old", tipo: "GARANTIA", categoria: "Eletrônicos", titulo: "Notebook Dell Inspiron", loja: "Dell", valor_centavos: 399900, data_compra: dia(-800), garantia_meses: 12, vencimento: dia(-435), arquivado: true }),
+  ];
   const lanc = (data, descricao, valor, debito, credito, extra = {}) => {
     const l = { id: id("l"), data, descricao, observacao: null, origem: "MANUAL", etiqueta: null, estornado_de: null, parcelas: null, corrige: null, partidas: [{ id: id("p"), conta_id: debito, tipo: "DEBITO", valor_centavos: valor }, { id: id("p"), conta_id: credito, tipo: "CREDITO", valor_centavos: valor }], ...extra };
     lancamentos.unshift(l);
@@ -99,6 +110,12 @@
     listar_config_cartoes: () => [],
     listar_tags: () => [],
     listar_anexos: () => [],
+    listar_documentos: () => documentosMock,
+    listar_arquivos_documento: ({ documentoId }) => (documentosMock.find((d) => d.id === documentoId)?.arquivos ? [{ id: "arq1", documento_id: documentoId, nome: "nota-fiscal.pdf", mime: "application/pdf", tamanho: 184320, criado_em: dia(-200) + "T10:00:00Z" }] : []),
+    salvar_documento: ({ input }) => { const d = { arquivado: false, arquivos: 0, criado_em: hoje, atualizado_em: hoje, garantia_estendida_meses: 0, ...input, id: input.id || id("doc") }; documentosMock.splice(0, documentosMock.length, ...documentosMock.filter((x) => x.id !== d.id), d); return d; },
+    arquivar_documento: ({ id: i, arquivado }) => Object.assign(documentosMock.find((d) => d.id === i), { arquivado }),
+    renovar_documento: ({ id: i }) => documentosMock.find((d) => d.id === i),
+    excluir_documento: () => null,
     listar_regras: () => [],
     listar_indicadores: () => [],
     listar_auditoria: () => [],

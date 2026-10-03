@@ -7,6 +7,10 @@ mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 
 - Segurança: limite de tentativas gravado para senha do banco, código de recuperação e PIN (pausa de 1 min a 1 h), página de login local com cabeçalhos de segurança e só aceitando o navegador, validação dos lançamentos, teste contra SQL injection e auditoria automática de bibliotecas e segredos.
 - Lançamento sem data agora é recusado com uma mensagem clara (antes era gravado com a data vazia).
+- Personalização completa (Temas e aparência): visuais prontos de um clique, fundo com cor, degradê (editor com ângulo e cores), imagem da galeria ou foto própria (escurecer, desfoque, opacidade, saturação, encaixe), vídeo em loop e fundos animados; menu lateral ou superior, fixo/só ícones/gaveta, ordem por arrastar, vidro fosco e cores; 14 fontes embutidas, tamanho do texto, arredondamento das bordas, transparência dos cartões, sombras, brilho e animações; alerta de contraste WCAG com correção automática; desfazer, restaurar padrão, exportar/importar e cópia na nuvem.
+- Novos widgets no Início: Relógio (digital ou de ponteiros, com outros fusos), Minhas fotos (álbum que troca sozinho e vira fundo com um clique) e Vídeo.
+- Nova aba Garantias e documentos: nota fiscal e garantia de cada compra (com garantia estendida), documentos que vencem (IPVA, seguro, CNH, contrato de aluguel), arquivos guardados no banco, aviso antes de vencer, renovar documentos anuais, ler a nota fiscal com IA e preencher a partir de uma compra lançada.
+- Correção: datas e nomes de mês não voltam mais um dia/mês em computadores fora do horário de Brasília; listas de opção mostram "Todas"/"Nenhuma" em vez de "Selecione…".
 
 ## 0.2.2
 

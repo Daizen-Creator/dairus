@@ -18,6 +18,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("0011_lancamentos_ampliados", include_str!("migrations/0011_lancamentos_ampliados.sql")),
     ("0012_cartoes", include_str!("migrations/0012_cartoes.sql")),
     ("0013_planejamento", include_str!("migrations/0013_planejamento.sql")),
+    ("0014_documentos", include_str!("migrations/0014_documentos.sql")),
 ];
 
 pub fn abrir_conexao(caminho_banco: &Path) -> rusqlite::Result<Connection> {
@@ -68,6 +69,7 @@ mod testes_sql {
         "SELECT COUNT(*) FROM {t}",
         "SELECT * FROM \\\"{}\\\" ORDER BY rowid",
         "BEGIN;\\n{sql}\\nINSERT INTO schema_migrations",
+        "SELECT {COLUNAS} FROM documentos d",
     ];
 
     fn arquivos(pasta: &std::path::Path, saida: &mut Vec<std::path::PathBuf>) {

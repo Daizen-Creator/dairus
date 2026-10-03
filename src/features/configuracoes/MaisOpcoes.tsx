@@ -16,6 +16,7 @@ const GRUPOS: Array<[string, string]> = [
   ["metas", "Metas e desafios"],
   ["investimentos", "Investimentos"],
   ["pessoas", "Cobranças de pessoas"],
+  ["documentos", "Garantias e documentos"],
   ["backup", "Backup"],
   ["outros", "Outros"],
 ];

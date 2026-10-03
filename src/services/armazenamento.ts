@@ -38,6 +38,11 @@ export function definirContaDasPreferencias(usuarioId: string | null): void {
   prefixoLocal = usuarioId ? `${usuarioId}:` : "";
 }
 
+/** Prefixo da conta atual ("<id>:" ou "" antes do login), para separar dados locais por conta. */
+export function prefixoDaConta(): string {
+  return prefixoLocal;
+}
+
 /** Copia as preferências antigas (de antes do login) para a conta atual. */
 export async function importarPreferenciasLegadas(): Promise<number> {
   if (!estaNoTauri() || arquivoAtual === ARQUIVO_LEGADO) return 0;
