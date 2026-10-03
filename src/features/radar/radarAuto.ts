@@ -40,8 +40,21 @@ export async function radarAutomatico(hoje: string): Promise<string[]> {
   if ((await lerPreferencia<string>("radar_auto_ultimo")) === hoje) return [];
   await salvarPreferencia("radar_auto_ultimo", hoje);
   const mensagens: string[] = [];
+  const comIA = (await lerPreferencia<boolean>("radar_auto_ia")) === true;
   for (const item of await extras.listarRadar()) {
     try {
+      if (comIA) {
+        const { buscarEmTodasAsLojas } = await import("./buscaLojas");
+        const { ofertas } = await buscarEmTodasAsLojas(item.nome, true);
+        const melhor = ofertas[0];
+        if (!melhor) continue;
+        const menorAntes = item.precos.length ? Math.min(...item.precos.map((p) => p.preco_centavos)) : null;
+        await extras.registrarPrecoRadar(item.id, `${melhor.loja} (automático)`, melhor.precoCentavos, melhor.url, hoje);
+        const preco = `R$ ${(melhor.precoCentavos / 100).toFixed(2).replace(".", ",")}`;
+        if (item.preco_alvo_centavos && melhor.precoCentavos <= item.preco_alvo_centavos) mensagens.push(`${item.nome} chegou ao preço-alvo: ${preco} na ${melhor.loja}.`);
+        else if (menorAntes !== null && melhor.precoCentavos < menorAntes) mensagens.push(`${item.nome} baixou para ${preco} na ${melhor.loja}.`);
+        continue;
+      }
       const r = await buscarERegistrar(item, hoje);
       const preco = r.oferta ? `R$ ${(r.oferta.precoCentavos / 100).toFixed(2).replace(".", ",")}` : "";
       if (r.noAlvo) mensagens.push(`${item.nome} chegou ao preço-alvo: ${preco} no Mercado Livre.`);

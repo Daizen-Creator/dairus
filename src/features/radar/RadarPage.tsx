@@ -18,6 +18,8 @@ import type { Meta } from "../../types/extras";
 import { exportarCsv, reais } from "../../services/exportacao";
 import { extras } from "../../services/extras";
 import { TextoIA } from "../ia/TextoIA";
+import { MaisDoItemRadar, ResumoRadar } from "./ExtrasRadar";
+import { BuscaTodasLojas } from "./BuscaTodasLojas";
 import { centavosParaValorInput, dataAtualISO, formatarCentavos, formatarDataISOParaBR, valorInputParaCentavos } from "../../services/formato";
 import type { Conta } from "../../types/accounting";
 import type { ItemRadar } from "../../types/extras";
@@ -106,6 +108,7 @@ export function RadarPage() {
     }
   }
   const [radarAuto, setRadarAuto] = usePreferencia<boolean>("radar_auto", false);
+  const [radarAutoIA, setRadarAutoIA] = usePreferencia<boolean>("radar_auto_ia", false);
 
   async function buscarAgora(item: ItemRadar) {
     try {
@@ -301,8 +304,14 @@ export function RadarPage() {
       {(secao === "novo") && (<>
       <label className="flex items-center gap-2 text-sm text-texto-primario">
         <input type="checkbox" checked={radarAuto} onChange={() => setRadarAuto(!radarAuto)} className="h-4 w-4 accent-[var(--cor-primaria)]" />
-        Buscar preços sozinho todo dia (Mercado Livre) e avisar quando baixar ou chegar ao alvo
+        Buscar preços sozinho todo dia e avisar quando baixar ou chegar ao alvo
       </label>
+      {radarAuto && (
+        <label className="ml-6 flex items-center gap-2 text-xs text-texto-secundario">
+          <input type="checkbox" checked={radarAutoIA} onChange={() => setRadarAutoIA(!radarAutoIA)} className="h-3.5 w-3.5 accent-[var(--cor-primaria)]" />
+          Procurar em todas as lojas com a IA (usa sua chave do Gemini; sem marcar, só Mercado Livre)
+        </label>
+      )}
       <Secao titulo="Novo produto">
         <form onSubmit={criar} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Notebook 16GB" aria-label="Produto" className={CLASSE_INPUT} />
@@ -313,6 +322,7 @@ export function RadarPage() {
       </>)}
 
       {(secao === "produtos") && (<>
+      <ResumoRadar itens={itens} hoje={hoje} saldoLivre={contas.filter((c) => c.ativa && c.tipo === "ATIVO" && c.subtipo !== "CATEGORIA" && c.subtipo !== "INVESTIMENTO" && c.id !== "ativo-a-receber").reduce((s2, c) => s2 + c.saldo_atual_centavos, 0) - metas.filter((m) => !m.conta_id).reduce((s2, m) => s2 + m.guardado_centavos, 0)} />
       {itens.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-texto-secundario" /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto…" aria-label="Buscar produto" className={`${CLASSE_INPUT} w-52 pl-8`} /></div>
@@ -440,6 +450,8 @@ export function RadarPage() {
                   <Button tamanho="pequeno" variante="secundaria" onClick={() => criarMeta(item)}><Target size={13} /> Criar meta de compra</Button>
                   <Button tamanho="pequeno" variante="secundaria" onClick={() => { setComprando(comprando === item.id ? null : item.id); setCp({ conta: "", categoria: "despesa-outras", valor: r.ultimo ? centavosParaValorInput(r.menor?.preco_centavos ?? r.ultimo.preco_centavos) : "" }); }}><ShoppingCart size={13} /> Comprei</Button>
                 </div>
+                <BuscaTodasLojas item={item} onAlterado={carregar} />
+                <MaisDoItemRadar item={item} onAlterado={carregar} />
                 {comprando === item.id && (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <input value={cp.valor} onChange={(e) => setCp({ ...cp, valor: e.target.value })} inputMode="decimal" placeholder="Valor pago" aria-label="Valor pago" className={`${CLASSE_INPUT} w-28`} />
