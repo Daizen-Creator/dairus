@@ -28,6 +28,7 @@ import { Select } from "../../components/ui/Select";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { StatCard } from "../../components/ui/StatCard";
 import { contabilidade } from "../../services/contabilidade";
+import { AbaEmprestimos } from "./AbaEmprestimos";
 import { exportarCsv, reais } from "../../services/exportacao";
 import { extras } from "../../services/extras";
 import { centavosParaValorInput, dataAtualISO, formatarCentavos, formatarDataISOParaBR, valorInputParaCentavos } from "../../services/formato";
@@ -87,7 +88,7 @@ export function PatrimonioPage() {
   const [visao, setVisao] = useState<Visao>("TODOS");
   const [ordem, setOrdem] = useState<Ordem>("VALOR");
   const [confirmarExcluir, setConfirmarExcluir] = useState<string | null>(null);
-  const [secao, setSecao] = useAbaDaPagina<"itens" | "adicionar" | "visao">("patrimonio", "itens");
+  const [secao, setSecao] = useAbaDaPagina<"itens" | "adicionar" | "visao" | "emprestimos">("patrimonio", "itens");
   const [ocultar, setOcultar] = usePreferencia<boolean>("ocultar_saldos", false);
   const cores = useThemeStore((s) => s.temaAtivo()).cores.grafico;
   const hoje = dataAtualISO();
@@ -378,7 +379,8 @@ export function PatrimonioPage() {
         <StatCard titulo="Endividamento" valor={`${endividamento.toFixed(0)}%`} corValor={endividamento >= 50 ? "erro" : "normal"} icone={Building2} corIcone="alerta" subtitulo={liquidez !== null ? `Liquidez: ${liquidez.toFixed(1)}x (contas ÷ passivos)` : "Sem passivos"} />
       </div>
 
-      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "itens", rotulo: "Bens e dívidas", icone: Building2, contador: desatualizados.length }, { id: "adicionar", rotulo: "Adicionar", icone: Gem }, { id: "visao", rotulo: "Evolução e composição", icone: Scale }]} />
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "itens", rotulo: "Bens e dívidas", icone: Building2, contador: desatualizados.length }, { id: "adicionar", rotulo: "Adicionar", icone: Gem }, { id: "visao", rotulo: "Evolução e composição", icone: Scale }, { id: "emprestimos", rotulo: "Empréstimos", icone: Landmark }]} />
+      {secao === "emprestimos" && <AbaEmprestimos onAlterado={carregar} />}
 
       {secao === "visao" && (
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">

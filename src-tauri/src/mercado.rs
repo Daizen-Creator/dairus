@@ -1,12 +1,13 @@
 //! Busca de dados públicos de mercado (cotações, Selic/CDI/IPCA, câmbio, cripto).
 //! Só fala com uma lista fixa de serviços, sempre por HTTPS.
 
-const SERVICOS: [&str; 5] = [
+const SERVICOS: [&str; 6] = [
     "https://brapi.dev/api/",
     "https://api.bcb.gov.br/dados/serie/",
     "https://economia.awesomeapi.com.br/",
     "https://api.coingecko.com/api/v3/",
     "https://olinda.bcb.gov.br/olinda/servico/",
+    "https://api.mercadolibre.com/sites/MLB/search",
 ];
 
 pub fn url_permitida(url: &str) -> bool {

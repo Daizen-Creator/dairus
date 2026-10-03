@@ -23,6 +23,7 @@ const ContabilidadePage = lazy(() => import("../features/contabilidade/Contabili
 const RelatoriosPage = lazy(() => import("../features/relatorios/RelatoriosPage").then((m) => ({ default: m.RelatoriosPage })));
 const IaPage = lazy(() => import("../features/ia/IaPage").then((m) => ({ default: m.IaPage })));
 const InvestimentosPage = lazy(() => import("../features/investimentos/InvestimentosPage").then((m) => ({ default: m.InvestimentosPage })));
+const PessoasPage = lazy(() => import("../features/pessoas/PessoasPage").then((m) => ({ default: m.PessoasPage })));
 const RadarPage = lazy(() => import("../features/radar/RadarPage").then((m) => ({ default: m.RadarPage })));
 const BackupPage = lazy(() => import("../features/backup/BackupPage").then((m) => ({ default: m.BackupPage })));
 const TemasPage = lazy(() => import("../features/temas/TemasPage").then((m) => ({ default: m.TemasPage })));
@@ -110,6 +111,7 @@ export function App() {
             <Route path="metas" element={<MetasPage />} />
             <Route path="patrimonio" element={<PatrimonioPage />} />
             <Route path="investimentos" element={<InvestimentosPage />} />
+            <Route path="pessoas" element={<PessoasPage />} />
             <Route path="salario" element={<SalarioPage />} />
             <Route path="contabilidade" element={<ContabilidadePage />} />
             <Route path="relatorios" element={<RelatoriosPage />} />

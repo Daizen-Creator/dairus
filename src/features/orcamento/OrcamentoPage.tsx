@@ -29,6 +29,9 @@ import { despesasPorCategoriaNoMes } from "../../services/agregacoes";
 import { exportarCsv, reais } from "../../services/exportacao";
 import { extras } from "../../services/extras";
 import { opcoesCategoria, somarSubcategorias } from "../../services/categorias";
+import { planejamento, type LimiteMes } from "../../services/planejamento";
+import { limiteEfetivo, ritmo } from "./calculoOrcamento";
+import { PlanejamentoExtra } from "./PlanejamentoExtra";
 import {
   centavosParaValorInput,
   dataAtualISO,
@@ -81,6 +84,8 @@ export function OrcamentoPage() {
   const [rendaTexto, setRendaTexto] = useState("");
   const [confirmarLimpar, setConfirmarLimpar] = useState(false);
   const [secao, setSecao] = useAbaDaPagina<"categorias" | "planejamento">("orcamento", "categorias");
+  const [limitesMes, setLimitesMes] = useState<LimiteMes[]>([]);
+  const [rascunhoMes, setRascunhoMes] = useState<Record<string, string>>({});
 
   const hoje = dataAtualISO();
 
@@ -90,6 +95,7 @@ export function OrcamentoPage() {
       setContas(c);
       setLancamentos(l);
       setOrcamentos(o);
+      setLimitesMes(await planejamento.listarOrcamentosMes().catch(() => []));
     } catch (e) {
       toast.error(String(e));
     } finally {
@@ -145,7 +151,47 @@ export function OrcamentoPage() {
     );
   }
 
-  const limite = new Map(orcamentos.map((o) => [o.categoria_id, o.limite_centavos]));
+  // Limite efetivo do mês exibido: limite específico do mês ou o normal, mais a sobra acumulada.
+  const mesRef = mes.inicio.slice(0, 7);
+  const cacheGasto = new Map<string, Map<string, number>>();
+  const gastoNoMes = (categoriaId: string) => (m: string) => {
+    if (!cacheGasto.has(m)) {
+      const [a, mm] = m.split("-").map(Number);
+      const fim = `${m}-${String(new Date(a, mm, 0).getDate()).padStart(2, "0")}`;
+      cacheGasto.set(m, somarSubcategorias(new Map(despesasPorCategoriaNoMes(lancamentos, contas, `${m}-01`, fim).map((f) => [f.contaId, f.valorCentavos])), contas));
+    }
+    return cacheGasto.get(m)!.get(categoriaId) ?? 0;
+  };
+  const efetivos = new Map(
+    [...new Set([...orcamentos.map((o) => o.categoria_id), ...limitesMes.filter((l) => l.mes === mesRef).map((l) => l.categoria_id)])].map((id) => [
+      id,
+      limiteEfetivo(id, mesRef, orcamentos, limitesMes, gastoNoMes(id)),
+    ]),
+  );
+  const limite = new Map([...efetivos.entries()].filter(([, v]) => v.efetivo > 0).map(([id, v]) => [id, v.efetivo]));
+  const limiteNormal = new Map(orcamentos.map((o) => [o.categoria_id, o.limite_centavos]));
+
+  async function salvarLimiteMes(categoriaId: string) {
+    const texto = rascunhoMes[categoriaId];
+    try {
+      await planejamento.definirOrcamentoMes(categoriaId, mesRef, texto?.trim() ? valorInputParaCentavos(texto) : null);
+      setRascunhoMes((r) => ({ ...r, [categoriaId]: undefined as unknown as string }));
+      toast.success(texto?.trim() ? `Limite só de ${nomeMesAno(mes.ref)} salvo.` : "Voltou a usar o limite normal neste mês.");
+      setLimitesMes(await planejamento.listarOrcamentosMes());
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  async function alternarAcumulo(o: Orcamento) {
+    try {
+      await planejamento.definirAcumulo(o.categoria_id, !o.acumular, !o.acumular ? mesRef : null);
+      toast.success(!o.acumular ? "A sobra de cada mês passa a somar no seguinte (a partir deste mês)." : "Sobra não acumula mais.");
+      setOrcamentos(await extras.listarOrcamentos());
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
   const media3 = (id: string) => {
     // média dos 3 meses completos anteriores ao mês exibido
     const idx = historico.porMes.length - 1;
@@ -318,7 +364,7 @@ export function OrcamentoPage() {
           </div>
           <div className="flex items-center gap-1.5">
             <input
-              value={rascunho ?? (lim > 0 ? centavosParaValorInput(lim) : "")}
+              value={rascunho ?? ((limiteNormal.get(c.id) ?? 0) > 0 ? centavosParaValorInput(limiteNormal.get(c.id)!) : "")}
               onChange={(e) => setRascunhos((r) => ({ ...r, [c.id]: e.target.value }))}
               onKeyDown={(e) => e.key === "Enter" && salvar(c.id)}
               inputMode="decimal"
@@ -356,6 +402,18 @@ export function OrcamentoPage() {
             ) : ritmoAlto ? (
               <p className="mt-1.5 text-xs font-medium text-alerta">Ritmo acima do esperado: já gastou {Math.round(pct)}% com {Math.round(decorrido)}% do mês.</p>
             ) : null}
+            {ehMesAtual && (() => {
+              const r = ritmo(lim, gasto, hoje);
+              return r && gasto < lim ? (
+                <p className="mt-1 text-xs text-texto-secundario">
+                  Pode gastar <strong className="text-texto-primario">{formatarCentavos(r.porDia)} por dia</strong> até o fim do mês
+                  {r.desvio > 0.1 && <span className="text-alerta"> · {Math.round(r.desvio * 100)}% acima do ritmo</span>}.
+                </p>
+              ) : null;
+            })()}
+            {(efetivos.get(c.id)?.acumulado ?? 0) !== 0 && (
+              <p className="mt-1 text-xs text-texto-secundario">Limite {formatarCentavos(efetivos.get(c.id)!.base)} {efetivos.get(c.id)!.acumulado > 0 ? "+ sobra" : "− estouro"} acumulada de {formatarCentavos(Math.abs(efetivos.get(c.id)!.acumulado))}.</p>
+            )}
             {previsto !== null && previsto > lim && pct < 100 && (
               <p className="mt-1 text-xs text-texto-secundario">Estimativa (no ritmo atual): fechar o mês em {formatarCentavos(previsto)}, {formatarCentavos(previsto - lim)} acima do limite.</p>
             )}
@@ -376,6 +434,24 @@ export function OrcamentoPage() {
               ))}
             </div>
             {previsto !== null && <p className="mt-2 text-xs text-texto-secundario">Estimativa de fechamento do mês (ritmo atual): {formatarCentavos(previsto)}.</p>}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-texto-secundario">
+              <span>Limite só de {nomeMesAno(mes.ref)}:</span>
+              <input
+                value={rascunhoMes[c.id] ?? (limitesMes.find((l) => l.categoria_id === c.id && l.mes === mesRef) ? centavosParaValorInput(limitesMes.find((l) => l.categoria_id === c.id && l.mes === mesRef)!.limite_centavos) : "")}
+                onChange={(e) => setRascunhoMes((r) => ({ ...r, [c.id]: e.target.value }))}
+                inputMode="decimal"
+                placeholder="igual aos outros"
+                aria-label={`Limite de ${c.nome} só neste mês`}
+                className={`${CLASSE_INPUT} w-28 py-1`}
+              />
+              <button onClick={() => salvarLimiteMes(c.id)} className="rounded border border-borda px-2 py-1 hover:border-primaria hover:text-primaria">Salvar mês</button>
+              {orcamentos.find((o) => o.categoria_id === c.id) && (
+                <label className="ml-2 flex items-center gap-1.5">
+                  <input type="checkbox" checked={orcamentos.find((o) => o.categoria_id === c.id)!.acumular} onChange={() => alternarAcumulo(orcamentos.find((o) => o.categoria_id === c.id)!)} className="h-3.5 w-3.5 accent-[var(--cor-primaria)]" />
+                  Sobra passa para o mês seguinte
+                </label>
+              )}
+            </div>
           </div>
         )}
       </li>
@@ -387,7 +463,7 @@ export function OrcamentoPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-texto-primario">Orçamento</h1>
-          <p className="text-sm text-texto-secundario">Limites mensais por categoria. Os limites valem para todos os meses.</p>
+          <p className="text-sm text-texto-secundario">Limites mensais por categoria. Abra uma categoria para definir um limite só de um mês ou deixar a sobra passar para o mês seguinte.</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 rounded-xl border border-borda bg-cartao px-1.5 py-1">
@@ -455,6 +531,8 @@ export function OrcamentoPage() {
       </div>
 
       )}
+
+      {secao === "planejamento" && <PlanejamentoExtra contas={contas} lancamentos={lancamentos} hoje={hoje} media3={media3} />}
 
       {secao === "categorias" && (
       <Secao

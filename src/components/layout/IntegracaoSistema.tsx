@@ -87,9 +87,26 @@ export async function verificarAvisosAgora(): Promise<number> {
   const ocultar = (await lerPreferencia<boolean>("ocultar_saldos")) ?? false;
   await atualizarBandeja(ocultar ? "Dairus" : textoDaBandeja(contas, agendamentos, hoje));
 
+  const { avisosDePlanejamento, orcamentoAutomatico } = await import("../../services/automacoesPlanejamento");
+  const { executarAutomacoesMetas } = await import("../../features/metas/executarAutomacoes");
+  const mensagens = [
+    ...(await executarAutomacoesMetas(hoje).catch((e) => { registrarNoLog("warn", `metas: ${String(e)}`); return [] as string[]; })),
+    ...[await orcamentoAutomatico(hoje).catch(() => null)].filter((x): x is string => !!x),
+    ...(await import("../../features/radar/radarAuto").then((m) => m.radarAutomatico(hoje)).catch(() => [] as string[])),
+  ];
+  const notificacoesLigadas = (await lerPreferencia<boolean>("avisos_windows")) !== false;
+  if (notificacoesLigadas) for (const m of mensagens) await notificar("Dairus", m);
+  if (mensagens.length) {
+    const { avisarDadosAlterados } = await import("../../state/useAoAlterarDados");
+    avisarDadosAlterados();
+  }
   if ((await lerPreferencia<boolean>("avisos_windows")) === false) return 0;
   const enviados = (await lerPreferencia<Record<string, string>>("avisos_enviados")) ?? {};
-  const avisos = [...calcularAvisos({ hoje, contas, agendamentos, lancamentos, orcamentos }), ...(await avisosDeInvestimentos(hoje))];
+  const avisos = [
+    ...calcularAvisos({ hoje, contas, agendamentos, lancamentos, orcamentos }),
+    ...(await avisosDeInvestimentos(hoje)),
+    ...(await avisosDePlanejamento(hoje).catch(() => [])),
+  ];
   const { novos, registro } = filtrarNovos(avisos, enviados, hoje);
   // Muitos de uma vez viram um resumo, para não encher a tela de notificações.
   if (novos.length > 3) {

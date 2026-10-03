@@ -48,7 +48,8 @@ const CHAVES_EXPORTAVEIS = [
   "backup_auto", "backup_frequencia", "backup_retencao", "gemini_modelo", "gemini_tom", "gemini_temperatura",
   "gemini_blocos", "gemini_anonimo", "tema_ativo", "marcas_usuario", "avisos_windows", "fechar_para_bandeja",
   "bloquear_ao_minimizar", "sync_auto", "atualizacao_auto", "invest_alvo", "invest_dia_aporte", "invest_valor_aporte",
-  "invest_cotacoes_auto", "pasta_vigiada", "assinaturas_ignoradas",
+  "invest_cotacoes_auto", "pasta_vigiada", "assinaturas_ignoradas", "chave_pix", "orcamento_auto", "meta_envelopes",
+  "meta_sobra", "meta_arredondar", "meta_lembrete", "desafios", "categorias_superfluas",
 ];
 
 export function ConfiguracoesPage() {
