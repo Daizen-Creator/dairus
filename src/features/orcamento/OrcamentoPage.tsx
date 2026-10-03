@@ -28,6 +28,7 @@ import { contabilidade } from "../../services/contabilidade";
 import { despesasPorCategoriaNoMes } from "../../services/agregacoes";
 import { exportarCsv, reais } from "../../services/exportacao";
 import { extras } from "../../services/extras";
+import { opcoesCategoria, somarSubcategorias } from "../../services/categorias";
 import {
   centavosParaValorInput,
   dataAtualISO,
@@ -75,6 +76,7 @@ export function OrcamentoPage() {
   const [visao, setVisao] = useState<Visao>("TODAS");
   const [expandida, setExpandida] = useState<string | null>(null);
   const [novaCategoria, setNovaCategoria] = useState("");
+  const [categoriaPai, setCategoriaPai] = useState("");
   const [rendaBase, setRendaBase] = usePreferencia<number>("orcamento_renda_base", 0);
   const [rendaTexto, setRendaTexto] = useState("");
   const [confirmarLimpar, setConfirmarLimpar] = useState(false);
@@ -110,15 +112,17 @@ export function OrcamentoPage() {
 
   const categorias = useMemo(() => contas.filter((c) => c.tipo === "DESPESA" && c.subtipo !== "CATEGORIA" && c.ativa), [contas]);
 
-  const gastoMes = useMemo(
+  // Gasto só da própria categoria (para totais) e com as subcategorias somadas (para o limite).
+  const gastoProprio = useMemo(
     () => new Map(despesasPorCategoriaNoMes(lancamentos, contas, mes.inicio, mes.fim).map((f) => [f.contaId, f.valorCentavos])),
     [lancamentos, contas, mes.inicio, mes.fim],
   );
+  const gastoMes = useMemo(() => somarSubcategorias(gastoProprio, contas), [gastoProprio, contas]);
 
   // Últimos 6 meses (incluindo o mês exibido) por categoria, para média e histórico.
   const historico = useMemo(() => {
     const meses = Array.from({ length: 6 }, (_, i) => mesRelativo(hoje, deslocamento - 5 + i));
-    const porMes = meses.map((m) => new Map(despesasPorCategoriaNoMes(lancamentos, contas, m.inicio, m.fim).map((f) => [f.contaId, f.valorCentavos])));
+    const porMes = meses.map((m) => somarSubcategorias(new Map(despesasPorCategoriaNoMes(lancamentos, contas, m.inicio, m.fim).map((f) => [f.contaId, f.valorCentavos])), contas));
     return { meses, porMes };
   }, [lancamentos, contas, hoje, deslocamento]);
 
@@ -152,7 +156,7 @@ export function OrcamentoPage() {
   const comLimite = categorias.filter((c) => limite.has(c.id));
   const totalOrcado = comLimite.reduce((s, c) => s + (limite.get(c.id) ?? 0), 0);
   const totalGastoLimitadas = comLimite.reduce((s, c) => s + (gastoMes.get(c.id) ?? 0), 0);
-  const totalGasto = categorias.reduce((s, c) => s + (gastoMes.get(c.id) ?? 0), 0);
+  const totalGasto = categorias.reduce((s, c) => s + (gastoProprio.get(c.id) ?? 0), 0);
   const estouradas = comLimite.filter((c) => (gastoMes.get(c.id) ?? 0) > (limite.get(c.id) ?? 0));
   const renda = rendaBase > 0 ? rendaBase : receitaMes;
   const comprometido = renda > 0 ? (totalOrcado / renda) * 100 : 0;
@@ -238,7 +242,7 @@ export function OrcamentoPage() {
     ev.preventDefault();
     if (!novaCategoria.trim()) return;
     try {
-      await extras.criarCategoria(novaCategoria, "DESPESA");
+      await extras.criarCategoria(novaCategoria, "DESPESA", categoriaPai || null);
       setNovaCategoria("");
       toast.success("Categoria criada.");
       await carregar();
@@ -458,6 +462,7 @@ export function OrcamentoPage() {
         acao={
           <form onSubmit={criarCategoria} className="flex items-center gap-2">
             <input value={novaCategoria} onChange={(e) => setNovaCategoria(e.target.value)} placeholder="Nova categoria (ex.: Pets)" aria-label="Nova categoria" className={`${CLASSE_INPUT} w-48 py-1.5`} />
+            <Select aria-label="Dentro de" value={categoriaPai} onValueChange={setCategoriaPai} options={[{ value: "", label: "Principal" }, ...opcoesCategoria(contas.filter((c) => c.tipo === "DESPESA" && c.subtipo !== "CATEGORIA" && c.ativa), contas).map((o) => ({ ...o, label: `em ${o.label}` }))]} className="w-44" />
             <Button type="submit" tamanho="pequeno" variante="secundaria" disabled={!novaCategoria.trim()}><Plus size={13} /> Criar</Button>
           </form>
         }
@@ -478,7 +483,7 @@ export function OrcamentoPage() {
               <div key={g.titulo}>
                 <h3 className="mb-2 flex justify-between text-xs font-semibold uppercase tracking-wide text-texto-secundario">
                   <span>{g.titulo}</span>
-                  <span className="normal-case tracking-normal tabular-nums">{formatarCentavos(g.itens.reduce((s, c) => s + (gastoMes.get(c.id) ?? 0), 0))} gastos · {formatarCentavos(g.itens.reduce((s, c) => s + (limite.get(c.id) ?? 0), 0))} orçados</span>
+                  <span className="normal-case tracking-normal tabular-nums">{formatarCentavos(g.itens.reduce((s, c) => s + (gastoProprio.get(c.id) ?? 0), 0))} gastos · {formatarCentavos(g.itens.reduce((s, c) => s + (limite.get(c.id) ?? 0), 0))} orçados</span>
                 </h3>
                 <ul className="space-y-3">{g.itens.map((c) => renderCategoria(c))}</ul>
               </div>

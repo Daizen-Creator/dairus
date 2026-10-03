@@ -5,6 +5,7 @@
 
 import { calcularCiclo } from "../features/contas/ciclo";
 import { despesasPorCategoriaNoMes } from "./agregacoes";
+import { somarSubcategorias } from "./categorias";
 import { formatarCentavos, primeiroDiaDoMesISO, ultimoDiaDoMesISO } from "./formato";
 import type { Agendamento, Conta, Lancamento } from "../types/accounting";
 import type { Orcamento } from "../types/extras";
@@ -68,7 +69,7 @@ export function calcularAvisos(e: EntradaAvisos): AvisoSistema[] {
 
   const inicio = primeiroDiaDoMesISO(e.hoje);
   const fim = ultimoDiaDoMesISO(e.hoje);
-  const gasto = new Map(despesasPorCategoriaNoMes(e.lancamentos, e.contas, inicio, fim).map((f) => [f.contaId, f.valorCentavos]));
+  const gasto = somarSubcategorias(new Map(despesasPorCategoriaNoMes(e.lancamentos, e.contas, inicio, fim).map((f) => [f.contaId, f.valorCentavos])), e.contas);
   const nome = new Map(e.contas.map((c) => [c.id, c.nome]));
   for (const o of e.orcamentos) {
     const g = gasto.get(o.categoria_id) ?? 0;

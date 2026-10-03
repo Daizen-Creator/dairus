@@ -3,6 +3,7 @@
 
 import { despesasPorCategoriaNoMes } from "../../services/agregacoes";
 import { calcularCiclo } from "../contas/ciclo";
+import { somarSubcategorias } from "../../services/categorias";
 import type { Agendamento, Conta, Lancamento } from "../../types/accounting";
 import type { InfoBackup, Meta, Orcamento } from "../../types/extras";
 
@@ -128,7 +129,7 @@ export function gerarAlertas(e: EntradaInteligencia): Alerta[] {
   }
 
   const mes = limitesDoMes(hoje);
-  const gastoPorCat = new Map(despesasPorCategoriaNoMes(e.lancamentos, e.contas, mes.inicio, mes.fim).map((f) => [f.contaId, f.valorCentavos]));
+  const gastoPorCat = somarSubcategorias(new Map(despesasPorCategoriaNoMes(e.lancamentos, e.contas, mes.inicio, mes.fim).map((f) => [f.contaId, f.valorCentavos])), e.contas);
   const nomeConta = new Map(e.contas.map((c) => [c.id, c.nome]));
   const estouradas = e.orcamentos.filter((o) => (gastoPorCat.get(o.categoria_id) ?? 0) > o.limite_centavos);
   if (estouradas.length > 0) {
@@ -200,7 +201,7 @@ export function calcularSaude(e: EntradaInteligencia, m: ReturnType<typeof calcu
   detalhes.push({ nome: "Contas em dia", pontos: Math.max(0, 25 - atrasadas * 8), maximo: 25, dica: atrasadas ? `${atrasadas} conta(s) atrasada(s).` : "Nenhuma conta atrasada." });
 
   const mesLim = limitesDoMes(e.hoje);
-  const gasto = new Map(despesasPorCategoriaNoMes(e.lancamentos, e.contas, mesLim.inicio, mesLim.fim).map((f) => [f.contaId, f.valorCentavos]));
+  const gasto = somarSubcategorias(new Map(despesasPorCategoriaNoMes(e.lancamentos, e.contas, mesLim.inicio, mesLim.fim).map((f) => [f.contaId, f.valorCentavos])), e.contas);
   const estouros = e.orcamentos.filter((o) => (gasto.get(o.categoria_id) ?? 0) > o.limite_centavos).length;
   detalhes.push({ nome: "Orçamento", pontos: e.orcamentos.length === 0 ? 10 : Math.max(0, 20 - estouros * 5), maximo: 20, dica: e.orcamentos.length === 0 ? "Defina limites para pontuar aqui." : estouros ? `${estouros} limite(s) estourado(s).` : "Dentro dos limites." });
 

@@ -197,3 +197,53 @@ mod testes {
         assert_eq!(normalizar_tag(&"x".repeat(31)), None);
     }
 }
+
+#[derive(Serialize)]
+pub struct ArquivoExtrato {
+    pub nome: String,
+    pub conteudo: String,
+}
+
+fn ler_texto(bytes: &[u8]) -> String {
+    match String::from_utf8(bytes.to_vec()) {
+        Ok(t) => t,
+        // Extratos de banco costumam vir em Windows-1252/Latin-1.
+        Err(_) => bytes.iter().map(|&b| b as char).collect(),
+    }
+}
+
+/// Arquivos .ofx/.csv deixados em Documentos\Dairus\...\Importar (pasta vigiada).
+#[tauri::command]
+pub fn listar_pasta_importar(app: tauri::AppHandle) -> Res<Vec<ArquivoExtrato>> {
+    let pasta = crate::extras::pasta_dairus(&app, "Importar")?;
+    let mut v = Vec::new();
+    for ent in std::fs::read_dir(&pasta).map_err(e)?.filter_map(|x| x.ok()) {
+        let p = ent.path();
+        let ext = p.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
+        if p.is_file() && (ext == "ofx" || ext == "csv" || ext == "txt") {
+            if let Ok(bytes) = std::fs::read(&p) {
+                if bytes.len() <= 20 * 1024 * 1024 {
+                    v.push(ArquivoExtrato { nome: p.file_name().unwrap_or_default().to_string_lossy().to_string(), conteudo: ler_texto(&bytes) });
+                }
+            }
+        }
+    }
+    v.sort_by(|a, b| a.nome.cmp(&b.nome));
+    Ok(v)
+}
+
+/// Move um arquivo já importado para a subpasta "Importados".
+#[tauri::command]
+pub fn marcar_extrato_importado(app: tauri::AppHandle, nome: String) -> Res<()> {
+    let nome = crate::extras::nome_seguro(&nome)?.to_string();
+    let pasta = crate::extras::pasta_dairus(&app, "Importar")?;
+    let destino = pasta.join("Importados");
+    std::fs::create_dir_all(&destino).map_err(e)?;
+    let carimbo = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    std::fs::rename(pasta.join(&nome), destino.join(format!("{carimbo}-{nome}"))).map_err(e)
+}
+
+#[tauri::command]
+pub fn caminho_pasta_importar(app: tauri::AppHandle) -> Res<String> {
+    Ok(crate::extras::pasta_dairus(&app, "Importar")?.to_string_lossy().to_string())
+}

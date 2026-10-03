@@ -80,3 +80,20 @@ export function sugerirCategoria(descricao: string, tipo: "DESPESA" | "RECEITA",
   }
   return null;
 }
+
+/**
+ * Soma o gasto das subcategorias na categoria principal (para comparar com o
+ * limite do orçamento). Não use o resultado para totais gerais: duplicaria.
+ */
+export function somarSubcategorias(gastoPorCategoria: Map<string, number>, contas: Conta[]): Map<string, number> {
+  const porId = new Map(contas.map((c) => [c.id, c]));
+  const saida = new Map(gastoPorCategoria);
+  for (const [id, valor] of gastoPorCategoria) {
+    let atual = porId.get(id);
+    while (atual && pai(atual, porId)) {
+      atual = pai(atual, porId)!;
+      saida.set(atual.id, (saida.get(atual.id) ?? 0) + valor);
+    }
+  }
+  return saida;
+}

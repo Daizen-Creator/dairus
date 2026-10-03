@@ -20,7 +20,11 @@ const invocar = vi.mocked(invoke);
 describe("Histórico de lançamentos", () => {
   beforeEach(() => {
     invocar.mockReset();
-    invocar.mockResolvedValue("C:/Users/x/Documents/Dairus/Exportacoes/historico.xlsx");
+    invocar.mockImplementation(async (c: string) => {
+      if (c === "listar_tags") return [{ lancamento_id: "l2", tag: "trabalho" }];
+      if (c === "listar_anexos") return [{ id: "ax1", lancamento_id: "l1", nome: "nota.pdf", mime: "application/pdf", tamanho: 10, criado_em: "" }];
+      return "C:/Users/x/Documents/Dairus/Exportacoes/historico.xlsx";
+    });
   });
 
   const lancs = [
@@ -77,5 +81,13 @@ describe("Histórico de lançamentos", () => {
     expect(abas[0].linhas).toHaveLength(1);
     expect(abas[0].linhas[0][1]).toBe("Uber");
     expect(abas[0].linhas[0][6]).toBe(-1800);
+  });
+
+  it("mostra as tags, filtra por tag e mostra o comprovante anexado", async () => {
+    const usuario = userEvent.setup();
+    render(<HistoricoLancamentos lancamentos={lancs} contas={CONTAS} onAlterado={vi.fn()} onDuplicar={vi.fn()} />);
+    await usuario.click(await screen.findByRole("button", { name: "#trabalho" }));
+    expect(screen.queryByText("Mercado")).not.toBeInTheDocument();
+    expect(screen.getByText("Uber")).toBeInTheDocument();
   });
 });

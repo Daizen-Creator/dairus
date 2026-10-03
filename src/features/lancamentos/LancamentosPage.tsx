@@ -14,12 +14,13 @@ import { ContasAPagar } from "./ContasAPagar";
 import { DespesaForm, type DespesaInicial } from "./DespesaForm";
 import { HistoricoLancamentos } from "./HistoricoLancamentos";
 import { ImportarExtratoForm } from "./ImportarExtratoForm";
+import { AbaAutomacao } from "./AbaAutomacao";
 import { NovaReceitaForm } from "./NovaReceitaForm";
 import { TransferenciaForm } from "./TransferenciaForm";
 import type { AnaliseLancamento } from "./analise";
 import { useAoAlterarDados } from "../../state/useAoAlterarDados";
 
-type Aba = "despesa" | "receita" | "agendar" | "transferencia" | "importar";
+type Aba = "despesa" | "receita" | "agendar" | "transferencia" | "importar" | "automacao";
 
 export function LancamentosPage() {
   const [aba, setAba] = useState<Aba>("despesa");
@@ -113,6 +114,7 @@ export function LancamentosPage() {
     { id: "agendar", rotulo: "Agendar (pagar ou receber)" },
     { id: "transferencia", rotulo: "Transferência entre contas" },
     { id: "importar", rotulo: "Importar extrato" },
+    { id: "automacao", rotulo: "Automação" },
   ];
 
   return (
@@ -173,8 +175,9 @@ export function LancamentosPage() {
           {aba === "receita" && <NovaReceitaForm contasDestino={contasAtivas} categoriasReceita={categoriasReceita} onRegistrada={carregar} />}
           {aba === "agendar" && <AgendamentoForm categoriasDespesa={categoriasDespesa} categoriasReceita={categoriasReceita} contas={contasPagaveis} onCriado={carregar} />}
           {aba === "transferencia" && <TransferenciaForm contas={contasAtivas} onRegistrada={carregar} />}
+          {aba === "automacao" && <AbaAutomacao contas={contas} lancamentos={lancamentos} onAlterado={carregar} />}
           {aba === "importar" && (
-            <ImportarExtratoForm contasAtivas={contasAtivas} categoriasDespesa={categoriasDespesa} lancamentos={lancamentos} onImportado={carregar} />
+            <ImportarExtratoForm contasAtivas={contasAtivas} categoriasDespesa={categoriasDespesa} categoriasReceita={categoriasReceita} lancamentos={lancamentos} onImportado={carregar} />
           )}
         </div>
       ))}

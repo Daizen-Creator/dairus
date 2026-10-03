@@ -66,6 +66,18 @@ export async function verificarAvisosAgora(): Promise<number> {
   } catch (e) {
     registrarNoLog("warn", `lançamentos automáticos: ${String(e)}`);
   }
+  // Pasta vigiada de extratos.
+  try {
+    const { importarDaPasta } = await import("../../services/pastaVigiada");
+    const r = await importarDaPasta();
+    if (r.importados) {
+      const { avisarDadosAlterados } = await import("../../state/useAoAlterarDados");
+      avisarDadosAlterados();
+      await notificar("Extrato importado", `${r.importados} lançamento(s) de ${r.arquivos} arquivo(s) da pasta vigiada.`);
+    }
+  } catch (e) {
+    registrarNoLog("warn", `pasta vigiada: ${String(e)}`);
+  }
   const [contas, agendamentos, lancamentos, orcamentos] = await Promise.all([
     contabilidade.listarContas(),
     contabilidade.listarAgendamentos(),
