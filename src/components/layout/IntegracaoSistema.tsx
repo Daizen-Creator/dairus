@@ -94,6 +94,18 @@ export async function verificarAvisosAgora(): Promise<number> {
     ...[await orcamentoAutomatico(hoje).catch(() => null)].filter((x): x is string => !!x),
     ...(await import("../../features/radar/radarAuto").then((m) => m.radarAutomatico(hoje)).catch(() => [] as string[])),
   ];
+  const rel = await import("../../services/automacoesRelatorios");
+  try {
+    const { dadosDoUsuario, useAuthStore } = await import("../../state/auth-store");
+    const dados = dadosDoUsuario(useAuthStore.getState().sessao);
+    const apelido = (await lerPreferencia<string>("nome_usuario")) || dados.nome;
+    const m = await rel.pdfMensalAutomatico(hoje, { nome: apelido, email: dados.email });
+    if (m) mensagens.push(m);
+  } catch (e) {
+    registrarNoLog("warn", `pdf mensal: ${String(e)}`);
+  }
+  const resumo = await rel.resumoSemanalAutomatico(hoje).catch(() => null);
+  if (resumo) mensagens.push(resumo);
   const notificacoesLigadas = (await lerPreferencia<boolean>("avisos_windows")) !== false;
   if (notificacoesLigadas) for (const m of mensagens) await notificar("Dairus", m);
   if (mensagens.length) {
@@ -106,6 +118,7 @@ export async function verificarAvisosAgora(): Promise<number> {
     ...calcularAvisos({ hoje, contas, agendamentos, lancamentos, orcamentos }),
     ...(await avisosDeInvestimentos(hoje)),
     ...(await avisosDePlanejamento(hoje).catch(() => [])),
+    ...(await rel.avisosDeRelatorios(hoje).catch(() => [])),
   ];
   const { novos, registro } = filtrarNovos(avisos, enviados, hoje);
   // Muitos de uma vez viram um resumo, para não encher a tela de notificações.

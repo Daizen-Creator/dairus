@@ -78,6 +78,33 @@ export function PainelPdf({ inicio, fim }: { inicio: string; fim: string }) {
         {gerando ? <Loader2 size={15} className="animate-spin" /> : <FileDown size={15} />} {gerando ? "Gerando…" : "Gerar relatório em PDF"}
       </Button>
       <p className="mt-2 text-xs text-texto-secundario">O PDF é salvo na pasta de exportações da sua conta e abre automaticamente.</p>
+      <RotinasDeRelatorio />
+    </div>
+  );
+}
+
+function Opcao({ chave, padrao, rotulo, dica }: { chave: string; padrao: boolean; rotulo: string; dica: string }) {
+  const [valor, setValor] = usePreferencia<boolean>(chave, padrao);
+  return (
+    <label className="flex items-start gap-2 text-sm text-texto-primario">
+      <input type="checkbox" checked={valor} onChange={() => setValor(!valor)} className="mt-0.5 h-4 w-4 accent-[var(--cor-primaria)]" />
+      <span>
+        {rotulo}
+        <span className="block text-xs text-texto-secundario">{dica}</span>
+      </span>
+    </label>
+  );
+}
+
+/** Rotinas automáticas: PDF do mês anterior todo dia 1º e resumo semanal. */
+function RotinasDeRelatorio() {
+  return (
+    <div className="mt-5 space-y-2 border-t border-borda pt-4">
+      <p className="text-sm font-semibold text-texto-primario">Automático</p>
+      <Opcao chave="pdf_mensal_auto" padrao={false} rotulo="Gerar o PDF do mês anterior todo dia 1º" dica="Com as seções marcadas acima. Se o computador estiver desligado no dia 1º, gera na próxima vez que o Dairus abrir." />
+      <Opcao chave="pdf_mensal_nuvem" padrao={true} rotulo="Guardar uma cópia do PDF mensal na nuvem" dica="Fica na pasta “relatorios” da sua conta (precisa estar conectado)." />
+      <Opcao chave="resumo_semanal" padrao={true} rotulo="Resumo da semana no domingo" dica="Gastos da semana, comparação com a anterior e contas da próxima semana. Aparece no Início." />
+      <Opcao chave="resumo_semanal_ia" padrao={false} rotulo="Escrever o resumo semanal com a IA" dica="Usa sua chave do Gemini. Sem chave ou sem internet, fica o resumo simples." />
     </div>
   );
 }

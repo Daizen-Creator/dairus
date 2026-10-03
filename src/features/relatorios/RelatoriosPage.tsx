@@ -24,6 +24,9 @@ import { FluxoCaixaChart } from "../dashboard/FluxoCaixaChart";
 import { gastoPorDiaDaSemana, maioresDespesas, totalPorTipo } from "../dashboard/inteligencia";
 import { iconeDaCategoria } from "../dashboard/categoriaIcone";
 import { SeloEtiqueta } from "../lancamentos/Selos";
+import { Select } from "../../components/ui/Select";
+import { opcoesCategoria } from "../../services/categorias";
+import { AbaAnoAno, AbaImpostoRenda, AbaPrevisao, BotaoCalendario } from "./RelatoriosExtras";
 import type { Conta, Lancamento } from "../../types/accounting";
 import type { Orcamento } from "../../types/extras";
 
@@ -47,7 +50,9 @@ function variacao(atual: number, anterior: number): number | null {
 
 export function RelatoriosPage() {
   const [contas, setContas] = useState<Conta[]>([]);
-  const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
+  const [lancamentosTodos, setLancamentos] = useState<Lancamento[]>([]);
+  const [filtroConta, setFiltroConta] = useState("");
+  const [filtroCategoria, setFiltroCategoria] = useState("");
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [carregando, setCarregando] = useState(true);
   const hoje = dataAtualISO();
@@ -56,7 +61,7 @@ export function RelatoriosPage() {
   const [gerandoPdf, setGerandoPdf] = useState(false);
   const [secoesPdf] = usePreferencia<SecaoPdf[]>("pdf_secoes", SECOES_PDF.filter((x) => x.padrao).map((x) => x.id));
   const titular = useTitular();
-  const [secao, setSecao] = useAbaDaPagina<"visao" | "categorias" | "tendencias" | "entradas" | "padroes" | "exportar">("relatorios", "visao");
+  const [secao, setSecao] = useAbaDaPagina<"visao" | "categorias" | "tendencias" | "entradas" | "padroes" | "previsao" | "anoano" | "ir" | "exportar">("relatorios", "visao");
   const cores = useThemeStore((s) => s.temaAtivo()).cores.grafico;
 
   useEffect(() => {
@@ -71,6 +76,16 @@ export function RelatoriosPage() {
   }, []);
 
   const ant = periodoAnterior(periodo.inicio, periodo.fim);
+  // Filtros dos gráficos: só uma conta/cartão e/ou só uma categoria (com subcategorias).
+  const lancamentos = useMemo(() => {
+    if (!filtroConta && !filtroCategoria) return lancamentosTodos;
+    const porId = new Map(contas.map((c) => [c.id, c]));
+    const naCategoria = (id: string) => {
+      for (let c = porId.get(id); c; c = c.categoria_pai_id ? porId.get(c.categoria_pai_id) : undefined) if (c.id === filtroCategoria) return true;
+      return false;
+    };
+    return lancamentosTodos.filter((l) => (!filtroConta || l.partidas.some((p) => p.conta_id === filtroConta)) && (!filtroCategoria || l.partidas.some((p) => naCategoria(p.conta_id))));
+  }, [lancamentosTodos, contas, filtroConta, filtroCategoria]);
   const nomeConta = useMemo(() => new Map(contas.map((c) => [c.id, c.nome])), [contas]);
 
   const dados = useMemo(() => {
@@ -190,7 +205,7 @@ export function RelatoriosPage() {
   const exportarCategorias = () =>
     exportarCsv("despesas-por-categoria", ["Categoria", "Gasto (R$)", "Período anterior (R$)", "Limite (R$)"], dados.categorias.map((d) => [d.nome, reais(d.valorCentavos), reais(dados.categoriasAnt.get(d.contaId) ?? 0), limites.has(d.contaId) ? reais(limites.get(d.contaId)!) : ""]));
   const exportarBalancete = () =>
-    exportarCsv("balancete", ["Código", "Conta", "Débitos (R$)", "Créditos (R$)", "Saldo (R$)"], balancete(lancamentos, contas, periodo.fim).map((l) => [l.conta.codigo, l.conta.nome, reais(l.debitos), reais(l.creditos), reais(l.saldo)]));
+    exportarCsv("balancete", ["Código", "Conta", "Débitos (R$)", "Créditos (R$)", "Saldo (R$)"], balancete(lancamentosTodos, contas, periodo.fim).map((l) => [l.conta.codigo, l.conta.nome, reais(l.debitos), reais(l.creditos), reais(l.saldo)]));
   const exportarReceitas = () =>
     exportarCsv("receitas-por-fonte", ["Fonte", "Total (R$)"], dados.fontes.map((f) => [f.conta.nome, reais(f.valor)]));
   const exportarMensal = () =>
@@ -242,7 +257,7 @@ export function RelatoriosPage() {
       {
         nome: "Balancete",
         colunas: [col("Código", "TEXTO", 10), col("Conta", "TEXTO", 32), col("Débitos", "MOEDA"), col("Créditos", "MOEDA"), col("Saldo", "MOEDA")],
-        linhas: balancete(lancamentos, contas, periodo.fim).map((l) => [l.conta.codigo, l.conta.nome, l.debitos, l.creditos, l.saldo]),
+        linhas: balancete(lancamentosTodos, contas, periodo.fim).map((l) => [l.conta.codigo, l.conta.nome, l.debitos, l.creditos, l.saldo]),
       },
     ]);
   const exportarAssinaturas = () =>
@@ -286,7 +301,19 @@ export function RelatoriosPage() {
         <StatCard titulo="Taxa de poupança" valor={taxa !== null ? `${taxa.toFixed(0)}%` : "—"} corValor={taxa !== null && taxa < 0 ? "erro" : "normal"} icone={Percent} corIcone="alerta" subtitulo={`Gasto médio: ${formatarCentavos(Math.round(dados.despesas / diasConsiderados))}/dia · ${formatarCentavos(Math.round((dados.despesas / diasConsiderados) * 30))}/mês`} />
       </div>
 
-      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "visao", rotulo: "Visão geral" }, { id: "categorias", rotulo: "Categorias e orçamento" }, { id: "tendencias", rotulo: "Tendências (12 meses)" }, { id: "entradas", rotulo: "Entradas e saídas" }, { id: "padroes", rotulo: "Padrões de gasto" }, { id: "exportar", rotulo: "PDF e exportação" }]} />
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "visao", rotulo: "Visão geral" }, { id: "categorias", rotulo: "Categorias e orçamento" }, { id: "tendencias", rotulo: "Tendências (12 meses)" }, { id: "entradas", rotulo: "Entradas e saídas" }, { id: "padroes", rotulo: "Padrões de gasto" }, { id: "previsao", rotulo: "Previsão de saldo" }, { id: "anoano", rotulo: "Ano a ano" }, { id: "ir", rotulo: "Imposto de Renda" }, { id: "exportar", rotulo: "PDF e exportação" }]} />
+
+      <div className="sem-impressao flex flex-wrap items-center gap-2 text-xs text-texto-secundario">
+        Filtrar gráficos:
+        <Select aria-label="Filtrar por conta ou cartão" value={filtroConta} onValueChange={setFiltroConta} options={[{ value: "", label: "Todas as contas e cartões" }, ...contas.filter((c) => (c.tipo === "ATIVO" || c.tipo === "PASSIVO") && c.subtipo !== "CATEGORIA").map((c) => ({ value: c.id, label: c.nome }))]} className="w-52" />
+        <Select aria-label="Filtrar por categoria" value={filtroCategoria} onValueChange={setFiltroCategoria} options={[{ value: "", label: "Todas as categorias" }, ...opcoesCategoria(contas.filter((c) => (c.tipo === "DESPESA" || c.tipo === "RECEITA") && c.subtipo !== "CATEGORIA"), contas)]} className="w-52" />
+        {(filtroConta || filtroCategoria) && <button onClick={() => { setFiltroConta(""); setFiltroCategoria(""); }} className="text-primaria hover:underline">limpar filtros</button>}
+        <span className="ml-auto"><BotaoCalendario hoje={hoje} /></span>
+      </div>
+
+      {secao === "previsao" && <AbaPrevisao hoje={hoje} />}
+      {secao === "anoano" && <AbaAnoAno contas={contas} lancamentos={lancamentos} hoje={hoje} />}
+      {secao === "ir" && <AbaImpostoRenda contas={contas} lancamentos={lancamentosTodos} hoje={hoje} />}
 
       {(secao === "visao") && (<>
       <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">

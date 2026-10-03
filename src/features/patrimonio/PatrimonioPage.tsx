@@ -29,6 +29,7 @@ import { Skeleton } from "../../components/ui/Skeleton";
 import { StatCard } from "../../components/ui/StatCard";
 import { contabilidade } from "../../services/contabilidade";
 import { AbaEmprestimos } from "./AbaEmprestimos";
+import { marcosDoPatrimonio, serieMensal } from "./linhaDoTempo";
 import { exportarCsv, reais } from "../../services/exportacao";
 import { extras } from "../../services/extras";
 import { centavosParaValorInput, dataAtualISO, formatarCentavos, formatarDataISOParaBR, valorInputParaCentavos } from "../../services/formato";
@@ -95,7 +96,7 @@ export function PatrimonioPage() {
 
   async function carregar() {
     try {
-      const [c, l, b] = await Promise.all([contabilidade.listarContas(), contabilidade.listarLancamentos(5000), extras.listarBens()]);
+      const [c, l, b] = await Promise.all([contabilidade.listarContas(), contabilidade.listarLancamentos(50000), extras.listarBens()]);
       setContas(c);
       setLancamentos(l);
       setBens(b);
@@ -134,6 +135,11 @@ export function PatrimonioPage() {
       }
       return { nome: MESES[d.getMonth()], Liquido: liquido / 100 };
     });
+  }, [lancamentos, contas, bens, hoje]);
+
+  const linhaDoTempo = useMemo(() => {
+    const serie = serieMensal(hoje, contas, lancamentos, bens);
+    return { serie, marcos: marcosDoPatrimonio(serie, bens).reverse() };
   }, [lancamentos, contas, bens, hoje]);
 
   if (carregando) {
@@ -426,6 +432,24 @@ export function PatrimonioPage() {
             </p>
           )}
         </Secao>
+        <div className="lg:col-span-2">
+          <Secao titulo="Linha do tempo e marcos">
+            {linhaDoTempo.marcos.length === 0 ? (
+              <p className="text-sm text-texto-secundario">Os marcos aparecem conforme o histórico cresce: primeiro mês no azul, patamares (R$ 10 mil, 50 mil…), dívidas zeradas e bens adquiridos.</p>
+            ) : (
+              <ol className="relative ml-2 space-y-3 border-l border-borda pl-4">
+                {linhaDoTempo.marcos.map((m) => (
+                  <li key={`${m.mes}-${m.titulo}`} className="relative">
+                    <span className={`absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full ${m.tipo === "divida" || m.tipo === "positivo" ? "bg-sucesso" : m.tipo === "bem" ? "bg-alerta" : "bg-primaria"}`} />
+                    <p className="text-xs text-texto-secundario">{MESES[Number(m.mes.slice(5, 7)) - 1]}/{m.mes.slice(0, 4)}</p>
+                    <p className="text-sm text-texto-primario">{ocultar ? m.titulo.replace(/R\$ [\d.]+/g, "R$ ••••") : m.titulo}</p>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {linhaDoTempo.serie.length > 12 && !ocultar && <p className="mt-3 text-xs text-texto-secundario">Histórico desde {MESES[Number(linhaDoTempo.serie[0].mes.slice(5, 7)) - 1]}/{linhaDoTempo.serie[0].mes.slice(0, 4)}: de {dinheiro(linhaDoTempo.serie[0].liquido)} para {dinheiro(linhaDoTempo.serie[linhaDoTempo.serie.length - 1].liquido)}.</p>}
+          </Secao>
+        </div>
       </div>
 
       )}

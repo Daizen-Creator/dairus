@@ -49,3 +49,10 @@ export async function apagarBackupDaNuvem(nome: string): Promise<void> {
   const { error } = await supabase.storage.from(BUCKET).remove([`${pasta}/${nome}`]);
   if (error) throw new Error(error.message);
 }
+
+/** Envia um arquivo qualquer (ex.: relatório em PDF) para <conta>/<subpasta>/ na nuvem. */
+export async function enviarArquivoParaNuvem(subpasta: string, nome: string, bytes: Uint8Array, tipo: string): Promise<void> {
+  const pasta = await pastaDaConta();
+  const { error } = await supabase.storage.from(BUCKET).upload(`${pasta}/${subpasta}/${nome}`, new Blob([new Uint8Array(bytes)], { type: tipo }), { upsert: true, contentType: tipo });
+  if (error) throw new Error(error.message);
+}
