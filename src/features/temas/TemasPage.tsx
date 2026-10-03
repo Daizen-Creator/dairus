@@ -3,6 +3,8 @@ import { toast } from "sonner";
 import { useThemeStore } from "../../state/theme-store";
 import { Button } from "../../components/ui/Button";
 import { CriarTemaForm } from "./CriarTemaForm";
+import { ExtrasTemas } from "./ExtrasTemas";
+import { notaContraste } from "./temasExtras";
 import type { CategoriaTema, Tema } from "../../types/theme";
 
 const CATEGORIAS: Array<CategoriaTema | "Todos" | "Favoritos"> = [
@@ -54,7 +56,7 @@ function CartaoTema({
           {tema.nome}
         </p>
         <p className="text-xs" style={{ color: tema.cores.textoSecundario }}>
-          {tema.categoria}
+          {tema.categoria} · contraste {notaContraste(tema).nivel === "baixo" ? "baixo" : notaContraste(tema).nivel} ({notaContraste(tema).razao.toFixed(1).replace(".", ",")})
         </p>
       </button>
       <div className="absolute right-2 top-2 flex gap-1">
@@ -103,7 +105,8 @@ export function TemasPage() {
   const [busca, setBusca] = useState("");
   const [criandoTema, setCriandoTema] = useState(false);
 
-  const temas = todosOsTemas();
+  const [modoFiltro, setModoFiltro] = useState<"todos" | "claro" | "escuro">("todos");
+  const temas = todosOsTemas().filter((t) => modoFiltro === "todos" || t.modoBase === modoFiltro);
 
   const temasFiltrados = useMemo(() => {
     return temas.filter((t) => {
@@ -112,7 +115,7 @@ export function TemasPage() {
         filtroCategoria === "Todos" ||
         (filtroCategoria === "Favoritos" ? favoritos.includes(t.id) : t.categoria === filtroCategoria);
       return combinaBusca && combinaCategoria;
-    });
+    }).sort((a, b) => Number(favoritos.includes(b.id)) - Number(favoritos.includes(a.id)));
   }, [temas, busca, filtroCategoria, favoritos]);
 
   function exportarTemas() {
@@ -198,6 +201,11 @@ export function TemasPage() {
           </label>
         </div>
       )}
+
+      <ExtrasTemas temas={todosOsTemas()} favoritos={favoritos} />
+      <div className="flex gap-1.5 text-xs">
+        {(["todos", "claro", "escuro"] as const).map((m) => <button key={m} onClick={() => setModoFiltro(m)} className={`rounded-full px-3 py-1 ${modoFiltro === m ? "bg-primaria text-primaria-texto" : "bg-superficie text-texto-secundario"}`}>{m === "todos" ? "Claros e escuros" : m === "claro" ? "Só claros" : "Só escuros"}</button>)}
+      </div>
 
       {criandoTema && (
         <CriarTemaForm

@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
+import { usePreferencia } from "../../state/usePreferencia";
 import { Button } from "../../components/ui/Button";
 import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { BarraProgresso, CLASSE_INPUT, Secao } from "../../components/ui/Campos";
@@ -31,6 +32,7 @@ import { Skeleton } from "../../components/ui/Skeleton";
 import { StatCard } from "../../components/ui/StatCard";
 import { contabilidade } from "../../services/contabilidade";
 import { planejamento } from "../../services/planejamento";
+import { DistribuirEntreMetas, MaisDaMeta } from "./FerramentasMetas";
 import { AbaAutomacaoMetas, AbaDesafios } from "./AbaAutomacaoMetas";
 import type { Conta, Lancamento } from "../../types/accounting";
 import { exportarCsv, reais } from "../../services/exportacao";
@@ -107,6 +109,10 @@ export function MetasPage() {
   const [contas, setContas] = useState<Conta[]>([]);
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [origens, setOrigens] = useState<Record<string, string>>({});
+  const [buscaMeta, setBuscaMeta] = useState("");
+  const [maisAberto, setMaisAberto] = useState<string | null>(null);
+  const [emojis] = usePreferencia<Record<string, string>>("emoji_metas", {});
+  const [pausadas] = usePreferencia<string[]>("metas_pausadas", []);
   const hoje = dataAtualISO();
   const contasDeOrigem = contas.filter((c) => c.tipo === "ATIVO" && c.subtipo !== "CATEGORIA" && c.ativa);
 
@@ -166,10 +172,11 @@ export function MetasPage() {
   const saldoLivre = saldoDisponivel - totalGuardado;
   const progressoGeral = totalAlvo > 0 ? (totalGuardado / totalAlvo) * 100 : 0;
   const sugestaoMensalTotal = metas
-    .filter((m) => m.guardado_centavos < m.valor_alvo_centavos && m.prazo && m.prazo >= hoje)
+    .filter((m) => m.guardado_centavos < m.valor_alvo_centavos && m.prazo && m.prazo >= hoje && !pausadas.includes(m.id))
     .reduce((s, m) => s + Math.ceil((m.valor_alvo_centavos - m.guardado_centavos) / mesesAte(m.prazo!, hoje)), 0);
 
   const visiveis = metas
+    .filter((m) => !buscaMeta.trim() || m.nome.toLowerCase().includes(buscaMeta.trim().toLowerCase()))
     .filter((m) => {
       const feita = m.guardado_centavos >= m.valor_alvo_centavos;
       return visao === "TODAS" || (visao === "CONCLUIDAS" ? feita : !feita);
@@ -342,13 +349,14 @@ export function MetasPage() {
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white" style={{ backgroundImage: `linear-gradient(135deg, color-mix(in srgb, ${tipo.cor} 82%, white), ${tipo.cor}, color-mix(in srgb, ${tipo.cor} 72%, black))`, boxShadow: `0 0 14px -2px ${tipo.cor}` }}>
-              <Icone size={19} strokeWidth={2.1} />
+              {emojis[m.id] ? <span className="text-lg leading-none">{emojis[m.id]}</span> : <Icone size={19} strokeWidth={2.1} />}
             </span>
             <div className="min-w-0">
               <p className="flex flex-wrap items-center gap-2 truncate text-sm font-semibold text-texto-primario">
                 {m.nome}
                 {feita && <span className="rounded-full border border-sucesso/70 bg-sucesso/10 px-2 py-0.5 text-[11px] font-semibold text-sucesso shadow-[0_0_10px_-4px_var(--cor-sucesso)]">Atingida</span>}
                 {atrasada && <span className="rounded-full border px-2 py-0.5 text-[11px] font-semibold" style={{ color: "#ff2d55", borderColor: "#ff2d5599" }}>Prazo vencido</span>}
+                {pausadas.includes(m.id) && <span className="rounded-full border border-borda px-2 py-0.5 text-[11px] text-texto-secundario">Pausada</span>}
                 {prio && !feita && <span className="rounded-full border px-2 py-0.5 text-[11px] font-medium" style={{ color: prio.cor, borderColor: `${prio.cor}88` }}>Prioridade {prio.rotulo.toLowerCase()}</span>}
               </p>
               <p className="text-xs text-texto-secundario">
@@ -402,6 +410,7 @@ export function MetasPage() {
           <Select aria-label={`Conta da meta ${m.nome}`} value={m.conta_id ?? ""} onValueChange={(v) => ligarConta(m, v)} options={[{ value: "", label: "Nenhuma conta (só controle)" }, ...contasDeOrigem.map((c) => ({ value: c.id, label: c.nome }))]} className="w-52" />
         </label>
         <div className="mt-2 flex items-center gap-4 text-xs">
+          <button onClick={() => setMaisAberto(maisAberto === m.id ? null : m.id)} className="flex items-center gap-1 text-primaria hover:underline">{maisAberto === m.id ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Mais</button>
           <button onClick={() => alternarHistorico(m)} className="flex items-center gap-1 text-primaria hover:underline">{historicoAberto === m.id ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Histórico</button>
           <button onClick={() => { setMovendo(movendo === m.id ? null : m.id); setMv({ destino: metas.find((x) => x.id !== m.id)?.id ?? "", valor: "" }); }} disabled={m.guardado_centavos === 0 || metas.length < 2 || !!m.conta_id} className="flex items-center gap-1 text-primaria hover:underline disabled:opacity-40"><ArrowRightLeft size={13} /> Mover para outra meta</button>
         </div>
@@ -413,6 +422,8 @@ export function MetasPage() {
             <Button tamanho="pequeno" onClick={() => mover(m)}>Mover</Button>
           </div>
         )}
+
+        {maisAberto === m.id && <MaisDaMeta meta={m} onAlterado={carregar} />}
 
         {historicoAberto === m.id && (
           <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto border-t border-borda pt-2 text-xs">
@@ -477,7 +488,9 @@ export function MetasPage() {
       )}
 
       {secao === "lista" && (<>
+      {metas.some((m) => m.guardado_centavos < m.valor_alvo_centavos) && <DistribuirEntreMetas metas={metas} onAlterado={carregar} />}
       <div className="flex flex-wrap items-center gap-2">
+        <input value={buscaMeta} onChange={(e) => setBuscaMeta(e.target.value)} placeholder="Buscar meta…" aria-label="Buscar meta" className={`${CLASSE_INPUT} w-44`} />
         <Select aria-label="Mostrar" value={visao} onValueChange={(v) => setVisao(v as Visao)} options={[{ value: "ATIVAS", label: "Metas em andamento" }, { value: "CONCLUIDAS", label: "Metas atingidas" }, { value: "TODAS", label: "Todas as metas" }]} className="w-52" />
         <Select aria-label="Ordenar" value={ordem} onValueChange={(v) => setOrdem(v as Ordem)} options={[{ value: "PRIORIDADE", label: "Por prioridade" }, { value: "PRAZO", label: "Por prazo" }, { value: "PROGRESSO", label: "Por progresso" }, { value: "NOME", label: "Ordem alfabética" }]} className="w-48" />
       </div>

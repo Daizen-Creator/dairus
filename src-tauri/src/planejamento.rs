@@ -510,6 +510,90 @@ pub fn perdoar_valor(state: State<AppState>, id: String, data: String) -> Res<()
     Ok(())
 }
 
+/// Recebe só uma parte de um valor: a parte vira um item já recebido e o resto continua aberto.
+pub fn receber_parte(conn: &mut Connection, id: &str, valor: i64, conta_id: &str, data: &str) -> Res<Lancamento> {
+    data_ok(data)?;
+    let (total, pessoa, descricao, data_orig, lanc_orig, recebido, perdoado): (i64, String, String, String, Option<String>, Option<String>, i64) = conn
+        .query_row(
+            "SELECT valor_centavos, pessoa, descricao, data, lancamento_id, recebido_em, perdoado FROM a_receber WHERE id = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
+        )
+        .optional()
+        .map_err(e)?
+        .ok_or("Valor a receber não encontrado.")?;
+    if recebido.is_some() || perdoado != 0 {
+        return Err("Este valor já foi recebido ou perdoado.".into());
+    }
+    if valor <= 0 || valor > total {
+        return Err("A parte precisa ser maior que zero e no máximo o valor em aberto.".into());
+    }
+    if valor == total {
+        return receber(conn, &[id.to_string()], conta_id, data);
+    }
+    let lanc = lancar(conn, data, format!("Recebido (parte) de {pessoa}"), "TRANSFERENCIA", vec![p(conta_id, TipoPartida::Debito, valor), p(A_RECEBER, TipoPartida::Credito, valor)])?;
+    conn.execute("UPDATE a_receber SET valor_centavos = valor_centavos - ?2 WHERE id = ?1", params![id, valor]).map_err(e)?;
+    conn.execute(
+        "INSERT INTO a_receber (id, pessoa, descricao, valor_centavos, data, lancamento_id, recebido_em, recebimento_lancamento_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![Uuid::new_v4().to_string(), pessoa, format!("{descricao} (parte)"), valor, data_orig, lanc_orig, data, lanc.id],
+    )
+    .map_err(e)?;
+    Ok(lanc)
+}
+
+/// Corrige o nome de uma pessoa em tudo (valores a receber e contas agendadas).
+pub fn renomear_pessoa_db(conn: &Connection, antigo: &str, novo: &str) -> Res<usize> {
+    let novo = novo.trim();
+    if novo.is_empty() {
+        return Err("Informe o novo nome.".into());
+    }
+    let n = conn.execute("UPDATE a_receber SET pessoa = ?2 WHERE pessoa = ?1", params![antigo, novo]).map_err(e)?;
+    conn.execute("UPDATE agendamentos SET pessoa = ?2 WHERE pessoa = ?1", params![antigo, novo]).map_err(e)?;
+    Ok(n)
+}
+
+/// Desfaz uma divisão lançada errado (todas as partes e o lançamento), se nada foi recebido ainda.
+pub fn excluir_divisao_db(conn: &mut Connection, id: &str) -> Res<usize> {
+    let lanc: Option<String> = conn.query_row("SELECT lancamento_id FROM a_receber WHERE id = ?1", [id], |r| r.get(0)).optional().map_err(e)?.ok_or("Valor a receber não encontrado.")?;
+    let ids: Vec<(String, Option<String>, i64)> = {
+        let mut stmt = conn
+            .prepare("SELECT id, recebido_em, perdoado FROM a_receber WHERE id = ?1 OR (lancamento_id IS NOT NULL AND lancamento_id = ?2)")
+            .map_err(e)?;
+        let v = stmt.query_map(params![id, lanc], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(e)?.collect::<rusqlite::Result<Vec<_>>>().map_err(e)?;
+        v
+    };
+    if ids.iter().any(|(_, rec, perd)| rec.is_some() || *perd != 0) {
+        return Err("Parte desta divisão já foi recebida ou perdoada; estorne o recebimento no Histórico antes.".into());
+    }
+    let tx = conn.transaction().map_err(e)?;
+    for (x, _, _) in &ids {
+        tx.execute("DELETE FROM a_receber WHERE id = ?1", [x]).map_err(e)?;
+    }
+    if let Some(l) = lanc {
+        crate::gestao::apagar_lancamentos(&tx, vec![l])?;
+    }
+    tx.commit().map_err(e)?;
+    Ok(ids.len())
+}
+
+#[tauri::command]
+pub fn receber_parte_valor(state: State<AppState>, id: String, valor_centavos: i64, conta_id: String, data: String) -> Res<Lancamento> {
+    let mut conn = state.conn.lock().expect("mutex envenenado");
+    receber_parte(&mut conn, &id, valor_centavos, &conta_id, &data)
+}
+
+#[tauri::command]
+pub fn renomear_pessoa(state: State<AppState>, antigo: String, novo: String) -> Res<usize> {
+    let conn = state.conn.lock().expect("mutex envenenado");
+    renomear_pessoa_db(&conn, &antigo, &novo)
+}
+
+#[tauri::command]
+pub fn excluir_divisao(state: State<AppState>, id: String) -> Res<usize> {
+    let mut conn = state.conn.lock().expect("mutex envenenado");
+    excluir_divisao_db(&mut conn, &id)
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -572,6 +656,33 @@ mod testes {
         receber(&mut conn, &ids[..1], "ativo-dinheiro", "2026-10-05").unwrap();
         assert_eq!(engine::saldo_conta(&conn, A_RECEBER).unwrap(), 3_000);
         assert!(receber(&mut conn, &ids[..1], "ativo-dinheiro", "2026-10-05").is_err());
+    }
+
+    #[test]
+    fn recebe_parte_renomeia_e_desfaz_divisao() {
+        let mut conn = banco();
+        let nova = |conn: &mut Connection, pessoa: &str| {
+            dividir(
+                conn,
+                DivisaoInput {
+                    descricao: "Jantar".into(), data: "2026-10-01".into(), conta_id: "ativo-dinheiro".into(), categoria_id: None,
+                    minha_parte_centavos: 0, partes: vec![ParteDivisao { pessoa: pessoa.into(), valor_centavos: 10_000 }],
+                },
+            )
+            .unwrap();
+            conn.query_row("SELECT id FROM a_receber WHERE pessoa = ?1 AND recebido_em IS NULL", [pessoa], |r| r.get::<_, String>(0)).unwrap()
+        };
+        let id = nova(&mut conn, "Caio");
+        receber_parte(&mut conn, &id, 4_000, "ativo-dinheiro", "2026-10-03").unwrap();
+        let resto: i64 = conn.query_row("SELECT valor_centavos FROM a_receber WHERE id = ?1", [&id], |r| r.get(0)).unwrap();
+        assert_eq!(resto, 6_000);
+        assert_eq!(engine::saldo_conta(&conn, A_RECEBER).unwrap(), 6_000);
+        assert!(receber_parte(&mut conn, &id, 7_000, "ativo-dinheiro", "2026-10-03").is_err());
+        assert_eq!(renomear_pessoa_db(&conn, "Caio", "Caio Souza").unwrap(), 2);
+        assert!(excluir_divisao_db(&mut conn, &id).unwrap_err().contains("recebida"));
+        let outro = nova(&mut conn, "Duda");
+        assert_eq!(excluir_divisao_db(&mut conn, &outro).unwrap(), 1);
+        assert_eq!(engine::saldo_conta(&conn, A_RECEBER).unwrap(), 6_000);
     }
 
     #[test]

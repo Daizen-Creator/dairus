@@ -90,4 +90,14 @@ describe("Histórico de lançamentos", () => {
     expect(screen.queryByText("Mercado")).not.toBeInTheDocument();
     expect(screen.getByText("Uber")).toBeInTheDocument();
   });
+
+  it("exclui de vez e troca a categoria pelos detalhes", async () => {
+    const usuario = userEvent.setup();
+    const aoAlterar = vi.fn();
+    render(<HistoricoLancamentos lancamentos={lancs} contas={CONTAS} onAlterado={aoAlterar} onDuplicar={vi.fn()} />);
+    await usuario.click(screen.getByRole("button", { name: "Excluir Uber" }));
+    await usuario.click(screen.getByRole("button", { name: "Excluir de vez?" }));
+    await waitFor(() => expect(invocar).toHaveBeenCalledWith("excluir_lancamentos", { ids: ["l2"] }));
+    expect(aoAlterar).toHaveBeenCalled();
+  });
 });

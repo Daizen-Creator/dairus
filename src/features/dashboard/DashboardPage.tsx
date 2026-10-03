@@ -36,6 +36,7 @@ import { calcularPeriodo, SeletorPeriodo, type Periodo } from "./SeletorPeriodo"
 import { StatusRodape } from "./StatusRodape";
 import { CardDiagnosticoIA, CardResumoSemanal } from "./CardResumoSemanal";
 import { PrimeirosPassos } from "../ajuda/PrimeirosPassos";
+import { WidgetsInicio } from "./WidgetsInicio";
 import { StatCard } from "../../components/ui/StatCard";
 import { IconeCoisa } from "../../components/ui/IconeCoisa";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -338,6 +339,7 @@ export function DashboardPage() {
               cor="destaque"
             />
           </div>
+          <WidgetsInicio contas={contas} lancamentos={lancamentos} agendamentos={agendamentos} metas={metas} hoje={hoje} dinheiro={dinheiro} />
 
           </>)}
 

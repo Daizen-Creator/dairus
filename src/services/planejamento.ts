@@ -56,4 +56,7 @@ export const planejamento = {
     invoke<Lancamento>("registrar_divisao", { input }),
   receber: (ids: string[], contaId: string, data: string) => invoke<Lancamento>("receber_valores", { ids, contaId, data }),
   perdoar: (id: string, data: string) => invoke<void>("perdoar_valor", { id, data }),
+  receberParte: (id: string, valorCentavos: number, contaId: string, data: string) => invoke<Lancamento>("receber_parte_valor", { id, valorCentavos, contaId, data }),
+  renomearPessoa: (antigo: string, novo: string) => invoke<number>("renomear_pessoa", { antigo, novo }),
+  excluirDivisao: (id: string) => invoke<number>("excluir_divisao", { id }),
 };

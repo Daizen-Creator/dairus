@@ -10,6 +10,7 @@ import { executarAnalise } from "../ia/AnalisesIA";
 import { TextoIA } from "../ia/TextoIA";
 import { PrimeirosPassos } from "./PrimeirosPassos";
 import { EVENTO_TUTORIAL } from "./Tutorial";
+import { ExtrasAjuda } from "./ExtrasAjuda";
 
 const ATALHOS = [
   ["Ctrl + Alt + D", "Lançamento rápido, mesmo minimizado"],
@@ -46,6 +47,7 @@ export function AjudaPage() {
       </div>
 
       <PrimeirosPassos />
+      <ExtrasAjuda />
 
       <form onSubmit={(e) => { e.preventDefault(); if (termo.trim()) perguntarIA(); }} className="flex flex-wrap gap-2">
         <div className="relative min-w-0 flex-1">

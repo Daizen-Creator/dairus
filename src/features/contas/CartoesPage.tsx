@@ -39,6 +39,8 @@ import { calcularCiclo } from "./ciclo";
 import { NovaContaForm } from "./NovaContaForm";
 import { dividirEmParcelas, parcelamentoDe } from "./parcelas";
 import { DetalhesCartao } from "./DetalhesCartao";
+import { FerramentasCartao } from "./FerramentasCartao";
+import { PainelConta } from "./PainelConta";
 import { ciclosFechados } from "./faturas";
 import { cartoes as servicoCartoes, type Adicional, type Fatura } from "../../services/cartoes";
 import type { Conta, Lancamento } from "../../types/accounting";
@@ -48,7 +50,7 @@ const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "O
 
 type Ordem = "NOME" | "FATURA" | "USO";
 
-interface CompraCartao {
+export interface CompraCartao {
   l: Lancamento;
   /** Data em que o valor entra na fatura (para parcelas, o mês de cada uma). */
   data: string;
@@ -96,6 +98,8 @@ export function CartoesPage() {
   const [comprando, setComprando] = useState<string | null>(null);
   const [cp, setCp] = useState({ descricao: "", valor: "", categoriaId: "despesa-outras", parcelas: "1", portador: "" });
   const [detalhe, setDetalhe] = useState<string | null>(null);
+  const [coresCartoes] = usePreferencia<Record<string, string>>("cores_contas", {});
+  const [tetos] = usePreferencia<Record<string, number>>("teto_cartoes", {});
 
   useAoAlterarDados(() => {
     carregar().catch(() => {});
@@ -370,9 +374,9 @@ export function CartoesPage() {
         key={cartao.id}
         className="rounded-xl border bg-cartao p-4"
         style={{
-          borderColor: "color-mix(in srgb, #f43f5e 40%, transparent)",
-          backgroundImage: "linear-gradient(135deg, color-mix(in srgb, #f43f5e 14%, transparent), transparent 60%)",
-          boxShadow: "0 8px 24px -16px #f43f5e",
+          borderColor: `color-mix(in srgb, ${coresCartoes[cartao.id] ?? "#f43f5e"} 40%, transparent)`,
+          backgroundImage: `linear-gradient(135deg, color-mix(in srgb, ${coresCartoes[cartao.id] ?? "#f43f5e"} 14%, transparent), transparent 60%)`,
+          boxShadow: `0 8px 24px -16px ${coresCartoes[cartao.id] ?? "#f43f5e"}`,
         }}
       >
         <div className="flex items-start justify-between gap-2">
@@ -453,6 +457,11 @@ export function CartoesPage() {
             </p>
           </div>
         </div>
+        {tetos[cartao.id] !== undefined && d.atual > tetos[cartao.id] * 0.8 && (
+          <p className={`mt-2 flex items-center gap-1 text-xs font-medium ${d.atual > tetos[cartao.id] ? "text-erro" : "text-alerta"}`}>
+            <TriangleAlert size={12} /> {d.atual > tetos[cartao.id] ? "Passou do teto" : "Perto do teto"} de {dinheiro(tetos[cartao.id])} nesta fatura
+          </p>
+        )}
         {d.futuras > 0 && (
           <p className="mt-2 text-[11px] text-texto-secundario">
             Parcelas das próximas faturas: <strong className="text-texto-primario">{dinheiro(d.futuras)}</strong> (já ocupam o limite)
@@ -461,6 +470,30 @@ export function CartoesPage() {
         <p className="mt-2 text-[11px] text-texto-secundario">
           Melhor dia de compra: <strong className="text-texto-primario">{formatarDataISOParaBR(d.ciclo.inicioAtual).slice(0, 5)}</strong> (logo após o fechamento)
         </p>
+
+        {(() => {
+          const limite40 = new Date(Date.parse(`${hoje}T12:00:00Z`) - 40 * 86_400_000).toISOString().slice(0, 10);
+          const vistos = new Set<string>();
+          const assinaturas = d.compras.filter((x) => x.l.etiqueta === "ASSINATURA" && x.data >= limite40 && x.valor > 0).filter((x) => {
+            const k = x.l.descricao.toLowerCase();
+            if (vistos.has(k)) return false;
+            vistos.add(k);
+            return true;
+          });
+          if (!assinaturas.length) return null;
+          return (
+            <div className="mt-3">
+              <p className="mb-1 text-[11px] text-texto-secundario">Assinaturas neste cartão · {dinheiro(assinaturas.reduce((s2, x) => s2 + x.valor, 0))}/mês</p>
+              <div className="flex flex-wrap gap-1.5">
+                {assinaturas.map((x) => (
+                  <span key={x.l.id} title={`${x.l.descricao} · ${formatarCentavos(x.valor)}`} className="flex items-center gap-1 rounded-full border border-borda bg-fundo/40 py-0.5 pl-0.5 pr-2 text-[11px] text-texto-primario">
+                    <IconeCoisa nome={x.l.descricao} tamanho={18} redondo /> {x.l.descricao.split(" ")[0]}
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {cats.length > 0 && (
           <ul className="mt-3 space-y-1.5">
@@ -549,13 +582,16 @@ export function CartoesPage() {
               dinheiro={dinheiro}
               onAlterado={carregar}
             />
+            <FerramentasCartao cartao={cartao} compras={d.compras} atual={Math.max(0, d.atual)} dinheiro={dinheiro} onAlterado={carregar} />
+            <PainelConta conta={cartao} outras={todos.filter((x) => x.id !== cartao.id)} lancamentos={lancamentos} dinheiro={dinheiro} rotulo="cartão" onAlterado={() => { setDetalhe(null); carregar(); }} />
             {d.compras.length === 0 ? (
               <p className="text-xs text-texto-secundario">Nenhuma compra neste cartão ainda.</p>
             ) : (
               <ul className="space-y-1 text-xs">
                 {d.compras.filter((x) => x.data <= d.ciclo.proximoFechamento).slice(0, 12).map((x) => (
                   <li key={`${x.l.id}-${x.parcela?.numero ?? 0}`} className="flex items-center justify-between gap-2">
-                    <span className="min-w-0 truncate text-texto-secundario">
+                    <span className="flex min-w-0 items-center gap-2 truncate text-texto-secundario">
+                      <IconeCoisa nome={x.l.descricao} tamanho={20} redondo />
                       {formatarDataISOParaBR(x.data).slice(0, 5)} · <span className="text-texto-primario">{x.l.descricao}</span>
                       {x.parcela && <span> ({x.parcela.numero}/{x.parcela.total})</span>}
                       {portadores.has(x.l.id) && <span> · {adicionais.find((a) => a.id === portadores.get(x.l.id))?.nome}</span>}

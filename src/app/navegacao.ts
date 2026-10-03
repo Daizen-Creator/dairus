@@ -61,7 +61,7 @@ export const NAVEGACAO: ItemNavegacao[] = [
   },
   {
     rota: "/ia",
-    rotulo: "Inteligência Artificial",
+    rotulo: "Assistente IA",
     icone: Sparkles,
     tag: "IA",
   },

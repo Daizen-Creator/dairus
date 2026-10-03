@@ -2,13 +2,14 @@ import { useEffect } from "react";
 import { contabilidade } from "../../services/contabilidade";
 import { extras } from "../../services/extras";
 import { lerPreferencia, salvarPreferencia } from "../../services/armazenamento";
-import { calcularAvisos, filtrarNovos, textoDaBandeja } from "../../services/avisos";
+import { calcularAvisos, emHorarioSilencioso, filtrarNovos, grupoDoAviso, textoDaBandeja } from "../../services/avisos";
 import { dataAtualISO } from "../../services/formato";
 import { atualizarBandeja, estaNoTauri, ligarRegistroDeErros, notificar, registrarNoLog } from "../../services/sistema";
 import { useSegurancaStore } from "../../state/seguranca-store";
 import { lerEstadoLocal, pendenteDeEnvio, sincronizar } from "../../services/sincronizacao";
 import { toast } from "sonner";
 import { EVENTO_CONFLITO } from "./AvisoSincronizacao";
+import type { Conta, Lancamento } from "../../types/accounting";
 
 const INTERVALO_AVISOS = 30 * 60_000;
 const INTERVALO_SYNC = 5 * 60_000;
@@ -49,6 +50,37 @@ async function avisosDeInvestimentos(hoje: string) {
 }
 
 /** Verifica os avisos agora: manda ao Windows os que ainda não foram mostrados hoje e atualiza a bandeja. */
+/** Lembretes de cobrança marcados em Pessoas: avisa no dia (se a pessoa ainda deve). */
+async function avisosDeCobranca(hoje: string) {
+  const contatos = (await lerPreferencia<Record<string, { lembrete?: string }>>("contatos_pessoas")) ?? {};
+  const devidas = Object.entries(contatos).filter(([, c]) => c.lembrete && c.lembrete <= hoje);
+  if (!devidas.length) return [];
+  const { planejamento } = await import("../../services/planejamento");
+  const abertos = (await planejamento.listarAReceber()).filter((i) => !i.recebido_em && !i.perdoado);
+  return devidas
+    .map(([pessoa, c]) => ({ pessoa, c, total: abertos.filter((i) => i.pessoa === pessoa).reduce((s, i) => s + i.valor_centavos, 0) }))
+    .filter((x) => x.total > 0)
+    .map((x) => ({ id: `cobranca-${x.pessoa}-${x.c.lembrete}`, titulo: `Cobrar ${x.pessoa}`, corpo: `${x.pessoa} ainda deve ${(x.total / 100).toFixed(2).replace(".", ",")}. A mensagem está pronta em Pessoas e Divisões.` }));
+}
+
+/** Cartões com teto de gasto: avisa ao passar de 80% e de 100% na fatura aberta. */
+async function avisosDeTeto(hoje: string, contas: Conta[], lancamentos: Lancamento[]) {
+  const tetos = (await lerPreferencia<Record<string, number>>("teto_cartoes")) ?? {};
+  if (!Object.keys(tetos).length) return [];
+  const { comprasDoCartao } = await import("../../features/contas/CartoesPage");
+  const { calcularCiclo } = await import("../../features/contas/ciclo");
+  const porId = new Map(contas.map((c) => [c.id, c]));
+  const avisos = [];
+  for (const c of contas.filter((x) => tetos[x.id] !== undefined && x.ativa)) {
+    const ciclo = calcularCiclo(c.dia_fechamento_fatura ?? 1, c.dia_vencimento_fatura ?? 10, hoje);
+    const gasto = comprasDoCartao(c, lancamentos, porId).filter((x) => x.data >= ciclo.inicioAtual && x.data <= ciclo.proximoFechamento).reduce((s, x) => s + x.valor, 0);
+    const teto = tetos[c.id];
+    if (gasto > teto) avisos.push({ id: `teto100-${c.id}-${ciclo.proximoFechamento}`, titulo: `${c.nome}: passou do teto`, corpo: `Fatura aberta com ${(gasto / 100).toFixed(2).replace(".", ",")} (teto ${(teto / 100).toFixed(2).replace(".", ",")}).` });
+    else if (gasto > teto * 0.8) avisos.push({ id: `teto80-${c.id}-${ciclo.proximoFechamento}`, titulo: `${c.nome}: 80% do teto`, corpo: `Fatura aberta com ${(gasto / 100).toFixed(2).replace(".", ",")} de ${(teto / 100).toFixed(2).replace(".", ",")}.` });
+  }
+  return avisos;
+}
+
 export async function verificarAvisosAgora(): Promise<number> {
   const hoje = dataAtualISO();
   // Receitas e contas marcadas como "lançar sozinho" que já chegaram no dia.
@@ -134,12 +166,32 @@ export async function verificarAvisosAgora(): Promise<number> {
   if ((await lerPreferencia<boolean>("avisos_windows")) === false) return 0;
   const enviados = (await lerPreferencia<Record<string, string>>("avisos_enviados")) ?? {};
   const avisos = [
-    ...calcularAvisos({ hoje, contas, agendamentos, lancamentos, orcamentos }),
+    ...calcularAvisos({ hoje, contas, agendamentos, lancamentos, orcamentos, diasAntes: (await lerPreferencia<number[]>("dias_aviso_contas")) ?? [3, 1, 0] }),
     ...(await avisosDeInvestimentos(hoje)),
     ...(await avisosDePlanejamento(hoje).catch(() => [])),
     ...(await rel.avisosDeRelatorios(hoje).catch(() => [])),
+    ...(await avisosDeTeto(hoje, contas, lancamentos).catch(() => [])),
+    ...(await avisosDeCobranca(hoje).catch(() => [])),
+    ...(await (async () => {
+      const dias = (await lerPreferencia<number>("lembrete_backup_dias")) ?? 14;
+      if (!dias) return [];
+      const ultimo = (await extras.listarBackups()).map((b) => b.criado_em.slice(0, 10)).sort().pop();
+      const idade = ultimo ? Math.round((Date.parse(`${hoje}T12:00:00Z`) - Date.parse(`${ultimo}T12:00:00Z`)) / 86_400_000) : Infinity;
+      return idade >= dias ? [{ id: `backup-${hoje.slice(0, 7)}-${Math.floor(Number(hoje.slice(8, 10)) / 7)}`, titulo: "Faça um backup", corpo: ultimo ? `O último backup tem ${idade} dias. Abra Backup e Segurança → Fazer backup agora.` : "Você ainda não tem backup. Abra Backup e Segurança." }] : [];
+    })().catch(() => [])),
+    ...(await import("../../features/contas/ferramentasContas").then(async (m) =>
+      m.abaixoDoMinimo(contas, (await lerPreferencia<Record<string, number>>("saldo_minimo_contas")) ?? {}).map((x) => ({
+        id: `minimo-${x.conta.id}`,
+        titulo: `${x.conta.nome} abaixo do mínimo`,
+        corpo: `Saldo ${(x.conta.saldo_atual_centavos / 100).toFixed(2).replace(".", ",")} (mínimo ${(x.minimo / 100).toFixed(2).replace(".", ",")}).`,
+      })),
+    )),
   ];
-  const { novos, registro } = filtrarNovos(avisos, enviados, hoje);
+  // Grupos desligados pelo usuário e horário silencioso (os avisos ficam para depois).
+  const desligados = new Set((await lerPreferencia<string[]>("avisos_grupos_desligados")) ?? []);
+  const silencio = (await lerPreferencia<{ ativo: boolean; inicio: number; fim: number }>("avisos_silencio")) ?? { ativo: false, inicio: 22, fim: 7 };
+  if (silencio.ativo && emHorarioSilencioso(new Date().getHours(), silencio.inicio, silencio.fim)) return 0;
+  const { novos, registro } = filtrarNovos(avisos.filter((a) => !desligados.has(grupoDoAviso(a.id))), enviados, hoje);
   // Muitos de uma vez viram um resumo, para não encher a tela de notificações.
   if (novos.length > 3) {
     await notificar(`Dairus: ${novos.length} avisos`, novos.slice(0, 4).map((a) => `• ${a.titulo}`).join("\n"));

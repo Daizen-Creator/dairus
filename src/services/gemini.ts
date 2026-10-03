@@ -220,6 +220,11 @@ export async function chamarGeminiComCorpo(chave: string, modelo: string, corpo:
   throw ultimoErro ?? new Error("Não foi possível falar com o Gemini.");
 }
 
+export interface FonteWeb {
+  titulo: string;
+  url: string;
+}
+
 export async function chamarGemini(opts: {
   chave: string;
   modelo: string;
@@ -229,8 +234,8 @@ export async function chamarGemini(opts: {
   historico: Mensagem[];
   sinal?: AbortSignal;
   json?: boolean;
-  /** Liga a busca do Google (grounding) — usada pelo Radar para achar preços. */
-  buscaGoogle?: boolean;
+  /** Liga a pesquisa no Google (grounding): respostas com fontes da web. */
+  buscaWeb?: boolean;
 }) {
   const corpo = {
     systemInstruction: { parts: [{ text: `${opts.instrucao}\n\nDADOS DO USUÁRIO:\n${opts.contexto}` }] },
@@ -238,14 +243,17 @@ export async function chamarGemini(opts: {
       role: m.papel === "usuario" ? "user" : "model",
       parts: [...(m.anexo ? [{ inlineData: { mimeType: m.anexo.mime, data: m.anexo.base64 } }] : []), { text: m.texto }],
     })),
-    ...(opts.buscaGoogle ? { tools: [{ google_search: {} }] } : {}),
+    ...(opts.buscaWeb ? { tools: [{ google_search: {} }] } : {}),
     // A busca do Google não combina com saída JSON forçada; nesse caso o JSON vem no texto.
-    generationConfig: { temperature: opts.temperatura, ...(opts.json && !opts.buscaGoogle ? { responseMimeType: "application/json" } : {}) },
+    generationConfig: { temperature: opts.temperatura, ...(opts.json && !opts.buscaWeb ? { responseMimeType: "application/json" } : {}) },
   };
   const { json, modeloUsado } = await chamarGeminiComCorpo(opts.chave, opts.modelo, corpo, opts.sinal);
   const texto = json?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("");
   if (!texto) throw new Error("O Gemini não retornou resposta (conteúdo bloqueado ou vazio).");
-  return { texto: texto as string, tokens: (json?.usageMetadata?.totalTokenCount as number | undefined) ?? undefined, modeloUsado };
+  const fontes: FonteWeb[] = (json?.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [])
+    .map((c: { web?: { uri?: string; title?: string } }) => ({ titulo: c.web?.title ?? "", url: c.web?.uri ?? "" }))
+    .filter((f: FonteWeb) => f.url);
+  return { texto: texto as string, tokens: (json?.usageMetadata?.totalTokenCount as number | undefined) ?? undefined, modeloUsado, fontes };
 }
 
 
@@ -297,4 +305,19 @@ export async function arquivoParaAnexo(arquivo: Blob): Promise<{ mime: string; b
   let binario = "";
   for (let i = 0; i < bytes.length; i += 0x8000) binario += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return { mime: arquivo.type || "application/octet-stream", base64: btoa(binario) };
+}
+
+/** Pergunta com pesquisa no Google: devolve o texto e as páginas usadas como fonte. */
+export async function perguntarIAComBusca(opts: { instrucao?: string; contexto: string; pergunta: string; temperatura?: number }): Promise<{ texto: string; fontes: FonteWeb[] }> {
+  const cfg = await configuracaoGemini();
+  const r = await chamarGemini({
+    chave: cfg.chave,
+    modelo: cfg.modelo,
+    instrucao: opts.instrucao ?? INSTRUCAO_BASE,
+    contexto: opts.contexto,
+    temperatura: opts.temperatura ?? 0.1,
+    historico: [{ papel: "usuario", texto: opts.pergunta }],
+    buscaWeb: true,
+  });
+  return { texto: r.texto, fontes: r.fontes };
 }

@@ -19,6 +19,7 @@ import {
 import { toast } from "sonner";
 import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { SecaoNuvem } from "./SecaoNuvem";
+import { ExtrasBackup } from "./ExtrasBackup";
 import { SecaoCriptografia } from "./SecaoCriptografia";
 import { enviarBackupParaNuvem } from "../../services/nuvem";
 import { Button } from "../../components/ui/Button";
@@ -271,6 +272,7 @@ export function BackupPage() {
           A restauração confere a integridade do arquivo e guarda uma cópia do estado atual antes de substituir. Sem a criptografia ligada (aba PIN e privacidade), os backups ficam abertos; guarde-os em local seguro. Os arquivos “antes-de-…” nunca são apagados pela retenção automática.
         </p>
       </Secao>
+      <ExtrasBackup backups={backups} onAlterado={carregar} />
       </>)}
 
       {(secao === "dados") && (<>

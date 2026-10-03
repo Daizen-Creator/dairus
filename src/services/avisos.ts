@@ -22,6 +22,8 @@ export interface EntradaAvisos {
   agendamentos: Agendamento[];
   lancamentos: Lancamento[];
   orcamentos: Orcamento[];
+  /** Com quantos dias de antecedência avisar das contas (padrão 3, 1 e no dia). */
+  diasAntes?: number[];
 }
 
 function diasEntre(de: string, ate: string): number {
@@ -40,8 +42,8 @@ export function calcularAvisos(e: EntradaAvisos): AvisoSistema[] {
   }
   for (const a of e.agendamentos.filter((x) => !x.pago_em && x.tipo !== "RECEBER")) {
     const d = diasEntre(e.hoje, a.vencimento);
-    if (d === 3 || d === 1 || d === 0) {
-      const quando = d === 0 ? "vence hoje" : d === 1 ? "vence amanhã" : "vence em 3 dias";
+    if ((e.diasAntes ?? [3, 1, 0]).includes(d)) {
+      const quando = d === 0 ? "vence hoje" : d === 1 ? "vence amanhã" : `vence em ${d} dias`;
       avisos.push({ id: `venc-${a.id}-${d}`, titulo: `${a.descricao} ${quando}`, corpo: `${r(a.valor_centavos)} · abra o Dairus para marcar como paga.` });
     } else if (d < 0) {
       avisos.push({ id: `atraso-${a.id}`, titulo: `${a.descricao} está atrasada`, corpo: `${r(a.valor_centavos)} venceu há ${-d} dia(s).` });
@@ -104,4 +106,23 @@ export function textoDaBandeja(contas: Conta[], agendamentos: Agendamento[], hoj
   const linhas = [`Dairus · saldo ${formatarCentavos(saldo)}`];
   if (proxima) linhas.push(`Próxima: ${proxima.descricao} ${proxima.vencimento.slice(8, 10)}/${proxima.vencimento.slice(5, 7)} (${formatarCentavos(proxima.valor_centavos)})`);
   return linhas.join("\n");
+}
+
+/** Grupo do aviso (pelo id), para o usuário escolher o que quer receber. */
+export function grupoDoAviso(id: string): string {
+  if (/^(venc|atraso|receber)/.test(id)) return "contas";
+  if (/^(fecha|fatura|limite|teto)/.test(id)) return "cartoes";
+  if (/^(orc|orcamento|ritmo)/.test(id)) return "orcamento";
+  if (/^(meta|desafio)/.test(id)) return "metas";
+  if (/^(invest|cotacao|aporte|darf|vencimento-rf|alerta)/.test(id)) return "investimentos";
+  if (/^cobranca/.test(id)) return "pessoas";
+  if (/^backup/.test(id)) return "backup";
+  if (/^(saldo|minimo|risco|negativo)/.test(id)) return "saldo";
+  return "outros";
+}
+
+/** Dentro do horário silencioso? (ex.: 22 às 7, atravessando a meia-noite) */
+export function emHorarioSilencioso(hora: number, inicio: number, fim: number): boolean {
+  if (inicio === fim) return false;
+  return inicio < fim ? hora >= inicio && hora < fim : hora >= inicio || hora < fim;
 }

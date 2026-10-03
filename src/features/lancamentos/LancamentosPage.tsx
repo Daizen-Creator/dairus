@@ -14,13 +14,14 @@ import { ContasAPagar } from "./ContasAPagar";
 import { DespesaForm, type DespesaInicial } from "./DespesaForm";
 import { HistoricoLancamentos } from "./HistoricoLancamentos";
 import { ImportarExtratoForm } from "./ImportarExtratoForm";
+import { ModelosLancamento } from "./ModelosLancamento";
 import { AbaAutomacao } from "./AbaAutomacao";
 import { NovaReceitaForm } from "./NovaReceitaForm";
 import { TransferenciaForm } from "./TransferenciaForm";
 import type { AnaliseLancamento } from "./analise";
 import { useAoAlterarDados } from "../../state/useAoAlterarDados";
 
-type Aba = "despesa" | "receita" | "agendar" | "transferencia" | "importar" | "automacao";
+type Aba = "despesa" | "receita" | "agendar" | "transferencia" | "importar" | "modelos" | "automacao";
 
 export function LancamentosPage() {
   const [aba, setAba] = useState<Aba>("despesa");
@@ -114,6 +115,7 @@ export function LancamentosPage() {
     { id: "agendar", rotulo: "Agendar (pagar ou receber)" },
     { id: "transferencia", rotulo: "Transferência entre contas" },
     { id: "importar", rotulo: "Importar extrato" },
+    { id: "modelos", rotulo: "Modelos (1 clique)" },
     { id: "automacao", rotulo: "Automação" },
   ];
 
@@ -175,6 +177,7 @@ export function LancamentosPage() {
           {aba === "receita" && <NovaReceitaForm contasDestino={contasAtivas} categoriasReceita={categoriasReceita} onRegistrada={carregar} />}
           {aba === "agendar" && <AgendamentoForm categoriasDespesa={categoriasDespesa} categoriasReceita={categoriasReceita} contas={contasPagaveis} onCriado={carregar} />}
           {aba === "transferencia" && <TransferenciaForm contas={contasAtivas} onRegistrada={carregar} />}
+          {aba === "modelos" && <ModelosLancamento contas={contas} onLancado={carregar} />}
           {aba === "automacao" && <AbaAutomacao contas={contas} lancamentos={lancamentos} onAlterado={carregar} />}
           {aba === "importar" && (
             <ImportarExtratoForm contasAtivas={contasAtivas} categoriasDespesa={categoriasDespesa} categoriasReceita={categoriasReceita} lancamentos={lancamentos} onImportado={carregar} />

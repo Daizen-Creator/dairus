@@ -14,3 +14,10 @@ export const investimentos = {
   listarIndicadores: (serie: string, desde: string) => invoke<PontoIndicador[]>("listar_indicadores", { serie, desde }),
   buscarJson: <T = unknown>(url: string) => invoke<T>("buscar_json_mercado", { url }),
 };
+
+export const investimentosGestao = {
+  /** Desdobramento (fator 2) ou grupamento (fator 0,1) até a data. */
+  desdobrar: (ativoId: string, fator: number, data: string) => invoke<number>("desdobrar_ativo", { ativoId, fator, data }),
+  /** Apaga o ativo com todas as operações e lançamentos ligados. */
+  excluirCompleto: (ativoId: string) => invoke<number>("excluir_ativo_completo", { ativoId }),
+};
