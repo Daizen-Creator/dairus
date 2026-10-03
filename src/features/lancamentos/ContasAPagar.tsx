@@ -55,19 +55,26 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
   const [pagandoId, setPagandoId] = useState<string | null>(null);
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [mostrarPagas, setMostrarPagas] = useState(false);
-  const [ed, setEd] = useState({ descricao: "", valor: "", vencimento: "", etiqueta: "NENHUMA", recorrencia: "NENHUMA" });
+  const [ed, setEd] = useState({ descricao: "", valor: "", vencimento: "", etiqueta: "NENHUMA", recorrencia: "NENHUMA", automatico: false });
 
   const contaEfetiva = contaPagamentoId || contasPagaveis[0]?.id || "";
   const abertos = agendamentos.filter((a) => !a.pago_em);
   const pagos = agendamentos.filter((a) => a.pago_em).sort((a, b) => (b.pago_em ?? "").localeCompare(a.pago_em ?? ""));
-  const totalAberto = abertos.reduce((s, a) => s + a.valor_centavos, 0);
+  const totalAberto = abertos.filter((a) => a.tipo !== "RECEBER").reduce((s, a) => s + a.valor_centavos, 0);
+  const totalReceber = abertos.filter((a) => a.tipo === "RECEBER").reduce((s, a) => s + a.valor_centavos, 0);
+  const contasDestino = contasPagaveis.filter((c) => c.tipo === "ATIVO");
+  /** Receita não entra em cartão: usa a conta escolhida se for de ativo, senão a primeira conta. */
+  const contaPara = (a: Agendamento) => (a.tipo === "RECEBER" ? (contasDestino.some((c) => c.id === contaEfetiva) ? contaEfetiva : contasDestino[0]?.id ?? "") : contaEfetiva);
+  const extrasDe = (a: Agendamento) => ({ automatico: a.automatico, contaId: a.conta_id, reajusteAnual: a.reajuste_anual, mesReajuste: a.mes_reajuste });
 
   async function pagar(a: Agendamento) {
-    if (!contaEfetiva) return toast.error("Escolha de qual conta sai o pagamento.");
+    const conta = contaPara(a);
+    if (!conta) return toast.error("Escolha a conta.");
     try {
       setPagandoId(a.id);
-      await contabilidade.pagarAgendamento(a.id, contaEfetiva, dataPagamento);
-      toast.success(a.recorrencia ? `"${a.descricao}" paga — a próxima já foi agendada.` : `"${a.descricao}" marcada como paga.`);
+      await contabilidade.pagarAgendamento(a.id, conta, dataPagamento);
+      const feito = a.tipo === "RECEBER" ? "recebida" : "paga";
+      toast.success(a.recorrencia ? `"${a.descricao}" ${feito} — a próxima já foi agendada.` : `"${a.descricao}" marcada como ${feito}.`);
       onAlterado();
     } catch (e) {
       toast.error(String(e));
@@ -78,7 +85,7 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
 
   async function adiar(a: Agendamento, dias: number) {
     try {
-      await extras.atualizarAgendamento(a.id, a.descricao, a.valor_centavos, somarDias(a.vencimento, dias), a.etiqueta, a.recorrencia);
+      await extras.atualizarAgendamento(a.id, a.descricao, a.valor_centavos, somarDias(a.vencimento, dias), a.etiqueta, a.recorrencia, extrasDe(a));
       toast.success(`Vencimento adiado em ${dias} dias.`);
       onAlterado();
     } catch (e) {
@@ -104,6 +111,7 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
       vencimento: a.vencimento,
       etiqueta: a.etiqueta ?? "NENHUMA",
       recorrencia: a.recorrencia ?? "NENHUMA",
+      automatico: a.automatico,
     });
   }
 
@@ -116,6 +124,7 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
         ed.vencimento,
         ed.etiqueta === "NENHUMA" ? null : ed.etiqueta,
         ed.recorrencia === "NENHUMA" ? null : ed.recorrencia,
+        { ...extrasDe(a), automatico: ed.automatico, contaId: a.conta_id ?? (ed.automatico ? contaPara(a) || null : null) },
       );
       toast.success("Conta atualizada.");
       setEditandoId(null);
@@ -130,13 +139,14 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-borda px-4 py-3">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-texto-primario">
           <CalendarClock size={16} className="text-alerta" />
-          Contas a pagar ({abertos.length})
-          {abertos.length > 0 && <span className="font-normal text-texto-secundario">· {formatarCentavos(totalAberto)}</span>}
+          Agenda ({abertos.length})
+          {totalAberto > 0 && <span className="font-normal text-texto-secundario">· a pagar {formatarCentavos(totalAberto)}</span>}
+          {totalReceber > 0 && <span className="font-normal text-sucesso">· a receber {formatarCentavos(totalReceber)}</span>}
         </h2>
         {abertos.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 text-xs text-texto-secundario">
             <label className="flex items-center gap-2">
-              Pagar com
+              Conta
               <Select
                 aria-label="Conta usada no pagamento"
                 value={contaEfetiva}
@@ -156,7 +166,7 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
       {abertos.length === 0 ? (
         <div className="p-4">
           <EmptyState
-            titulo="Nenhuma conta a pagar"
+            titulo="Nada agendado"
             descricao={
               pagos.length > 0
                 ? "Tudo pago! Agende a próxima mensalidade ou assinatura na aba “Agendar conta”."
@@ -171,7 +181,8 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
             const atrasado = dias < 0;
             const emBreve = !atrasado && dias <= 3;
             const status: StatusPagamento = atrasado ? "ATRASADO" : "PENDENTE";
-            const cor = atrasado ? VERMELHO_VIVO : "var(--cor-alerta)";
+            const receber = a.tipo === "RECEBER";
+            const cor = receber ? "var(--cor-sucesso)" : atrasado ? VERMELHO_VIVO : "var(--cor-alerta)";
             const emEdicao = editandoId === a.id;
             return (
               <li
@@ -190,7 +201,9 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
                       <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-texto-primario">
                         <span className="truncate">{a.descricao}</span>
                         <SeloEtiqueta etiqueta={a.etiqueta} />
-                        <SeloStatus status={status} />
+                        {receber ? <span className="rounded-full border border-sucesso/60 px-1.5 text-[10px] text-sucesso">a receber</span> : <SeloStatus status={status} />}
+                        {a.automatico && <span className="rounded-full border border-primaria/60 px-1.5 text-[10px] text-primaria">automático</span>}
+                        {a.reajuste_anual ? <span className="text-[10px] text-texto-secundario">reajuste {(a.reajuste_anual * 100).toFixed(1).replace(".", ",")}%</span> : null}
                         {a.recorrencia && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-normal text-texto-secundario">
                             <Repeat size={11} /> {ROTULO_RECORRENCIA[a.recorrencia]}
@@ -198,15 +211,16 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
                         )}
                       </p>
                       <p className="mt-0.5 text-xs text-texto-secundario">
-                        {formatarDataISOParaBR(a.vencimento)} · {textoPrazo(a.vencimento, hoje)}
+                        {formatarDataISOParaBR(a.vencimento)} · {receber ? textoPrazo(a.vencimento, hoje).replace("vence", "entra").replace("venceu", "era para entrar") : textoPrazo(a.vencimento, hoje)}
+                        {a.pessoa && ` · ${receber ? "de" : "para"} ${a.pessoa}`}
                         {emBreve && <span className="ml-1 font-medium text-alerta">· atenção</span>}
                       </p>
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    <span className="mr-1 text-base font-bold tabular-nums text-texto-primario">{formatarCentavos(a.valor_centavos)}</span>
+                    <span className={`mr-1 text-base font-bold tabular-nums ${receber ? "text-sucesso" : "text-texto-primario"}`}>{receber ? "+ " : ""}{formatarCentavos(a.valor_centavos)}</span>
                     <Button tamanho="pequeno" disabled={pagandoId === a.id} onClick={() => pagar(a)}>
-                      {pagandoId === a.id ? "Pagando…" : "Marcar como pago"}
+                      {pagandoId === a.id ? "Salvando…" : receber ? "Confirmar recebimento" : "Marcar como pago"}
                     </Button>
                     <button onClick={() => adiar(a, 7)} title="Adiar vencimento em 7 dias" aria-label="Adiar 7 dias" className="rounded-md p-1.5 text-texto-secundario transition-colors hover:bg-borda/50 hover:text-primaria">
                       <CalendarPlus size={15} />
@@ -227,6 +241,10 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
                     <input type="date" value={ed.vencimento} onChange={(e) => setEd({ ...ed, vencimento: e.target.value })} aria-label="Vencimento" className={CLASSE_INPUT} />
                     <Select aria-label="Etiqueta" value={ed.etiqueta} onValueChange={(v) => setEd({ ...ed, etiqueta: v })} options={OPCOES_ETIQUETA} />
                     <Select aria-label="Repetição" value={ed.recorrencia} onValueChange={(v) => setEd({ ...ed, recorrencia: v })} options={OPCOES_RECORRENCIA} />
+                    <label className="flex items-center gap-2 text-xs text-texto-primario sm:col-span-2 lg:col-span-6">
+                      <input type="checkbox" checked={ed.automatico} onChange={() => setEd({ ...ed, automatico: !ed.automatico })} className="h-4 w-4 accent-[var(--cor-primaria)]" />
+                      Lançar sozinho no dia{!a.conta_id && ed.automatico ? ` (na conta escolhida acima)` : ""}
+                    </label>
                     <div className="flex gap-2 sm:col-span-2 lg:col-span-6">
                       <Button tamanho="pequeno" onClick={() => salvarEdicao(a)}>Salvar</Button>
                       <Button tamanho="pequeno" variante="fantasma" onClick={() => setEditandoId(null)}>Cancelar</Button>
@@ -249,7 +267,7 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
               {pagos.slice(0, 30).map((a) => (
                 <li key={a.id} className="flex justify-between">
                   <span>
-                    {a.descricao} · pago em {formatarDataISOParaBR(a.pago_em!)}
+                    {a.descricao} · {a.tipo === "RECEBER" ? "recebido" : "pago"} em {formatarDataISOParaBR(a.pago_em!)}
                   </span>
                   <span className="tabular-nums">{formatarCentavos(a.valor_centavos)}</span>
                 </li>

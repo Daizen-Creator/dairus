@@ -51,6 +51,21 @@ async function avisosDeInvestimentos(hoje: string) {
 /** Verifica os avisos agora: manda ao Windows os que ainda não foram mostrados hoje e atualiza a bandeja. */
 export async function verificarAvisosAgora(): Promise<number> {
   const hoje = dataAtualISO();
+  // Receitas e contas marcadas como "lançar sozinho" que já chegaram no dia.
+  try {
+    const { lancExtras } = await import("../../services/lancamentosExtras");
+    const lancados = await lancExtras.processarAutomaticos(hoje);
+    if (lancados.length) {
+      const { avisarDadosAlterados } = await import("../../state/useAoAlterarDados");
+      avisarDadosAlterados();
+      await notificar(
+        lancados.length === 1 ? `${lancados[0].descricao} lançado automaticamente` : `${lancados.length} lançamentos automáticos`,
+        lancados.slice(0, 4).map((l) => `• ${l.descricao}: ${(l.partidas.filter((p) => p.tipo === "DEBITO").reduce((s, p) => s + p.valor_centavos, 0) / 100).toFixed(2).replace(".", ",")}`).join("\n"),
+      );
+    }
+  } catch (e) {
+    registrarNoLog("warn", `lançamentos automáticos: ${String(e)}`);
+  }
   const [contas, agendamentos, lancamentos, orcamentos] = await Promise.all([
     contabilidade.listarContas(),
     contabilidade.listarAgendamentos(),
