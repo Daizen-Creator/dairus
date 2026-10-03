@@ -8,7 +8,7 @@ export const FAQ: Array<[string, string]> = [
   ["O saldo do Dairus está diferente do banco.", "Na conta, use “Ajustar saldo” e informe o saldo real; ou “Conferir” para marcar o que já bateu com o extrato."],
   ["Como uso em dois computadores?", "Entre com a mesma conta Google e ligue a sincronização em Backup e Segurança → Nuvem."],
   ["Esqueci a senha do banco criptografado.", "Use o código de recuperação que apareceu quando você ligou a criptografia (tela de desbloqueio → “Usar código de recuperação”)."],
-  ["A IA não responde.", "Confira a chave em Inteligência Artificial → Conexão e privacidade → Testar conexão. Sem internet, a IA não funciona; o resto do app sim."],
+  ["A IA não responde.", "Confira a chave em Assistente IA → Conexão e privacidade → Testar conexão. Sem internet, a IA não funciona; o resto do app sim."],
   ["Como recebo avisos de contas?", "Ligue em Configurações → Windows e avisos. Em “Mais opções” você escolhe quais avisos e com quantos dias de antecedência."],
   ["Posso importar o extrato do banco?", "Sim: Despesas e Receitas → Importar extrato (OFX ou CSV), ou deixe os arquivos numa pasta vigiada para importar sozinho."],
 ];

@@ -87,7 +87,7 @@ export function AnalisesIA({ temChave }: { temChave: boolean }) {
         <p className="text-xs text-texto-secundario">Os números são calculados pelo Dairus e enviados prontos; a IA só interpreta. Respeita o “modo privado” da aba de conexão. Não é aconselhamento financeiro profissional.</p>
       </section>
 
-      <section className="min-h-48 rounded-xl border border-borda bg-cartao p-4">
+      <section className="min-h-48 self-start rounded-xl border border-borda bg-cartao p-4 lg:sticky lg:top-20 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
         {selecionada?.entrada && (
           <form onSubmit={(e) => { e.preventDefault(); rodar(selecionada); }} className="mb-3 flex flex-wrap gap-2">
             <input autoFocus value={entrada} onChange={(e) => setEntrada(e.target.value)} placeholder={selecionada.entrada} aria-label={selecionada.entrada} className={`${CLASSE_INPUT} min-w-0 flex-1`} />

@@ -471,6 +471,30 @@ export function CartoesPage() {
           Melhor dia de compra: <strong className="text-texto-primario">{formatarDataISOParaBR(d.ciclo.inicioAtual).slice(0, 5)}</strong> (logo após o fechamento)
         </p>
 
+        {(() => {
+          const limite40 = new Date(Date.parse(`${hoje}T12:00:00Z`) - 40 * 86_400_000).toISOString().slice(0, 10);
+          const vistos = new Set<string>();
+          const assinaturas = d.compras.filter((x) => x.l.etiqueta === "ASSINATURA" && x.data >= limite40 && x.valor > 0).filter((x) => {
+            const k = x.l.descricao.toLowerCase();
+            if (vistos.has(k)) return false;
+            vistos.add(k);
+            return true;
+          });
+          if (!assinaturas.length) return null;
+          return (
+            <div className="mt-3">
+              <p className="mb-1 text-[11px] text-texto-secundario">Assinaturas neste cartão · {dinheiro(assinaturas.reduce((s2, x) => s2 + x.valor, 0))}/mês</p>
+              <div className="flex flex-wrap gap-1.5">
+                {assinaturas.map((x) => (
+                  <span key={x.l.id} title={`${x.l.descricao} · ${formatarCentavos(x.valor)}`} className="flex items-center gap-1 rounded-full border border-borda bg-fundo/40 py-0.5 pl-0.5 pr-2 text-[11px] text-texto-primario">
+                    <IconeCoisa nome={x.l.descricao} tamanho={18} redondo /> {x.l.descricao.split(" ")[0]}
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         {cats.length > 0 && (
           <ul className="mt-3 space-y-1.5">
             {cats.map(([nome, v]) => {
@@ -566,7 +590,8 @@ export function CartoesPage() {
               <ul className="space-y-1 text-xs">
                 {d.compras.filter((x) => x.data <= d.ciclo.proximoFechamento).slice(0, 12).map((x) => (
                   <li key={`${x.l.id}-${x.parcela?.numero ?? 0}`} className="flex items-center justify-between gap-2">
-                    <span className="min-w-0 truncate text-texto-secundario">
+                    <span className="flex min-w-0 items-center gap-2 truncate text-texto-secundario">
+                      <IconeCoisa nome={x.l.descricao} tamanho={20} redondo />
                       {formatarDataISOParaBR(x.data).slice(0, 5)} · <span className="text-texto-primario">{x.l.descricao}</span>
                       {x.parcela && <span> ({x.parcela.numero}/{x.parcela.total})</span>}
                       {portadores.has(x.l.id) && <span> · {adicionais.find((a) => a.id === portadores.get(x.l.id))?.nome}</span>}

@@ -37,7 +37,7 @@ interface AbasProps<T extends string> {
 /** Barra de abas internas da página. Fica grudada no topo ao rolar. */
 export function Abas<T extends string>({ abas, ativa, onChange }: AbasProps<T>) {
   return (
-    <div className="sem-impressao sticky top-0 z-20 -mx-6 bg-fundo/85 px-6 py-2 backdrop-blur-md">
+    <div className="sem-impressao sticky top-0 z-20 -mx-3 bg-fundo/85 px-3 py-2 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6 backdrop-blur-md">
       <div role="tablist" className="flex flex-wrap gap-1.5 rounded-xl border border-borda bg-cartao p-1.5">
         {abas.map((a) => {
           const selecionada = a.id === ativa;

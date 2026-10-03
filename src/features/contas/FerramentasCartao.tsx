@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CalendarRange, Calculator, Gift, Gauge, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
+import { IconeCoisa } from "../../components/ui/IconeCoisa";
 import { BarraProgresso, CLASSE_INPUT } from "../../components/ui/Campos";
 import { Select } from "../../components/ui/Select";
 import { contabilidade } from "../../services/contabilidade";
@@ -154,7 +155,7 @@ export function FerramentasCartao({ cartao, compras, atual, dinheiro, onAlterado
         <ul className="mt-2 max-h-72 space-y-1 overflow-y-auto pr-1">
           {(todas ? filtradas : filtradas.slice(0, 30)).map((c) => (
             <li key={`${c.l.id}-${c.parcela?.numero ?? 0}`} className="flex items-center justify-between gap-2">
-              <span className="min-w-0 truncate text-texto-secundario">{formatarDataISOParaBR(c.data)} · <span className="text-texto-primario">{c.l.descricao}</span>{c.parcela && ` (${c.parcela.numero}/${c.parcela.total})`} · {c.categoria?.nome ?? "Outros"}</span>
+              <span className="flex min-w-0 items-center gap-2 truncate text-texto-secundario"><IconeCoisa nome={c.l.descricao} tamanho={18} redondo />{formatarDataISOParaBR(c.data)} · <span className="text-texto-primario">{c.l.descricao}</span>{c.parcela && ` (${c.parcela.numero}/${c.parcela.total})`} · {c.categoria?.nome ?? "Outros"}</span>
               <span className={`shrink-0 tabular-nums ${c.valor < 0 ? "text-sucesso" : "text-texto-primario"}`}>{dinheiro(c.valor)}</span>
             </li>
           ))}

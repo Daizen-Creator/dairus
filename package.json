@@ -10,7 +10,10 @@
     "tauri": "tauri",
     "test": "vitest run",
     "test:watch": "vitest",
-    "versao": "node scripts/versao.mjs"
+    "versao": "node scripts/versao.mjs",
+    "teste:visual": "node scripts/teste-visual/rodar.mjs prints-teste",
+    "teste:ia": "node scripts/teste-visual/ia.mjs",
+    "marcas": "node scripts/gerar-marcas.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -50,6 +53,7 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.2",
     "jsdom": "^29.1.1",
+    "simple-icons": "^16.33.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
     "vite": "^8.0.16",

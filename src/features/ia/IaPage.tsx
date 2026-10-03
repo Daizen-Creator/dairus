@@ -316,7 +316,7 @@ export function IaPage() {
                 <Button variante="fantasma" tamanho="pequeno" onClick={() => setMensagens([])} disabled={mensagens.length === 0}><Trash2 size={13} /> Limpar</Button>
               </div>
             </div>
-            <div className="max-h-[calc(100vh-430px)] min-h-48 space-y-3 overflow-y-auto pr-1">
+            <div className="h-[calc(100vh-420px)] min-h-64 space-y-3 overflow-y-auto pr-1">
               {mensagens.length === 0 && (
                 <div className="flex flex-wrap gap-2">
                   {SUGESTOES.map((s) => (

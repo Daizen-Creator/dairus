@@ -1,3 +1,5 @@
+import { MARCAS_SVG, type MarcaSvg } from "./marcasSvg";
+
 export function normalizar(texto: string): string {
   return texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
@@ -21,7 +23,7 @@ const MARCAS: Array<{ arquivo: string; palavras: string[] }> = [
   { arquivo: "gemini", palavras: ["gemini"] },
   { arquivo: "google", palavras: ["google"] },
   { arquivo: "nubank", palavras: ["nubank", "nu pagamentos"] },
-  { arquivo: "inter", palavras: ["banco inter"] },
+  { arquivo: "inter", palavras: ["banco inter", "inter gold", "inter black", "inter platinum", "cartao inter", "conta inter"] },
   { arquivo: "itau", palavras: ["itau", "itaucard"] },
   { arquivo: "bradesco", palavras: ["bradesco"] },
   { arquivo: "santander", palavras: ["santander"] },
@@ -74,4 +76,19 @@ export function logoTransparente(caminho: string): boolean {
   if (caminho.startsWith("data:")) return false;
   const arquivo = caminho.split("/").pop()?.replace(".png", "") ?? "";
   return LOGOS_TRANSPARENTES.has(arquivo);
+}
+
+
+/** Logo vetorial (simple-icons) ou selo de letras para a descrição, quando não há logo embutido em PNG. */
+export function marcaSvgDaDescricao(descricao: string): MarcaSvg | null {
+  // Sempre palavra inteira: evita "intel" em "inteligência" ou "visa" em "revisão".
+  const texto = normalizar(descricao);
+  return MARCAS_SVG.find((m) => m.palavras.some((p) => new RegExp(`(^|[^a-z0-9])${normalizar(p).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`).test(texto))) ?? null;
+}
+
+/** Texto branco ou preto sobre a cor da marca (contraste). */
+export function corDoTextoSobre(hex: string): string {
+  const n = parseInt(hex.slice(0, 6), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return 0.299 * r + 0.587 * g + 0.114 * b > 170 ? "#111111" : "#ffffff";
 }
