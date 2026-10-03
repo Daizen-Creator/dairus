@@ -38,7 +38,7 @@ log = "0.4"
 aes-gcm = "0.10"
 argon2 = "0.5"
 zeroize = "1"
-ureq = "2"
+ureq = "3"
 sha2 = "0.10"
 base64 = "0.23"
 
