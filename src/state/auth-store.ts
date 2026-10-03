@@ -17,6 +17,8 @@ interface EstadoAuth {
   offline: boolean;
   contaAberta: boolean;
   entrando: boolean;
+  /** Endereço do login no navegador (para abrir de novo, se a aba for fechada). */
+  urlLogin: string | null;
   erro: string | null;
   inicializar: () => Promise<void>;
   entrarComGoogle: (emailSugerido?: string) => Promise<void>;
@@ -34,6 +36,7 @@ export const useAuthStore = create<EstadoAuth>((set, get) => ({
   offline: false,
   contaAberta: false,
   entrando: false,
+  urlLogin: null,
   erro: null,
 
   async inicializar() {
@@ -85,6 +88,7 @@ export const useAuthStore = create<EstadoAuth>((set, get) => ({
       if (error || !data.url) throw new Error(error?.message ?? "Não foi possível iniciar o login.");
       // Liga o "ouvido" local antes de abrir o navegador, para não perder o retorno.
       const retorno = invoke<string>("aguardar_retorno_login");
+      set({ urlLogin: data.url });
       const { openUrl } = await import("@tauri-apps/plugin-opener");
       await openUrl(data.url);
       const codigo = await retorno;
@@ -95,7 +99,7 @@ export const useAuthStore = create<EstadoAuth>((set, get) => ({
     } catch (e) {
       set({ erro: e instanceof Error ? e.message : String(e) });
     } finally {
-      set({ entrando: false });
+      set({ entrando: false, urlLogin: null });
     }
   },
 

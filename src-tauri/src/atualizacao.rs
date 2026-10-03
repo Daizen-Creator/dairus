@@ -1,11 +1,23 @@
-//! Atualização do app pelo GitHub Releases: verifica se há versão nova (com a
-//! lista do que mudou), baixa o instalador e o abre.
+//! Atualização automática do app. Fonte principal: GitHub Releases; reserva: um
+//! `latest.json` público no Supabase Storage (bucket `atualizacoes`), útil quando o
+//! GitHub limita as consultas. Baixa o instalador em segundo plano (com progresso),
+//! confere o tamanho, o cabeçalho de executável e o SHA-256 (quando publicado) e
+//! instala em modo silencioso, reabrindo o Dairus no fim.
+
+use std::io::Read;
+use std::path::PathBuf;
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
+use sha2::{Digest, Sha256};
+use tauri::{AppHandle, Emitter, Manager};
 
 const REPOSITORIO: &str = "Daizen-Creator/dairus";
+const SUPABASE_LATEST: &str = "https://wcxfjmifikmnydfpepiq.supabase.co/storage/v1/object/public/atualizacoes/latest.json";
 const TAMANHO_MAXIMO: u64 = 300 * 1024 * 1024;
+
+/// Instalador já baixado esperando o app fechar (opção "instalar ao sair").
+static PENDENTE_AO_SAIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 #[derive(Deserialize)]
 struct ReleaseGithub {
@@ -33,7 +45,24 @@ struct ArquivoGithub {
     size: u64,
 }
 
-#[derive(Serialize, Debug, PartialEq)]
+/// Formato do `latest.json` publicado no Supabase pelo workflow de release.
+#[derive(Deserialize)]
+struct ManifestoSupabase {
+    versao: String,
+    #[serde(default)]
+    titulo: Option<String>,
+    #[serde(default)]
+    notas: Option<String>,
+    #[serde(default)]
+    publicada_em: Option<String>,
+    instalador: String,
+    #[serde(default)]
+    tamanho_bytes: u64,
+    #[serde(default)]
+    sha256: Option<String>,
+}
+
+#[derive(Serialize, Debug, PartialEq, Clone)]
 pub struct Novidade {
     pub versao: String,
     pub versao_atual: String,
@@ -43,6 +72,10 @@ pub struct Novidade {
     pub pagina: Option<String>,
     pub instalador: Option<String>,
     pub tamanho_bytes: u64,
+    /// SHA-256 esperado do instalador (hex), quando publicado junto.
+    pub sha256: Option<String>,
+    pub fonte: String,
+    pub beta: bool,
 }
 
 /// "v1.2.3" ou "1.2.3-beta" → (1, 2, 3).
@@ -61,8 +94,21 @@ fn instalador_de(release: &ReleaseGithub) -> Option<&ArquivoGithub> {
         .or_else(|| release.assets.iter().find(|a| a.name.to_lowercase().ends_with(".exe")))
 }
 
-fn novidade_de(release: ReleaseGithub, atual: &str) -> Option<Novidade> {
-    if release.draft || release.prerelease {
+/// Arquivo `<instalador>.sha256` publicado ao lado (conteúdo: "hash  nome").
+fn sha_de(release: &ReleaseGithub, instalador: &str) -> Option<String> {
+    let alvo = format!("{}.sha256", instalador.to_lowercase());
+    let a = release.assets.iter().find(|a| a.name.to_lowercase() == alvo)?;
+    let texto = baixar_texto(&a.browser_download_url).ok()?;
+    hash_valido(texto.split_whitespace().next()?)
+}
+
+fn hash_valido(h: &str) -> Option<String> {
+    let h = h.trim().to_lowercase();
+    (h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit())).then_some(h)
+}
+
+fn novidade_de(release: ReleaseGithub, atual: &str, aceitar_beta: bool) -> Option<Novidade> {
+    if release.draft || (release.prerelease && !aceitar_beta) {
         return None;
     }
     if versao(&release.tag_name)? <= versao(atual)? {
@@ -78,63 +124,251 @@ fn novidade_de(release: ReleaseGithub, atual: &str) -> Option<Novidade> {
         pagina: release.html_url.clone(),
         instalador: instalador.map(|a| a.browser_download_url.clone()),
         tamanho_bytes: instalador.map(|a| a.size).unwrap_or(0),
+        sha256: None,
+        fonte: "GitHub".into(),
+        beta: release.prerelease,
     })
 }
 
-/// Consulta a última versão publicada. `None` = já está na mais nova.
+fn novidade_supabase(m: ManifestoSupabase, atual: &str) -> Option<Novidade> {
+    if versao(&m.versao)? <= versao(atual)? || !url_permitida(&m.instalador) {
+        return None;
+    }
+    Some(Novidade {
+        versao: m.versao.trim_start_matches(['v', 'V']).to_string(),
+        versao_atual: atual.to_string(),
+        titulo: m.titulo.unwrap_or_else(|| format!("Dairus {}", m.versao)),
+        notas: m.notas.unwrap_or_default(),
+        publicada_em: m.publicada_em,
+        pagina: None,
+        instalador: Some(m.instalador),
+        tamanho_bytes: m.tamanho_bytes,
+        sha256: m.sha256.as_deref().and_then(hash_valido),
+        fonte: "Supabase".into(),
+        beta: false,
+    })
+}
+
+/// Só baixa instaladores do próprio repositório no GitHub ou do Storage do projeto no Supabase.
+pub fn url_permitida(url: &str) -> bool {
+    let github = format!("https://github.com/{REPOSITORIO}/releases/download/");
+    let supabase = "https://wcxfjmifikmnydfpepiq.supabase.co/storage/v1/object/public/atualizacoes/";
+    (url.starts_with(&github) || url.starts_with(supabase)) && url.to_lowercase().ends_with(".exe") && !url.contains("..")
+}
+
+fn baixar_texto(url: &str) -> Result<String, String> {
+    ureq::get(url)
+        .set("User-Agent", "Dairus")
+        .timeout(std::time::Duration::from_secs(15))
+        .call()
+        .map_err(|e| e.to_string())?
+        .into_string()
+        .map_err(|e| e.to_string())
+}
+
+fn consultar_github(atual: &str, beta: bool) -> Result<Option<Novidade>, String> {
+    let url = if beta {
+        format!("https://api.github.com/repos/{REPOSITORIO}/releases?per_page=10")
+    } else {
+        format!("https://api.github.com/repos/{REPOSITORIO}/releases/latest")
+    };
+    let resposta = ureq::get(&url)
+        .set("User-Agent", "Dairus")
+        .set("Accept", "application/vnd.github+json")
+        .timeout(std::time::Duration::from_secs(15))
+        .call();
+    let releases: Vec<ReleaseGithub> = match resposta {
+        Ok(r) if beta => serde_json::from_reader(r.into_reader()).map_err(|e| e.to_string())?,
+        Ok(r) => vec![serde_json::from_reader(r.into_reader()).map_err(|e| e.to_string())?],
+        Err(ureq::Error::Status(404, _)) => return Ok(None),
+        Err(e) => return Err(e.to_string()),
+    };
+    // A mais nova que vale (estável, ou beta se escolhido).
+    let melhor = releases
+        .into_iter()
+        .filter_map(|r| novidade_de(clonar(&r), atual, beta).map(|n| (r, n)))
+        .max_by_key(|(_, n)| versao(&n.versao));
+    Ok(melhor.map(|(r, mut n)| {
+        if let Some(inst) = instalador_de(&r) {
+            n.sha256 = sha_de(&r, &inst.name);
+        }
+        n
+    }))
+}
+
+fn clonar(r: &ReleaseGithub) -> ReleaseGithub {
+    ReleaseGithub {
+        tag_name: r.tag_name.clone(),
+        name: r.name.clone(),
+        body: r.body.clone(),
+        published_at: r.published_at.clone(),
+        html_url: r.html_url.clone(),
+        assets: r.assets.iter().map(|a| ArquivoGithub { name: a.name.clone(), browser_download_url: a.browser_download_url.clone(), size: a.size }).collect(),
+        draft: r.draft,
+        prerelease: r.prerelease,
+    }
+}
+
+fn consultar_supabase(atual: &str) -> Result<Option<Novidade>, String> {
+    match ureq::get(SUPABASE_LATEST).set("User-Agent", "Dairus").timeout(std::time::Duration::from_secs(15)).call() {
+        Ok(r) => {
+            let m: ManifestoSupabase = serde_json::from_reader(r.into_reader()).map_err(|e| e.to_string())?;
+            Ok(novidade_supabase(m, atual))
+        }
+        Err(ureq::Error::Status(400 | 404, _)) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Consulta a última versão: GitHub primeiro; se ele falhar, o Supabase. `None` = já está na mais nova.
 #[tauri::command]
-pub async fn verificar_atualizacao(app: AppHandle) -> Result<Option<Novidade>, String> {
+pub async fn verificar_atualizacao(app: AppHandle, beta: Option<bool>) -> Result<Option<Novidade>, String> {
     let atual = app.package_info().version.to_string();
-    tauri::async_runtime::spawn_blocking(move || {
-        let url = format!("https://api.github.com/repos/{REPOSITORIO}/releases/latest");
-        let resposta = ureq::get(&url)
-            .set("User-Agent", "Dairus")
-            .set("Accept", "application/vnd.github+json")
-            .timeout(std::time::Duration::from_secs(15))
-            .call();
-        let release: ReleaseGithub = match resposta {
-            Ok(r) => serde_json::from_reader(r.into_reader()).map_err(|e| e.to_string())?,
-            // 404: nenhuma versão publicada ainda (ou repositório privado).
-            Err(ureq::Error::Status(404, _)) => return Ok(None),
-            Err(e) => return Err(format!("Não foi possível verificar atualizações: {e}")),
-        };
-        Ok(novidade_de(release, &atual))
+    let beta = beta.unwrap_or(false);
+    tauri::async_runtime::spawn_blocking(move || match consultar_github(&atual, beta) {
+        Ok(Some(n)) => Ok(Some(n)),
+        Ok(None) => consultar_supabase(&atual).or(Ok(None)),
+        Err(erro_github) => consultar_supabase(&atual).map_err(|erro_supa| format!("Não foi possível verificar atualizações (GitHub: {erro_github}; Supabase: {erro_supa})")),
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
-/// Baixa o instalador da versão nova e o abre. O app fecha logo depois, para o instalador poder substituir os arquivos.
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    let mut h = Sha256::new();
+    h.update(bytes);
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Confere o instalador baixado: tamanho, cabeçalho "MZ" de executável e SHA-256 (se houver).
+pub fn conferir_instalador(bytes: &[u8], sha256: Option<&str>) -> Result<(), String> {
+    if bytes.len() as u64 > TAMANHO_MAXIMO || bytes.len() < 1024 || &bytes[..2] != b"MZ" {
+        return Err("O arquivo baixado não parece ser um instalador válido.".into());
+    }
+    if let Some(esperado) = sha256 {
+        let obtido = sha256_hex(bytes);
+        if !obtido.eq_ignore_ascii_case(esperado) {
+            return Err("O instalador baixado não confere com a assinatura (SHA-256) publicada. Não foi instalado.".into());
+        }
+    }
+    Ok(())
+}
+
+/// Baixa o instalador para a pasta de cache do app, emitindo "atualizacao-progresso" (0–100).
+/// Devolve o caminho do arquivo pronto para instalar.
 #[tauri::command]
-pub async fn instalar_atualizacao(app: AppHandle, url: String) -> Result<(), String> {
-    let prefixo = format!("https://github.com/{REPOSITORIO}/releases/download/");
-    if !url.starts_with(&prefixo) || !url.to_lowercase().ends_with(".exe") {
+pub async fn baixar_atualizacao(app: AppHandle, url: String, sha256: Option<String>) -> Result<String, String> {
+    if !url_permitida(&url) {
         return Err("Endereço de atualização não reconhecido.".into());
     }
-    let destino = tauri::async_runtime::spawn_blocking(move || -> Result<std::path::PathBuf, String> {
-        let nome = url.rsplit('/').next().unwrap_or("Dairus-setup.exe").replace(['\\', ':'], "_");
-        let destino = std::env::temp_dir().join(nome);
+    let pasta = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("atualizacoes");
+    std::fs::create_dir_all(&pasta).map_err(|e| e.to_string())?;
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
+        let nome = url.rsplit('/').next().unwrap_or("Dairus-setup.exe").replace(['\\', ':', '?', '*'], "_");
+        let destino = pasta.join(&nome);
+        // Já baixado e conferido antes? Reaproveita.
+        if let Ok(existente) = std::fs::read(&destino) {
+            if conferir_instalador(&existente, sha256.as_deref()).is_ok() && sha256.is_some() {
+                let _ = app2.emit("atualizacao-progresso", 100u8);
+                return Ok(destino.to_string_lossy().into_owned());
+            }
+        }
         let resposta = ureq::get(&url)
             .set("User-Agent", "Dairus")
-            .timeout(std::time::Duration::from_secs(600))
+            .timeout(std::time::Duration::from_secs(900))
             .call()
             .map_err(|e| format!("Falha ao baixar a atualização: {e}"))?;
-        let mut leitor = std::io::Read::take(resposta.into_reader(), TAMANHO_MAXIMO + 1);
-        let mut bytes = Vec::new();
-        std::io::Read::read_to_end(&mut leitor, &mut bytes).map_err(|e| e.to_string())?;
-        if bytes.len() as u64 > TAMANHO_MAXIMO || bytes.len() < 1024 || &bytes[..2] != b"MZ" {
-            return Err("O arquivo baixado não parece ser um instalador válido.".into());
+        let total: u64 = resposta.header("Content-Length").and_then(|v| v.parse().ok()).unwrap_or(0);
+        let mut leitor = resposta.into_reader().take(TAMANHO_MAXIMO + 1);
+        let mut bytes = Vec::with_capacity(total as usize);
+        let mut bloco = [0u8; 64 * 1024];
+        let mut ultimo = 0u8;
+        loop {
+            let n = leitor.read(&mut bloco).map_err(|e| format!("Falha ao baixar a atualização: {e}"))?;
+            if n == 0 {
+                break;
+            }
+            bytes.extend_from_slice(&bloco[..n]);
+            if total > 0 {
+                let pct = ((bytes.len() as u64 * 100) / total).min(99) as u8;
+                if pct != ultimo {
+                    ultimo = pct;
+                    let _ = app2.emit("atualizacao-progresso", pct);
+                }
+            }
         }
-        std::fs::write(&destino, bytes).map_err(|e| e.to_string())?;
-        Ok(destino)
+        conferir_instalador(&bytes, sha256.as_deref())?;
+        std::fs::write(&destino, &bytes).map_err(|e| e.to_string())?;
+        let _ = app2.emit("atualizacao-progresso", 100u8);
+        log::info!("atualização baixada e conferida: {}", destino.display());
+        Ok(destino.to_string_lossy().into_owned())
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?
+}
 
-    log::info!("abrindo instalador da atualização: {}", destino.display());
-    std::process::Command::new(&destino).spawn().map_err(|e| format!("Não foi possível abrir o instalador: {e}"))?;
+fn caminho_baixado(app: &AppHandle, caminho: &str) -> Result<PathBuf, String> {
+    let pasta = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("atualizacoes");
+    let p = PathBuf::from(caminho);
+    if p.parent() != Some(pasta.as_path()) || !caminho.to_lowercase().ends_with(".exe") || !p.exists() {
+        return Err("Instalador não encontrado. Baixe a atualização de novo.".into());
+    }
+    Ok(p)
+}
+
+/// Roda o instalador em modo passivo (só a barra de progresso) e, ao terminar, reabre o Dairus.
+fn executar_instalador(instalador: &PathBuf, reabrir: bool) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const SEM_JANELA: u32 = 0x0800_0000;
+        let mut script = format!("\"{}\" /P", instalador.display());
+        if reabrir {
+            script = format!("{script} && start \"\" \"{}\"", exe.display());
+        }
+        std::process::Command::new("cmd").args(["/C", &script]).creation_flags(SEM_JANELA).spawn().map_err(|e| format!("Não foi possível abrir o instalador: {e}"))?;
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (reabrir, exe);
+        std::process::Command::new(instalador).spawn().map_err(|e| format!("Não foi possível abrir o instalador: {e}"))?;
+    }
+    Ok(())
+}
+
+/// Instala agora o que já foi baixado: o Dairus fecha, o instalador roda e o app reabre sozinho.
+#[tauri::command]
+pub fn instalar_baixada(app: AppHandle, caminho: String) -> Result<(), String> {
+    let p = caminho_baixado(&app, &caminho)?;
+    log::info!("instalando atualização: {}", p.display());
+    executar_instalador(&p, true)?;
     app.exit(0);
     Ok(())
+}
+
+/// Deixa a atualização para quando o Dairus for fechado (sem interromper agora).
+#[tauri::command]
+pub fn instalar_ao_sair(app: AppHandle, caminho: String) -> Result<(), String> {
+    let p = caminho_baixado(&app, &caminho)?;
+    *PENDENTE_AO_SAIR.lock().expect("mutex envenenado") = Some(p);
+    Ok(())
+}
+
+/// Chamado no fechamento do app: instala a atualização deixada para depois (sem reabrir).
+pub fn ao_sair() {
+    if let Some(p) = PENDENTE_AO_SAIR.lock().ok().and_then(|mut g| g.take()) {
+        log::info!("instalando atualização ao sair: {}", p.display());
+        let _ = executar_instalador(&p, false);
+    }
+}
+
+/// Compatibilidade: baixa e instala em seguida.
+#[tauri::command]
+pub async fn instalar_atualizacao(app: AppHandle, url: String) -> Result<(), String> {
+    let caminho = baixar_atualizacao(app.clone(), url, None).await?;
+    instalar_baixada(app, caminho)
 }
 
 #[cfg(test)]
@@ -166,14 +400,47 @@ mod testes {
     }
 
     #[test]
-    fn so_avisa_quando_e_mais_nova() {
-        let n = novidade_de(release("v0.2.0"), "0.1.0").unwrap();
+    fn so_avisa_quando_e_mais_nova_e_beta_so_se_pedir() {
+        let n = novidade_de(release("v0.2.0"), "0.1.0", false).unwrap();
         assert_eq!(n.versao, "0.2.0");
         assert_eq!(n.instalador.as_deref(), Some("https://github.com/a"));
-        assert_eq!(n.notas, "- Novidade");
-        assert!(novidade_de(release("v0.1.0"), "0.1.0").is_none());
+        assert!(novidade_de(release("v0.1.0"), "0.1.0", false).is_none());
         let mut pre = release("v9.0.0");
         pre.prerelease = true;
-        assert!(novidade_de(pre, "0.1.0").is_none());
+        assert!(novidade_de(clonar(&pre), "0.1.0", false).is_none());
+        assert!(novidade_de(pre, "0.1.0", true).unwrap().beta);
+    }
+
+    #[test]
+    fn manifesto_do_supabase() {
+        let m = ManifestoSupabase {
+            versao: "0.3.0".into(), titulo: None, notas: Some("x".into()), publicada_em: None,
+            instalador: "https://wcxfjmifikmnydfpepiq.supabase.co/storage/v1/object/public/atualizacoes/Dairus_0.3.0_x64-setup.exe".into(),
+            tamanho_bytes: 10, sha256: Some("A".repeat(64)),
+        };
+        let n = novidade_supabase(m, "0.2.0").unwrap();
+        assert_eq!(n.fonte, "Supabase");
+        assert_eq!(n.sha256.as_deref(), Some("a".repeat(64).as_str()));
+        let ruim = ManifestoSupabase { versao: "9.0.0".into(), titulo: None, notas: None, publicada_em: None, instalador: "https://malicioso.com/x.exe".into(), tamanho_bytes: 0, sha256: None };
+        assert!(novidade_supabase(ruim, "0.2.0").is_none());
+    }
+
+    #[test]
+    fn so_aceita_enderecos_do_projeto() {
+        assert!(url_permitida("https://github.com/Daizen-Creator/dairus/releases/download/v1/Dairus_1_x64-setup.exe"));
+        assert!(!url_permitida("https://github.com/outro/repo/releases/download/v1/x.exe"));
+        assert!(!url_permitida("https://github.com/Daizen-Creator/dairus/releases/download/v1/../x.exe"));
+        assert!(!url_permitida("https://github.com/Daizen-Creator/dairus/releases/download/v1/x.zip"));
+    }
+
+    #[test]
+    fn confere_instalador_e_sha() {
+        let mut bytes = b"MZ".to_vec();
+        bytes.resize(2048, 7);
+        let h = sha256_hex(&bytes);
+        assert!(conferir_instalador(&bytes, Some(&h)).is_ok());
+        assert!(conferir_instalador(&bytes, Some(&"0".repeat(64))).unwrap_err().contains("SHA-256"));
+        assert!(conferir_instalador(b"PK", None).is_err());
+        assert_eq!(sha256_hex(b"abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
     }
 }

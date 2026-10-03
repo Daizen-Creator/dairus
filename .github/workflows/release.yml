@@ -24,7 +24,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
       - name: Notas da versão (CHANGELOG.md)
-        id: notas
         shell: bash
         run: |
           versao="${GITHUB_REF_NAME#v}"
@@ -33,19 +32,46 @@ jobs:
             dentro { print }
           ' CHANGELOG.md > notas.md
           [ -s notas.md ] || echo "Versão $versao." > notas.md
-          # A tauri-action recebe o texto (releaseBody), não um arquivo.
           {
-            echo "corpo<<FIM_DAS_NOTAS"
+            echo "NOTAS<<FIM_DAS_NOTAS"
             cat notas.md
             echo "FIM_DAS_NOTAS"
-          } >> "$GITHUB_OUTPUT"
+          } >> "$GITHUB_ENV"
       - uses: tauri-apps/tauri-action@v0
+        id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/target
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Dairus ${{ github.ref_name }}
-          releaseBody: ${{ steps.notas.outputs.corpo }}
+          releaseBody: ${{ env.NOTAS }}
           releaseDraft: false
           prerelease: false
+
+      # SHA-256 do instalador: o app confere antes de instalar (o arquivo .sha256 vai junto na release).
+      - name: Assinatura SHA-256 do instalador
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          instalador=$(find src-tauri/target/release/bundle/nsis -name "*-setup.exe" | head -n 1)
+          nome=$(basename "$instalador")
+          sha256sum "$instalador" | awk -v n="$nome" '{print $1 "  " n}' > "$nome.sha256"
+          gh release upload "$GITHUB_REF_NAME" "$nome.sha256" --clobber
+          echo "INSTALADOR=$instalador" >> "$GITHUB_ENV"
+          echo "NOME_INSTALADOR=$nome" >> "$GITHUB_ENV"
+          echo "SHA_INSTALADOR=$(cut -d' ' -f1 "$nome.sha256")" >> "$GITHUB_ENV"
+
+      # Reserva no Supabase (opcional): só roda se o segredo SUPABASE_SERVICE_ROLE_KEY existir.
+      - name: Espelhar no Supabase Storage
+        shell: bash
+        env:
+          CHAVE: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          [ -n "$CHAVE" ] || { echo "Sem SUPABASE_SERVICE_ROLE_KEY: pulando a reserva no Supabase."; exit 0; }
+          base="https://wcxfjmifikmnydfpepiq.supabase.co/storage/v1/object/atualizacoes"
+          curl -sf -X POST "$base/$NOME_INSTALADOR" -H "Authorization: Bearer $CHAVE" -H "x-upsert: true" -H "Content-Type: application/octet-stream" --data-binary "@$INSTALADOR"
+          tamanho=$(stat -c%s "$INSTALADOR")
+          node -e 'const fs=require("fs");fs.writeFileSync("latest.json",JSON.stringify({versao:process.env.GITHUB_REF_NAME.replace(/^v/,""),titulo:"Dairus "+process.env.GITHUB_REF_NAME,notas:fs.readFileSync("notas.md","utf8"),publicada_em:new Date().toISOString(),instalador:"https://wcxfjmifikmnydfpepiq.supabase.co/storage/v1/object/public/atualizacoes/"+process.env.NOME_INSTALADOR,tamanho_bytes:Number(process.argv[1]),sha256:process.env.SHA_INSTALADOR}))' "$tamanho"
+          curl -sf -X POST "$base/latest.json" -H "Authorization: Bearer $CHAVE" -H "x-upsert: true" -H "Content-Type: application/json" -H "Cache-Control: max-age=60" --data-binary "@latest.json"

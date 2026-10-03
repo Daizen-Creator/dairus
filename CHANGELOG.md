@@ -3,6 +3,17 @@
 Cada versão publicada no GitHub usa a seção correspondente daqui como lista de
 mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 
+## Próxima versão
+
+- Atualização automática: procura versão nova no GitHub (com reserva no Supabase), baixa em segundo plano, confere o SHA-256 e instala ao fechar ou com "Reiniciar e atualizar". Canal beta opcional.
+- Tela de login nova, com recursos do app, novidades, status da conexão, contas recentes e ajuda para problemas ao entrar.
+- Página de retorno do login (127.0.0.1) com ícone na aba, visual do Dairus e fechamento automático; o app volta para a frente sozinho.
+- Contas, cartões, lançamentos, orçamento, metas, patrimônio, investimentos, pessoas e salário: dezenas de funções novas em cada aba (juntar e excluir contas e cartões, ações em massa, calculadoras de holerite, 13º e férias, projeção de patrimônio e mais).
+- Início com widgets escolhidos por você; relatórios extras; indicadores contábeis.
+- Radar: busca em todas as lojas (comparador + IA com pesquisa no Google), links para 11 lojas, comparar produtos e datas de promoção.
+- Assistente IA: anexar foto/PDF e falar na conversa, refazer resposta, ler em voz alta, perguntas salvas e conversas anteriores.
+- Backup, configurações, temas e ajuda com novas opções; 120 logos de marcas nas compras e assinaturas.
+
 ## 0.2.1
 
 - IA: chaves do Google que começam com AQ. voltaram a funcionar (vão primeiro ao Google AI Studio; o Vertex fica de reserva).

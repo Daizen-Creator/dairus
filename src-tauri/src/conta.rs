@@ -262,13 +262,71 @@ fn parametro(query: &str, nome: &str) -> Option<String> {
         .map(|(_, v)| decodificar_url(v))
 }
 
-const PAGINA_OK: &str = "<!doctype html><html lang=\"pt-BR\"><meta charset=\"utf-8\"><title>Dairus</title>\
-<body style=\"margin:0;height:100vh;display:grid;place-items:center;background:#020817;color:#f4f8ff;font-family:Segoe UI,sans-serif\">\
-<div style=\"text-align:center\"><h1 style=\"color:#00d9ff\">Login concluído</h1><p>Pode fechar esta aba e voltar ao Dairus.</p></div></body></html>";
+/// Logo do app embutido (também vira o favicon da página, em data URI: o servidor
+/// local fecha logo depois de receber o retorno, então não dá para servir /favicon.ico).
+const LOGO_SVG: &str = include_str!("../../public/dairus.svg");
 
-const PAGINA_ERRO: &str = "<!doctype html><html lang=\"pt-BR\"><meta charset=\"utf-8\"><title>Dairus</title>\
-<body style=\"margin:0;height:100vh;display:grid;place-items:center;background:#020817;color:#f4f8ff;font-family:Segoe UI,sans-serif\">\
-<div style=\"text-align:center\"><h1 style=\"color:#ff2d55\">Não foi possível entrar</h1><p>Volte ao Dairus e tente de novo.</p></div></body></html>";
+fn svg_em_data_uri(svg: &str) -> String {
+    let mut saida = String::from("data:image/svg+xml,");
+    for c in svg.chars() {
+        match c {
+            '"' => saida.push('\''),
+            '%' => saida.push_str("%25"),
+            '#' => saida.push_str("%23"),
+            '<' => saida.push_str("%3C"),
+            '>' => saida.push_str("%3E"),
+            '\n' | '\r' => saida.push(' '),
+            _ => saida.push(c),
+        }
+    }
+    saida
+}
+
+fn escapar_html(texto: &str) -> String {
+    texto.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")
+}
+
+/// Página mostrada no navegador depois do login (sucesso ou erro).
+pub fn pagina_retorno(ok: bool, detalhe: Option<&str>) -> String {
+    let logo = svg_em_data_uri(LOGO_SVG);
+    let (cor, icone, titulo, texto) = if ok {
+        ("#00d395", "&#10003;", "Login concluído!", "Tudo certo. O Dairus já recebeu o acesso e está abrindo a sua conta.")
+    } else {
+        ("#ff2d55", "!", "Não foi possível entrar", "O Google não confirmou o acesso. Volte ao Dairus e clique em “Entrar com Google” de novo.")
+    };
+    let detalhe_html = detalhe.map(|d| format!("<p class=\"detalhe\">Detalhe: {}</p>", escapar_html(d))).unwrap_or_default();
+    let passos = if ok {
+        "<ol><li>Volte para a janela do <strong>Dairus</strong> (ela já veio para a frente).</li><li>Seus dados abrem em instantes.</li><li>Pode fechar esta aba.</li></ol><p class=\"contagem\">Esta aba tenta fechar sozinha em <span id=\"s\">8</span>s.</p>"
+    } else {
+        "<ol><li>Confira se escolheu a conta Google certa.</li><li>Se o navegador bloqueou pop-ups ou cookies, libere para accounts.google.com.</li><li>Tente de novo pelo Dairus.</li></ol>"
+    };
+    let script = if ok {
+        "<script>let n=8;const e=document.getElementById('s');const t=setInterval(()=>{n--;if(e)e.textContent=n;if(n<=0){clearInterval(t);window.close();}},1000);</script>"
+    } else {
+        ""
+    };
+    format!(
+        r#"<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{titulo} · Dairus</title><link rel="icon" type="image/svg+xml" href="{logo}">
+<style>
+*{{box-sizing:border-box}}body{{margin:0;min-height:100vh;display:grid;place-items:center;font-family:"Segoe UI",system-ui,sans-serif;color:#f4f8ff;
+background:radial-gradient(900px 500px at 15% 10%,rgba(22,119,255,.28),transparent 60%),radial-gradient(800px 500px at 90% 100%,rgba(168,85,247,.22),transparent 60%),#020817}}
+.cartao{{width:min(460px,92vw);padding:36px 32px;border-radius:24px;background:rgba(10,22,44,.78);border:1px solid rgba(120,160,255,.18);box-shadow:0 30px 90px -30px {cor};backdrop-filter:blur(8px);text-align:center}}
+.topo{{display:flex;align-items:center;justify-content:center;gap:12px}}.topo img{{width:52px;height:52px;border-radius:14px}}
+.marca{{font-size:34px;font-weight:800;letter-spacing:-.5px;background:linear-gradient(90deg,#00d9ff,#1677ff,#a855f7);-webkit-background-clip:text;background-clip:text;color:transparent}}
+.selo{{margin:26px auto 14px;width:76px;height:76px;border-radius:50%;display:grid;place-items:center;font-size:38px;font-weight:700;color:#020817;background:{cor};box-shadow:0 0 0 10px {cor}22,0 0 40px {cor}88;animation:surge .5s ease-out}}
+@keyframes surge{{from{{transform:scale(.4);opacity:0}}to{{transform:scale(1);opacity:1}}}}
+h1{{margin:0 0 8px;font-size:24px}}p{{margin:0;color:#a9b8d6;line-height:1.5}}
+ol{{text-align:left;margin:22px 0 0;padding:16px 16px 16px 36px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);color:#d7e2f7;font-size:14px;line-height:1.7}}
+.detalhe{{margin-top:14px;font-size:12px;color:#ff8aa1;word-break:break-word}}.contagem{{margin-top:14px;font-size:12px}}
+.rodape{{margin-top:22px;font-size:11px;color:#6f81a6}}
+</style></head><body><main class="cartao">
+<div class="topo"><img src="{logo}" alt=""><span class="marca">dairus</span></div>
+<div class="selo">{icone}</div><h1>{titulo}</h1><p>{texto}</p>{detalhe_html}{passos}
+<p class="rodape">Seus dados ficam no seu computador. Esta página é servida pelo próprio Dairus (127.0.0.1) e não é gravada na internet.</p>
+</main>{script}</body></html>"#
+    )
+}
 
 fn responder(stream: &mut std::net::TcpStream, status: &str, corpo: &str) {
     let resposta = format!(
@@ -279,12 +337,21 @@ fn responder(stream: &mut std::net::TcpStream, status: &str, corpo: &str) {
     let _ = stream.flush();
 }
 
+/// Depois do login, traz a janela do Dairus para a frente (o usuário estava no navegador).
+fn trazer_para_frente(app: &AppHandle) {
+    if let Some(janela) = app.get_webview_window("main") {
+        let _ = janela.unminimize();
+        let _ = janela.show();
+        let _ = janela.set_focus();
+    }
+}
+
 /// Espera o navegador voltar em http://127.0.0.1:47821/callback?code=… e devolve o `code`
 /// (que o app troca pela sessão no Supabase, com PKCE). Desiste após 5 minutos.
 #[tauri::command]
-pub async fn aguardar_retorno_login() -> Res<String> {
+pub async fn aguardar_retorno_login(app: AppHandle) -> Res<String> {
     CANCELAR_LOGIN.store(false, Ordering::SeqCst);
-    tauri::async_runtime::spawn_blocking(|| -> Res<String> {
+    tauri::async_runtime::spawn_blocking(move || -> Res<String> {
         let ouvinte = TcpListener::bind(("127.0.0.1", PORTA_RETORNO))
             .map_err(|err| format!("A porta {PORTA_RETORNO} está ocupada ({err}). Feche outra janela de login e tente de novo."))?;
         ouvinte.set_nonblocking(true).map_err(e)?;
@@ -307,11 +374,13 @@ pub async fn aguardar_retorno_login() -> Res<String> {
                     };
                     let query = resto.strip_prefix('?').unwrap_or("");
                     if let Some(codigo) = parametro(query, "code") {
-                        responder(&mut stream, "200 OK", PAGINA_OK);
+                        responder(&mut stream, "200 OK", &pagina_retorno(true, None));
+                        trazer_para_frente(&app);
                         return Ok(codigo);
                     }
-                    responder(&mut stream, "200 OK", PAGINA_ERRO);
                     let motivo = parametro(query, "error_description").or_else(|| parametro(query, "error"));
+                    responder(&mut stream, "200 OK", &pagina_retorno(false, motivo.as_deref()));
+                    trazer_para_frente(&app);
                     return Err(motivo.unwrap_or_else(|| "O Google não devolveu o código de login.".into()));
                 }
                 Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
@@ -349,6 +418,17 @@ mod testes {
         assert_eq!(parametro("code=abc-123&state=x", "code").as_deref(), Some("abc-123"));
         assert_eq!(parametro("error=access_denied&error_description=Usu%C3%A1rio+cancelou", "error_description").as_deref(), Some("Usuário cancelou"));
         assert_eq!(parametro("x=1", "code"), None);
+    }
+
+    #[test]
+    fn pagina_de_retorno_tem_favicon_e_escapa_o_erro() {
+        let ok = pagina_retorno(true, None);
+        assert!(ok.contains("rel=\"icon\""));
+        assert!(ok.contains("data:image/svg+xml,"));
+        assert!(ok.contains("Login concluído"));
+        let erro = pagina_retorno(false, Some("<script>x</script>"));
+        assert!(erro.contains("&lt;script&gt;"));
+        assert!(!erro.contains("<script>x"));
     }
 }
 
