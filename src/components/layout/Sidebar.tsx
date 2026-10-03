@@ -5,6 +5,7 @@ import { brilhoDeCor, degradeDeCor } from "../../services/gradientes";
 import { lerPreferencia, salvarPreferencia } from "../../services/armazenamento";
 import { useThemeStore } from "../../state/theme-store";
 import { NAVEGACAO } from "../../app/navegacao";
+import { usePreferencia } from "../../state/usePreferencia";
 
 const CHAVE_RECOLHIDO = "sidebar_recolhido";
 
@@ -19,6 +20,7 @@ export function Sidebar() {
   const [estreita, setEstreita] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.("(max-width: 1023px)").matches);
   const [abertaNaEstreita, setAbertaNaEstreita] = useState(false);
   const [versao, setVersao] = useState("");
+  const [menuOculto] = usePreferencia<string[]>("menu_oculto", []);
   useEffect(() => {
     import("@tauri-apps/api/app").then(({ getVersion }) => getVersion()).then(setVersao).catch(() => setVersao(""));
   }, []);
@@ -51,7 +53,7 @@ export function Sidebar() {
       style={{ width: fechada ? 64 : 232 }}
     >
       <ul className="flex-1 space-y-0.5 overflow-y-auto p-2">
-        {NAVEGACAO.map((item) => {
+        {NAVEGACAO.filter((item) => !menuOculto.includes(item.rota)).map((item) => {
           const Icone = item.icone;
           return (
             <li key={item.rota}>

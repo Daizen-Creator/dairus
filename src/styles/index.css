@@ -160,3 +160,8 @@ html.sem-animacoes *, html.sem-animacoes *::before, html.sem-animacoes *::after 
   animation-duration: 0.01ms !important;
   transition-duration: 0.01ms !important;
 }
+
+/* Modo compacto: menos espaço em volta dos blocos para caber mais na tela. */
+html.compacto { font-size: 93.75%; }
+html.compacto .space-y-6 > :not(:last-child) { margin-bottom: 1rem; }
+html.compacto .p-4 { padding: 0.75rem; }

@@ -15,6 +15,7 @@ import { abrirComWindows, lerLog, notificar, pastaDeLogs } from "../../services/
 import { EVENTO_VERIFICAR } from "../../components/layout/AvisoAtualizacao";
 import type { Conta } from "../../types/accounting";
 import { ExcluirConta } from "./ExcluirConta";
+import { MaisOpcoes } from "./MaisOpcoes";
 import { ModoViagemConfig } from "./ModoViagemConfig";
 import type { InfoBanco } from "../../types/extras";
 
@@ -55,7 +56,8 @@ const CHAVES_EXPORTAVEIS = [
   "invest_cotacoes_auto", "pasta_vigiada", "assinaturas_ignoradas", "chave_pix", "orcamento_auto", "meta_envelopes",
   "meta_sobra", "meta_arredondar", "meta_lembrete", "desafios", "categorias_superfluas",
   "resumo_semanal", "resumo_semanal_ia", "pdf_mensal_auto", "pdf_mensal_nuvem", "pdf_secoes", "diagnostico_ia_auto",
-  "tema_auto_horario", "verificacao_semanal", "dashboard_coluna_recolhida",
+  "tema_auto_horario", "verificacao_semanal", "dashboard_coluna_recolhida", "avisos_grupos_desligados", "dias_aviso_contas",
+  "avisos_silencio", "menu_oculto", "ui_compacto", "widgets_inicio", "atalhos_inicio", "necessidades", "teto_cartoes", "cores_contas",
 ];
 
 export function ConfiguracoesPage() {
@@ -70,7 +72,7 @@ export function ConfiguracoesPage() {
   const [semAnimacoes, setSemAnimacoes] = usePreferencia<boolean>("ui_sem_animacoes", false);
   const [ocultar, setOcultar] = usePreferencia<boolean>("ocultar_saldos", false);
   const [importando, setImportando] = useState("");
-  const [secao, setSecao] = useAbaDaPagina<"preferencias" | "windows" | "atalhos" | "sobre">("configuracoes", "preferencias");
+  const [secao, setSecao] = useAbaDaPagina<"preferencias" | "windows" | "mais" | "atalhos" | "sobre">("configuracoes", "preferencias");
   const [avisosWindows, setAvisosWindows] = usePreferencia<boolean>("avisos_windows", true);
   const [fecharParaBandeja, setFecharParaBandeja] = usePreferencia<boolean>("fechar_para_bandeja", false);
   const [bloquearAoMinimizar, setBloquearAoMinimizar] = usePreferencia<boolean>("bloquear_ao_minimizar", true);
@@ -171,7 +173,7 @@ export function ConfiguracoesPage() {
         <p className="text-sm text-texto-secundario">Preferências de uso do Dairus. Tudo é salvo neste computador.</p>
       </div>
 
-      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "preferencias", rotulo: "Preferências", icone: UserRound }, { id: "windows", rotulo: "Windows e avisos", icone: MonitorCog }, { id: "atalhos", rotulo: "Atalhos e backup das configurações", icone: Keyboard }, { id: "sobre", rotulo: "Sobre", icone: Sparkles }]} />
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "preferencias", rotulo: "Preferências", icone: UserRound }, { id: "windows", rotulo: "Windows e avisos", icone: MonitorCog }, { id: "mais", rotulo: "Mais opções", icone: Settings2 }, { id: "atalhos", rotulo: "Atalhos e backup das configurações", icone: Keyboard }, { id: "sobre", rotulo: "Sobre", icone: Sparkles }]} />
 
       {(secao === "preferencias") && (<>
       <div className="grid gap-4 lg:grid-cols-2">
@@ -250,6 +252,8 @@ export function ConfiguracoesPage() {
         </Secao>
       </div>
       </>)}
+
+      {secao === "mais" && <MaisOpcoes versao={versaoApp} />}
 
       {(secao === "atalhos") && (<>
       <div className="grid gap-4 lg:grid-cols-2">

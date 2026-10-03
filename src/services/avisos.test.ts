@@ -48,3 +48,16 @@ describe("avisos automáticos", () => {
     expect(texto).toContain("Próxima: Luz 13/10");
   });
 });
+
+describe("preferências de avisos", () => {
+  it("agrupa pelo id e respeita o horário silencioso", async () => {
+    const { grupoDoAviso, emHorarioSilencioso } = await import("./avisos");
+    expect(grupoDoAviso("venc-1-3")).toBe("contas");
+    expect(grupoDoAviso("fatura-x")).toBe("cartoes");
+    expect(grupoDoAviso("cobranca-Ana-2026")).toBe("pessoas");
+    expect(emHorarioSilencioso(23, 22, 7)).toBe(true);
+    expect(emHorarioSilencioso(6, 22, 7)).toBe(true);
+    expect(emHorarioSilencioso(12, 22, 7)).toBe(false);
+    expect(emHorarioSilencioso(13, 12, 14)).toBe(true);
+  });
+});

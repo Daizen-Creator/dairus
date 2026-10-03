@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { contabilidade } from "../../services/contabilidade";
 import { extras } from "../../services/extras";
 import { lerPreferencia, salvarPreferencia } from "../../services/armazenamento";
-import { calcularAvisos, filtrarNovos, textoDaBandeja } from "../../services/avisos";
+import { calcularAvisos, emHorarioSilencioso, filtrarNovos, grupoDoAviso, textoDaBandeja } from "../../services/avisos";
 import { dataAtualISO } from "../../services/formato";
 import { atualizarBandeja, estaNoTauri, ligarRegistroDeErros, notificar, registrarNoLog } from "../../services/sistema";
 import { useSegurancaStore } from "../../state/seguranca-store";
@@ -166,7 +166,7 @@ export async function verificarAvisosAgora(): Promise<number> {
   if ((await lerPreferencia<boolean>("avisos_windows")) === false) return 0;
   const enviados = (await lerPreferencia<Record<string, string>>("avisos_enviados")) ?? {};
   const avisos = [
-    ...calcularAvisos({ hoje, contas, agendamentos, lancamentos, orcamentos }),
+    ...calcularAvisos({ hoje, contas, agendamentos, lancamentos, orcamentos, diasAntes: (await lerPreferencia<number[]>("dias_aviso_contas")) ?? [3, 1, 0] }),
     ...(await avisosDeInvestimentos(hoje)),
     ...(await avisosDePlanejamento(hoje).catch(() => [])),
     ...(await rel.avisosDeRelatorios(hoje).catch(() => [])),
@@ -187,7 +187,11 @@ export async function verificarAvisosAgora(): Promise<number> {
       })),
     )),
   ];
-  const { novos, registro } = filtrarNovos(avisos, enviados, hoje);
+  // Grupos desligados pelo usuário e horário silencioso (os avisos ficam para depois).
+  const desligados = new Set((await lerPreferencia<string[]>("avisos_grupos_desligados")) ?? []);
+  const silencio = (await lerPreferencia<{ ativo: boolean; inicio: number; fim: number }>("avisos_silencio")) ?? { ativo: false, inicio: 22, fim: 7 };
+  if (silencio.ativo && emHorarioSilencioso(new Date().getHours(), silencio.inicio, silencio.fim)) return 0;
+  const { novos, registro } = filtrarNovos(avisos.filter((a) => !desligados.has(grupoDoAviso(a.id))), enviados, hoje);
   // Muitos de uma vez viram um resumo, para não encher a tela de notificações.
   if (novos.length > 3) {
     await notificar(`Dairus: ${novos.length} avisos`, novos.slice(0, 4).map((a) => `• ${a.titulo}`).join("\n"));
