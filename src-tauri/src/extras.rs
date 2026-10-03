@@ -37,14 +37,17 @@ fn nome_valido(nome: &str) -> Res<String> {
 pub struct Orcamento {
     pub categoria_id: String,
     pub limite_centavos: i64,
+    /// A sobra do mês passa para o seguinte (a partir de `acumular_desde`, AAAA-MM).
+    pub acumular: bool,
+    pub acumular_desde: Option<String>,
 }
 
 #[tauri::command]
 pub fn listar_orcamentos(state: State<AppState>) -> Res<Vec<Orcamento>> {
     let conn = state.conn.lock().expect("mutex envenenado");
-    let mut stmt = conn.prepare("SELECT categoria_id, limite_centavos FROM orcamentos").map_err(e)?;
+    let mut stmt = conn.prepare("SELECT categoria_id, limite_centavos, acumular, acumular_desde FROM orcamentos").map_err(e)?;
     let linhas = stmt
-        .query_map([], |r| Ok(Orcamento { categoria_id: r.get(0)?, limite_centavos: r.get(1)? }))
+        .query_map([], |r| Ok(Orcamento { categoria_id: r.get(0)?, limite_centavos: r.get(1)?, acumular: r.get::<_, i64>(2)? != 0, acumular_desde: r.get(3)? }))
         .map_err(e)?
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(e)?;
@@ -88,6 +91,8 @@ pub struct Meta {
     pub tipo: Option<String>,
     pub prioridade: Option<String>,
     pub notas: Option<String>,
+    /// Conta real da meta: o guardado passa a ser o saldo dela.
+    pub conta_id: Option<String>,
 }
 
 fn validar_extras_meta(tipo: &Option<String>, prioridade: &Option<String>) -> Res<()> {
@@ -109,7 +114,7 @@ pub fn listar_metas(state: State<AppState>) -> Res<Vec<Meta>> {
         .prepare(
             "SELECT m.id, m.nome, m.valor_alvo_centavos, m.prazo,
                     COALESCE((SELECT SUM(valor_centavos) FROM metas_aportes a WHERE a.meta_id = m.id), 0),
-                    m.tipo, m.prioridade, m.notas
+                    m.tipo, m.prioridade, m.notas, m.conta_id
              FROM metas m ORDER BY m.criado_em",
         )
         .map_err(e)?;
@@ -124,12 +129,22 @@ pub fn listar_metas(state: State<AppState>) -> Res<Vec<Meta>> {
                 tipo: r.get(5)?,
                 prioridade: r.get(6)?,
                 notas: r.get(7)?,
+                conta_id: r.get(8)?,
             })
         })
         .map_err(e)?
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(e)?;
-    Ok(linhas)
+    // Meta ligada a uma conta: o guardado é o dinheiro que está de fato lá.
+    linhas
+        .into_iter()
+        .map(|mut m| {
+            if let Some(c) = &m.conta_id {
+                m.guardado_centavos = crate::accounting::engine::saldo_conta(&conn, c).map_err(String::from)?;
+            }
+            Ok(m)
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -377,21 +392,22 @@ pub struct ItemRadar {
     pub nome: String,
     pub preco_alvo_centavos: Option<i64>,
     pub precos: Vec<PrecoObservado>,
+    pub meta_id: Option<String>,
 }
 
 #[tauri::command]
 pub fn listar_radar(state: State<AppState>) -> Res<Vec<ItemRadar>> {
     let conn = state.conn.lock().expect("mutex envenenado");
     let mut stmt = conn
-        .prepare("SELECT id, nome, preco_alvo_centavos FROM radar_itens ORDER BY criado_em")
+        .prepare("SELECT id, nome, preco_alvo_centavos, meta_id FROM radar_itens ORDER BY criado_em")
         .map_err(e)?;
     let base = stmt
-        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<i64>>(2)?)))
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<i64>>(2)?, r.get::<_, Option<String>>(3)?)))
         .map_err(e)?
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(e)?;
     let mut itens = Vec::new();
-    for (id, nome, preco_alvo_centavos) in base {
+    for (id, nome, preco_alvo_centavos, meta_id) in base {
         let mut ps = conn
             .prepare(
                 "SELECT id, loja, preco_centavos, url, data FROM radar_precos WHERE item_id = ?1
@@ -411,7 +427,7 @@ pub fn listar_radar(state: State<AppState>) -> Res<Vec<ItemRadar>> {
             .map_err(e)?
             .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(e)?;
-        itens.push(ItemRadar { id, nome, preco_alvo_centavos, precos });
+        itens.push(ItemRadar { id, nome, preco_alvo_centavos, precos, meta_id });
     }
     Ok(itens)
 }

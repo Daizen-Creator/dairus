@@ -9,6 +9,7 @@ mod extras;
 mod investimentos;
 mod lancamentos_extras;
 mod mercado;
+mod planejamento;
 mod planilha;
 mod sincronizacao;
 mod sistema;
@@ -140,6 +141,19 @@ pub fn run() {
             lancamentos_extras::processar_agendamentos_automaticos,
             lancamentos_extras::listar_pasta_importar,
             cartoes::listar_faturas,
+            planejamento::listar_orcamentos_mes,
+            planejamento::definir_orcamento_mes,
+            planejamento::definir_acumulo_orcamento,
+            planejamento::vincular_meta_conta,
+            planejamento::aportar_meta_com_conta,
+            planejamento::vincular_radar_meta,
+            planejamento::criar_emprestimo,
+            planejamento::listar_emprestimos,
+            planejamento::pagar_parcela_emprestimo,
+            planejamento::listar_a_receber,
+            planejamento::registrar_divisao,
+            planejamento::receber_valores,
+            planejamento::perdoar_valor,
             cartoes::congelar_fatura,
             cartoes::listar_config_cartoes,
             cartoes::definir_juros_cartao,
