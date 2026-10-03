@@ -14,6 +14,11 @@ interface SelectProps {
   className?: string;
 }
 
+/** O Base UI trata o valor "" como "nada escolhido" e mostra "Selecione…" no lugar
+ * de opções como "Todas as contas" ou "Nenhuma". Por dentro, "" vira este marcador. */
+const VAZIO = "__vazio__";
+const paraBase = (v: string) => (v === "" ? VAZIO : v);
+
 /**
  * Select temático e acessível (Base UI). Existe porque o `<select>` nativo
  * do Windows ignora nossas cores de tema na lista de opções aberta — WebView2
@@ -21,12 +26,13 @@ interface SelectProps {
  * "Dark Mode & Theming" das Web Interface Guidelines).
  */
 export function Select({ value, onValueChange, options, disabled, className, ...rest }: SelectProps) {
+  const itens = options.map((o) => ({ ...o, value: paraBase(o.value) }));
   return (
     <BaseSelect.Root
-      value={value}
-      onValueChange={(v) => onValueChange(v as string)}
+      value={paraBase(value)}
+      onValueChange={(v) => onValueChange(v === VAZIO ? "" : (v as string))}
       disabled={disabled}
-      items={options}
+      items={itens}
     >
       <BaseSelect.Trigger
         aria-label={rest["aria-label"]}
@@ -43,7 +49,7 @@ export function Select({ value, onValueChange, options, disabled, className, ...
               data-[ending-style]:scale-95 data-[ending-style]:opacity-0"
             style={{ transformOrigin: "var(--transform-origin)" }}
           >
-            {options.map((opcao) => (
+            {itens.map((opcao) => (
               <BaseSelect.Item
                 key={opcao.value}
                 value={opcao.value}

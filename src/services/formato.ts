@@ -6,13 +6,6 @@ const formatadorMoeda = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
 });
 
-const formatadorData = new Intl.DateTimeFormat("pt-BR", {
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-  timeZone: "America/Sao_Paulo",
-});
-
 export function formatarCentavos(centavos: number): string {
   return formatadorMoeda.format(centavos / 100);
 }
@@ -29,9 +22,11 @@ export function valorInputParaCentavos(valor: string): number {
   return Math.round(numero * 100);
 }
 
+/** "2027-09-20" → "20/09/2027". Direto do texto: sem fuso horário no meio, a data
+ * não volta um dia em computadores fora do horário de Brasília. */
 export function formatarDataISOParaBR(dataISO: string): string {
-  const [ano, mes, dia] = dataISO.split("-").map(Number);
-  return formatadorData.format(new Date(ano, mes - 1, dia));
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dataISO);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : dataISO;
 }
 
 export function dataAtualISO(): string {
@@ -71,7 +66,7 @@ export function nomeMesAno(dataISO: string): string {
   const nome = new Intl.DateTimeFormat("pt-BR", {
     month: "long",
     year: "numeric",
-    timeZone: "America/Sao_Paulo",
-  }).format(new Date(ano, mes - 1, 1));
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(ano, mes - 1, 15, 12)));
   return nome.charAt(0).toUpperCase() + nome.slice(1);
 }

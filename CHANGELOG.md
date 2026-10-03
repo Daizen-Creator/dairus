@@ -16,6 +16,8 @@ mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 - Atualização automática: procura versão nova no GitHub (com reserva no Supabase), baixa em segundo plano, confere o SHA-256 e instala ao fechar ou com "Reiniciar e atualizar". Canal beta opcional.
 - Tela de login nova, com recursos do app, novidades, status da conexão, contas recentes e ajuda para problemas ao entrar.
 - Página de retorno do login (127.0.0.1) com ícone na aba, visual do Dairus e fechamento automático; o app volta para a frente sozinho.
+- Nova aba Garantias e documentos: nota fiscal e garantia de cada compra (com garantia estendida), documentos que vencem (IPVA, seguro, CNH, contrato de aluguel), arquivos guardados no banco, aviso antes de vencer, renovar documentos anuais, ler a nota fiscal com IA e preencher a partir de uma compra lançada.
+- Correção: datas e nomes de mês não voltam mais um dia/mês em computadores fora do horário de Brasília; listas de opção mostram "Todas"/"Nenhuma" em vez de "Selecione…".
 - Segurança: limite de tentativas gravado para senha do banco, código de recuperação e PIN (pausa de 1 min a 1 h), página de login local com cabeçalhos de segurança e só aceitando o navegador, validação dos lançamentos, teste contra SQL injection e auditoria automática de bibliotecas e segredos.
 - Arquivo de log para diagnóstico.
 - Nova aba de Investimentos: carteira, cotações, proventos, simuladores, imposto de renda e análises com IA (informativas).

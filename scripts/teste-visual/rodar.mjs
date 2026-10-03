@@ -10,7 +10,7 @@ import path from "node:path";
 const saida = process.argv[2] ?? "prints";
 fs.mkdirSync(saida, { recursive: true });
 const mock = fs.readFileSync(new URL("./mock-tauri.js", import.meta.url), "utf8");
-const ROTAS = ["/", "/contas-bancarias", "/cartoes", "/lancamentos", "/orcamento", "/metas", "/patrimonio", "/investimentos", "/pessoas", "/salario", "/contabilidade", "/relatorios", "/ia", "/radar", "/configuracoes", "/backup", "/temas", "/ajuda"];
+const ROTAS = ["/", "/contas-bancarias", "/cartoes", "/lancamentos", "/orcamento", "/metas", "/patrimonio", "/investimentos", "/pessoas", "/salario", "/contabilidade", "/relatorios", "/ia", "/radar", "/documentos", "/configuracoes", "/backup", "/temas", "/ajuda"];
 const largura = Number(process.env.LARGURA ?? 1366);
 
 const navegador = await chromium.launch({ executablePath: process.env.CHROMIUM ?? undefined });

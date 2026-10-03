@@ -5,6 +5,7 @@ mod commands;
 mod conta;
 mod cripto;
 mod db;
+mod documentos;
 mod extras;
 mod gestao;
 mod investimentos;
@@ -143,6 +144,17 @@ pub fn run() {
             lancamentos_extras::processar_agendamentos_automaticos,
             lancamentos_extras::listar_pasta_importar,
             cartoes::listar_faturas,
+            documentos::listar_documentos,
+            documentos::salvar_documento,
+            documentos::excluir_documento,
+            documentos::arquivar_documento,
+            documentos::renovar_documento,
+            documentos::anexar_arquivo_documento,
+            documentos::listar_arquivos_documento,
+            documentos::ler_arquivo_documento,
+            documentos::abrir_arquivo_documento,
+            documentos::excluir_arquivo_documento,
+            documentos::copiar_comprovantes_para_documento,
             planejamento::listar_orcamentos_mes,
             planejamento::definir_orcamento_mes,
             planejamento::definir_acumulo_orcamento,

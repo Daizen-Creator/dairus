@@ -25,6 +25,7 @@ const RelatoriosPage = lazy(() => import("../features/relatorios/RelatoriosPage"
 const IaPage = lazy(() => import("../features/ia/IaPage").then((m) => ({ default: m.IaPage })));
 const InvestimentosPage = lazy(() => import("../features/investimentos/InvestimentosPage").then((m) => ({ default: m.InvestimentosPage })));
 const PessoasPage = lazy(() => import("../features/pessoas/PessoasPage").then((m) => ({ default: m.PessoasPage })));
+const DocumentosPage = lazy(() => import("../features/documentos/DocumentosPage").then((m) => ({ default: m.DocumentosPage })));
 const RadarPage = lazy(() => import("../features/radar/RadarPage").then((m) => ({ default: m.RadarPage })));
 const BackupPage = lazy(() => import("../features/backup/BackupPage").then((m) => ({ default: m.BackupPage })));
 const TemasPage = lazy(() => import("../features/temas/TemasPage").then((m) => ({ default: m.TemasPage })));
@@ -120,6 +121,7 @@ export function App() {
             <Route path="relatorios" element={<RelatoriosPage />} />
             <Route path="ia" element={<IaPage />} />
             <Route path="radar" element={<RadarPage />} />
+            <Route path="documentos" element={<DocumentosPage />} />
             <Route path="backup" element={<BackupPage />} />
             <Route path="temas" element={<TemasPage />} />
             <Route path="configuracoes" element={<ConfiguracoesPage />} />

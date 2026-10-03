@@ -172,6 +172,7 @@ export async function verificarAvisosAgora(): Promise<number> {
     ...(await rel.avisosDeRelatorios(hoje).catch(() => [])),
     ...(await avisosDeTeto(hoje, contas, lancamentos).catch(() => [])),
     ...(await avisosDeCobranca(hoje).catch(() => [])),
+    ...(await import("../../features/documentos/documentosCalc").then(async (m) => m.avisosDeDocumentos(await (await import("../../services/documentos")).documentos.listar(), hoje)).catch(() => [])),
     ...(await (async () => {
       const dias = (await lerPreferencia<number>("lembrete_backup_dias")) ?? 14;
       if (!dias) return [];
