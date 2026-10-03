@@ -39,7 +39,7 @@ aes-gcm = "0.10"
 argon2 = "0.5"
 zeroize = "1"
 ureq = "2"
-sha2 = "0.10"
+sha2 = "0.11"
 base64 = "0.23"
 
 
