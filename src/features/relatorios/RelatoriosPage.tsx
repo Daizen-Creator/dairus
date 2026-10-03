@@ -4,6 +4,7 @@ import { ArrowDownRight, ArrowUpRight, Download, FileDown, GitCompare, Percent, 
 import { toast } from "sonner";
 import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
 import { Button } from "../../components/ui/Button";
+import { AbaMaisRelatorios } from "./AbaMaisRelatorios";
 import { gerarEAbrirPdf, PainelPdf, useTitular } from "./GerarPdf";
 import { SECOES_PDF, type SecaoPdf } from "../../services/relatorioPdfSecoes";
 import { usePreferencia } from "../../state/usePreferencia";
@@ -61,7 +62,7 @@ export function RelatoriosPage() {
   const [gerandoPdf, setGerandoPdf] = useState(false);
   const [secoesPdf] = usePreferencia<SecaoPdf[]>("pdf_secoes", SECOES_PDF.filter((x) => x.padrao).map((x) => x.id));
   const titular = useTitular();
-  const [secao, setSecao] = useAbaDaPagina<"visao" | "categorias" | "tendencias" | "entradas" | "padroes" | "previsao" | "anoano" | "ir" | "exportar">("relatorios", "visao");
+  const [secao, setSecao] = useAbaDaPagina<"visao" | "categorias" | "tendencias" | "entradas" | "padroes" | "previsao" | "anoano" | "ir" | "mais" | "exportar">("relatorios", "visao");
   const cores = useThemeStore((s) => s.temaAtivo()).cores.grafico;
 
   useEffect(() => {
@@ -301,7 +302,7 @@ export function RelatoriosPage() {
         <StatCard titulo="Taxa de poupança" valor={taxa !== null ? `${taxa.toFixed(0)}%` : "—"} corValor={taxa !== null && taxa < 0 ? "erro" : "normal"} icone={Percent} corIcone="alerta" subtitulo={`Gasto médio: ${formatarCentavos(Math.round(dados.despesas / diasConsiderados))}/dia · ${formatarCentavos(Math.round((dados.despesas / diasConsiderados) * 30))}/mês`} />
       </div>
 
-      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "visao", rotulo: "Visão geral" }, { id: "categorias", rotulo: "Categorias e orçamento" }, { id: "tendencias", rotulo: "Tendências (12 meses)" }, { id: "entradas", rotulo: "Entradas e saídas" }, { id: "padroes", rotulo: "Padrões de gasto" }, { id: "previsao", rotulo: "Previsão de saldo" }, { id: "anoano", rotulo: "Ano a ano" }, { id: "ir", rotulo: "Imposto de Renda" }, { id: "exportar", rotulo: "PDF e exportação" }]} />
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "visao", rotulo: "Visão geral" }, { id: "categorias", rotulo: "Categorias e orçamento" }, { id: "tendencias", rotulo: "Tendências (12 meses)" }, { id: "entradas", rotulo: "Entradas e saídas" }, { id: "padroes", rotulo: "Padrões de gasto" }, { id: "previsao", rotulo: "Previsão de saldo" }, { id: "anoano", rotulo: "Ano a ano" }, { id: "ir", rotulo: "Imposto de Renda" }, { id: "mais", rotulo: "Mais relatórios" }, { id: "exportar", rotulo: "PDF e exportação" }]} />
 
       <div className="sem-impressao flex flex-wrap items-center gap-2 text-xs text-texto-secundario">
         Filtrar gráficos:
@@ -314,6 +315,7 @@ export function RelatoriosPage() {
       {secao === "previsao" && <AbaPrevisao hoje={hoje} />}
       {secao === "anoano" && <AbaAnoAno contas={contas} lancamentos={lancamentos} hoje={hoje} />}
       {secao === "ir" && <AbaImpostoRenda contas={contas} lancamentos={lancamentosTodos} hoje={hoje} />}
+      {secao === "mais" && <AbaMaisRelatorios lancamentos={lancamentos} contas={contas} inicio={periodo.inicio} fim={periodo.fim} hoje={hoje} />}
 
       {(secao === "visao") && (<>
       <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
