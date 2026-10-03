@@ -12,6 +12,7 @@ import { caminhoPastaImportar, importarDaPasta } from "../../services/pastaVigia
 import { usePreferencia } from "../../state/usePreferencia";
 import type { Conta, Lancamento } from "../../types/accounting";
 import { detectarAssinaturas } from "./detectores";
+import { SecaoMarcas } from "./SecaoMarcas";
 
 interface Props {
   contas: Conta[];
@@ -128,6 +129,8 @@ export function AbaAutomacao({ contas, lancamentos, onAlterado }: Props) {
           </div>
         </div>
       </Secao>
+
+      <SecaoMarcas />
     </div>
   );
 }

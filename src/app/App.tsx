@@ -4,6 +4,7 @@ import { AppShell } from "../components/layout/AppShell";
 import { BloqueioTela } from "../components/layout/BloqueioTela";
 import { executarBackupAutomatico } from "../services/backupAutomatico";
 import { lerPreferencia } from "../services/armazenamento";
+import { definirMarcasUsuario, type MarcaUsuario } from "../features/dashboard/marcas";
 import { useSegurancaStore } from "../state/seguranca-store";
 import { aplicarTemaPadrao, useThemeStore } from "../state/theme-store";
 import { useAuthStore } from "../state/auth-store";
@@ -61,6 +62,7 @@ export function App() {
   useEffect(() => {
     if (!contaAberta) return;
     inicializar().catch((e) => setErroFatal(String(e)));
+    lerPreferencia<MarcaUsuario[]>("marcas_usuario").then((m) => definirMarcasUsuario(m ?? [])).catch(() => {});
     inicializarSeguranca().catch((e) => setErroFatal(String(e)));
     executarBackupAutomatico().catch(() => {
       // Backup automático é conveniência: falha silenciosa; o status real aparece em Backup e Segurança.
