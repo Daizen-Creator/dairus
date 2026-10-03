@@ -53,7 +53,7 @@ const CHAVES_EXPORTAVEIS = [
   "ui_fonte", "ui_sem_animacoes", "dashboard_secoes_ocultas", "orcamento_renda_base", "perfil_renda",
   "backup_auto", "backup_frequencia", "backup_retencao", "gemini_modelo", "gemini_rpm", "gemini_tom", "gemini_temperatura",
   "gemini_blocos", "gemini_anonimo", "tema_ativo", "marcas_usuario", "avisos_windows", "fechar_para_bandeja",
-  "bloquear_ao_minimizar", "sync_auto", "atualizacao_auto", "invest_alvo", "invest_dia_aporte", "invest_valor_aporte",
+  "bloquear_ao_minimizar", "sync_auto", "atualizacao_auto", "atualizacao_na_abertura", "invest_alvo", "invest_dia_aporte", "invest_valor_aporte",
   "invest_cotacoes_auto", "pasta_vigiada", "assinaturas_ignoradas", "chave_pix", "orcamento_auto", "meta_envelopes",
   "meta_sobra", "meta_arredondar", "meta_lembrete", "desafios", "categorias_superfluas",
   "resumo_semanal", "resumo_semanal_ia", "pdf_mensal_auto", "pdf_mensal_nuvem", "pdf_secoes", "diagnostico_ia_auto",
@@ -84,6 +84,7 @@ export function ConfiguracoesPage() {
   const [verificacaoSemanal, setVerificacaoSemanal] = usePreferencia<boolean>("verificacao_semanal", true);
   const [ultimaVerificacao] = usePreferencia<string | null>("verificacao_semanal_ultima", null);
   const [atualizacaoAuto, setAtualizacaoAuto] = usePreferencia<boolean>("atualizacao_auto", true);
+  const [naAbertura, setNaAbertura] = usePreferencia<boolean>("atualizacao_na_abertura", true);
   const [baixarAuto, setBaixarAuto] = usePreferencia<boolean>("atualizacao_baixar_auto", true);
   const [instalarAoSair, setInstalarAoSair] = usePreferencia<boolean>("atualizacao_instalar_ao_sair", true);
   const [beta, setBeta] = usePreferencia<boolean>("atualizacao_beta", false);
@@ -286,6 +287,7 @@ export function ConfiguracoesPage() {
           <label className="flex items-center gap-2 text-xs text-texto-primario"><input type="checkbox" checked={atualizacaoAuto} onChange={() => setAtualizacaoAuto(!atualizacaoAuto)} className="h-4 w-4 accent-[var(--cor-primaria)]" />Procurar versões novas sozinho (a cada 6 horas)</label>
         </div>
         <div className="mt-2 flex flex-wrap gap-4 text-xs text-texto-primario">
+          <label className="flex items-center gap-2"><input type="checkbox" checked={naAbertura} onChange={() => setNaAbertura(!naAbertura)} className="h-4 w-4 accent-[var(--cor-primaria)]" />Ao abrir o Dairus, atualizar na hora (com a tela de atualização)</label>
           <label className="flex items-center gap-2"><input type="checkbox" checked={baixarAuto} onChange={() => setBaixarAuto(!baixarAuto)} className="h-4 w-4 accent-[var(--cor-primaria)]" />Baixar a atualização em segundo plano</label>
           <label className="flex items-center gap-2"><input type="checkbox" checked={instalarAoSair} onChange={() => setInstalarAoSair(!instalarAoSair)} className="h-4 w-4 accent-[var(--cor-primaria)]" />Instalar sozinho quando eu fechar o Dairus</label>
           <label className="flex items-center gap-2"><input type="checkbox" checked={beta} onChange={() => setBeta(!beta)} className="h-4 w-4 accent-[var(--cor-primaria)]" />Receber versões de teste (beta)</label>

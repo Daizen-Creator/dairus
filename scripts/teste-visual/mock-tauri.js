@@ -28,6 +28,25 @@
     conta({ id: "despesa-assinaturas", codigo: "5.10", nome: "Assinaturas", tipo: "DESPESA" }),
   ];
   const lancamentos = [];
+  // Atualização simulada: ?atualizacao=ok | erro (cai no download) | erro-instalar
+  const cenarioAtualizacao = new URLSearchParams(location.search).get("atualizacao") || window.__ATUALIZACAO__ || "";
+  const ouvintes = {};
+  const emitir = (evento, payload) => (ouvintes[evento] || []).forEach((h) => window[`_${h}`]?.({ event: evento, id: h, payload }));
+  const espera = (ms) => new Promise((ok) => setTimeout(ok, ms));
+  const MB = 1_048_576;
+  const novidadeSimulada = { versao: "0.3.0", versao_atual: "0.2.2", titulo: "Dairus v0.3.0", notas: "- Novidade de teste", publicada_em: hoje, pagina: "https://github.com/Daizen-Creator/dairus/releases", instalador: "https://github.com/Daizen-Creator/dairus/releases/download/v0.3.0/Dairus_0.3.0_x64-setup.exe", tamanho_bytes: 12 * MB, sha256: "a".repeat(64), fonte: "GitHub", beta: false };
+  async function baixarSimulado() {
+    const total = novidadeSimulada.tamanho_bytes;
+    for (let b = 0; b <= total; b += total / 25) {
+      if (cenarioAtualizacao === "erro" && b > total * 0.6) throw new Error("A conexão caiu durante o download (simulado). Tente de novo.");
+      emitir("atualizacao-progresso", { fase: "baixando", baixados: Math.round(b), total });
+      await espera(160);
+    }
+    emitir("atualizacao-progresso", { fase: "conferindo", baixados: total, total });
+    await espera(700);
+    emitir("atualizacao-progresso", { fase: "pronto", baixados: total, total });
+    return "C:/Users/teste/AppData/Local/com.danielsantos.dairus/cache/atualizacoes/Dairus_0.3.0_x64-setup.exe";
+  }
   const docMock = (o) => ({ numero: null, loja: null, valor_centavos: null, data_compra: null, garantia_meses: null, garantia_estendida_meses: 0, vencimento: null, repete: null, avisar_dias: 30, lancamento_id: null, observacao: null, arquivado: false, criado_em: hoje, atualizado_em: hoje, arquivos: 0, ...o });
   const documentosMock = [
     docMock({ id: "doc-tv", tipo: "GARANTIA", categoria: "Eletrônicos", titulo: "TV Samsung 55\" Crystal", loja: "Magazine Luiza", numero: "NF 48213", valor_centavos: 289900, data_compra: dia(-200), garantia_meses: 12, garantia_estendida_meses: 12, vencimento: dia(530), arquivos: 2 }),
@@ -124,7 +143,13 @@
     criptografia_ativa: () => false,
     verificar_integridade: () => [],
     uso_da_conta: () => ({ lancamentos: 3, saldo_inicial: 1, agendamentos: 0, subcategorias: 0, sistema: false }),
-    verificar_atualizacao: () => null,
+    verificar_atualizacao: async () => (cenarioAtualizacao ? (await espera(600), novidadeSimulada) : null),
+    baixar_atualizacao: () => baixarSimulado(),
+    instalar_ao_sair: () => null,
+    instalar_baixada: async () => { await espera(900); if (cenarioAtualizacao === "erro-instalar") throw new Error("Não foi possível abrir o instalador (simulado)."); window.__INSTALOU__ = true; return null; },
+    criar_backup: async () => { await espera(700); return { nome: "dairus-teste.db", tamanho_bytes: 1, criado_em: hoje }; },
+    "plugin:event|listen": ({ event, handler }) => { (ouvintes[event] ||= []).push(handler); return handler; },
+    "plugin:event|unlisten": () => null,
     processar_agendamentos_automaticos: () => [],
     listar_pasta_importar: () => [],
     caminho_pasta_importar: () => "C:/Users/teste/Documents/Dairus/Importar",
@@ -132,7 +157,7 @@
     pasta_de_logs: () => "C:/logs",
     ler_log: () => "",
     impressao_dados: () => "abc",
-    "plugin:app|version": () => "0.2.0",
+    "plugin:app|version": () => "0.2.2",
     "plugin:notification|is_permission_granted": () => true,
     "plugin:autostart|is_enabled": () => false,
   };

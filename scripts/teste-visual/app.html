@@ -1,0 +1,20 @@
+<!doctype html>
+<!--
+  O Dairus no navegador com o backend simulado (sem Rust), para testar telas durante o desenvolvimento.
+  Com `npm run dev` rodando, abra: http://localhost:1420/scripts/teste-visual/app.html
+  Atualização simulada: ?atualizacao=ok | erro (falha no download) | erro-instalar
+-->
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/dairus.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dairus (simulado)</title>
+    <script src="/scripts/teste-visual/mock-tauri.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

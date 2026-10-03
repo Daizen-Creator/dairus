@@ -5,6 +5,8 @@ mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 
 ## Próxima versão
 
+- Correção importante: "Reiniciar e atualizar" e "instalar ao fechar" fechavam o Dairus sem instalar a versão nova. Agora o instalador é aberto direto e reabre o app no fim.
+- Tela de atualização: ao abrir o Dairus com versão nova, mostra baixando (MB, velocidade e tempo restante), conferindo, backup, instalando e reiniciando, bloqueando o app enquanto atualiza. Em caso de falha, mensagem clara com "Tentar de novo", "Baixar pelo site" ou "Continuar sem atualizar"; e, se a instalação não terminar, o app avisa na abertura seguinte.
 - Segurança: limite de tentativas gravado para senha do banco, código de recuperação e PIN (pausa de 1 min a 1 h), página de login local com cabeçalhos de segurança e só aceitando o navegador, validação dos lançamentos, teste contra SQL injection e auditoria automática de bibliotecas e segredos.
 - Lançamento sem data agora é recusado com uma mensagem clara (antes era gravado com a data vazia).
 - Personalização completa (Temas e aparência): visuais prontos de um clique, fundo com cor, degradê (editor com ângulo e cores), imagem da galeria ou foto própria (escurecer, desfoque, opacidade, saturação, encaixe), vídeo em loop e fundos animados; menu lateral ou superior, fixo/só ícones/gaveta, ordem por arrastar, vidro fosco e cores; 14 fontes embutidas, tamanho do texto, arredondamento das bordas, transparência dos cartões, sombras, brilho e animações; alerta de contraste WCAG com correção automática; desfazer, restaurar padrão, exportar/importar e cópia na nuvem.

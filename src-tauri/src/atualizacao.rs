@@ -2,7 +2,11 @@
 //! `latest.json` público no Supabase Storage (bucket `atualizacoes`), útil quando o
 //! GitHub limita as consultas. Baixa o instalador em segundo plano (com progresso),
 //! confere o tamanho, o cabeçalho de executável e o SHA-256 (quando publicado) e
-//! instala em modo silencioso, reabrindo o Dairus no fim.
+//! instala em modo passivo (só a barra do instalador), reabrindo o Dairus no fim.
+//!
+//! Para testar sem publicar (só em compilação de desenvolvimento, `npm run tauri dev`):
+//! - `DAIRUS_VERSAO_FINGIDA=0.0.1` faz o app se achar antigo e encontrar a versão publicada;
+//! - `DAIRUS_SIMULAR_FALHA=download` (ou `sha`) faz o download falhar no meio (ou na conferência).
 
 use std::io::Read;
 use std::path::PathBuf;
@@ -15,6 +19,32 @@ use tauri::{AppHandle, Emitter, Manager};
 const REPOSITORIO: &str = "Daizen-Creator/dairus";
 const SUPABASE_LATEST: &str = "https://wcxfjmifikmnydfpepiq.supabase.co/storage/v1/object/public/atualizacoes/latest.json";
 const TAMANHO_MAXIMO: u64 = 300 * 1024 * 1024;
+/// Sem receber nenhum byte por este tempo, o download é dado como travado (em vez de esperar para sempre).
+const DOWNLOAD_PARADO: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Progresso enviado para a tela de atualização (evento "atualizacao-progresso").
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Progresso {
+    /// "baixando" | "conferindo" | "pronto"
+    pub fase: &'static str,
+    pub baixados: u64,
+    /// 0 quando o servidor não informou o tamanho.
+    pub total: u64,
+}
+
+/// Simulações para testar a tela de atualização (só em desenvolvimento).
+fn simulacao(nome: &str) -> Option<String> {
+    if cfg!(debug_assertions) {
+        std::env::var(nome).ok().filter(|v| !v.is_empty())
+    } else {
+        None
+    }
+}
+
+/// Versão que o app considera instalada (a real, ou a fingida em desenvolvimento).
+fn versao_instalada(app: &AppHandle) -> String {
+    simulacao("DAIRUS_VERSAO_FINGIDA").unwrap_or_else(|| app.package_info().version.to_string())
+}
 
 /// Instalador já baixado esperando o app fechar (opção "instalar ao sair").
 static PENDENTE_AO_SAIR: Mutex<Option<PathBuf>> = Mutex::new(None);
@@ -223,7 +253,7 @@ fn consultar_supabase(atual: &str) -> Result<Option<Novidade>, String> {
 /// Consulta a última versão: GitHub primeiro; se ele falhar, o Supabase. `None` = já está na mais nova.
 #[tauri::command]
 pub async fn verificar_atualizacao(app: AppHandle, beta: Option<bool>) -> Result<Option<Novidade>, String> {
-    let atual = app.package_info().version.to_string();
+    let atual = versao_instalada(&app);
     let beta = beta.unwrap_or(false);
     tauri::async_runtime::spawn_blocking(move || match consultar_github(&atual, beta) {
         Ok(Some(n)) => Ok(Some(n)),
@@ -254,8 +284,9 @@ pub fn conferir_instalador(bytes: &[u8], sha256: Option<&str>) -> Result<(), Str
     Ok(())
 }
 
-/// Baixa o instalador para a pasta de cache do app, emitindo "atualizacao-progresso" (0–100).
-/// Devolve o caminho do arquivo pronto para instalar.
+/// Baixa o instalador para a pasta de cache do app, emitindo "atualizacao-progresso" ([`Progresso`]).
+/// Grava primeiro num `.parcial` e só renomeia depois de conferido, então um download
+/// interrompido nunca vira um instalador "pronto". Devolve o caminho do arquivo.
 #[tauri::command]
 pub async fn baixar_atualizacao(app: AppHandle, url: String, sha256: Option<String>) -> Result<String, String> {
     if !url_permitida(&url) {
@@ -267,40 +298,76 @@ pub async fn baixar_atualizacao(app: AppHandle, url: String, sha256: Option<Stri
     tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
         let nome = url.rsplit('/').next().unwrap_or("Dairus-setup.exe").replace(['\\', ':', '?', '*'], "_");
         let destino = pasta.join(&nome);
+        let avisar = |fase: &'static str, baixados: u64, total: u64| {
+            let _ = app2.emit("atualizacao-progresso", Progresso { fase, baixados, total });
+        };
         // Já baixado e conferido antes? Reaproveita.
         if let Ok(existente) = std::fs::read(&destino) {
-            if conferir_instalador(&existente, sha256.as_deref()).is_ok() && sha256.is_some() {
-                let _ = app2.emit("atualizacao-progresso", 100u8);
+            if sha256.is_some() && conferir_instalador(&existente, sha256.as_deref()).is_ok() {
+                let n = existente.len() as u64;
+                avisar("pronto", n, n);
                 return Ok(destino.to_string_lossy().into_owned());
             }
         }
-        let resposta = ureq::get(&url)
-            .set("User-Agent", "Dairus")
-            .timeout(std::time::Duration::from_secs(900))
-            .call()
-            .map_err(|e| format!("Falha ao baixar a atualização: {e}"))?;
+        let falha = simulacao("DAIRUS_SIMULAR_FALHA");
+        let agente = ureq::AgentBuilder::new()
+            .timeout_connect(std::time::Duration::from_secs(20))
+            .timeout_read(DOWNLOAD_PARADO)
+            .user_agent("Dairus")
+            .build();
+        let resposta = agente.get(&url).call().map_err(|e| match e {
+            ureq::Error::Status(c, _) => format!("O servidor de atualizações respondeu com erro {c}. Tente de novo mais tarde."),
+            ureq::Error::Transport(t) => format!("Sem conexão para baixar a atualização ({t})."),
+        })?;
         let total: u64 = resposta.header("Content-Length").and_then(|v| v.parse().ok()).unwrap_or(0);
+        if total > TAMANHO_MAXIMO {
+            return Err("O instalador publicado é grande demais; não foi baixado.".into());
+        }
         let mut leitor = resposta.into_reader().take(TAMANHO_MAXIMO + 1);
         let mut bytes = Vec::with_capacity(total as usize);
         let mut bloco = [0u8; 64 * 1024];
-        let mut ultimo = 0u8;
+        let mut ultimo_aviso = 0u64;
+        avisar("baixando", 0, total);
         loop {
-            let n = leitor.read(&mut bloco).map_err(|e| format!("Falha ao baixar a atualização: {e}"))?;
+            let n = leitor.read(&mut bloco).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::TimedOut || e.kind() == std::io::ErrorKind::WouldBlock {
+                    "O download parou de responder. Verifique a internet e tente de novo.".to_string()
+                } else {
+                    format!("A conexão caiu durante o download ({e}). Tente de novo.")
+                }
+            })?;
             if n == 0 {
                 break;
             }
             bytes.extend_from_slice(&bloco[..n]);
-            if total > 0 {
-                let pct = ((bytes.len() as u64 * 100) / total).min(99) as u8;
-                if pct != ultimo {
-                    ultimo = pct;
-                    let _ = app2.emit("atualizacao-progresso", pct);
+            let baixados = bytes.len() as u64;
+            // No máximo um aviso a cada 256 KB, para não inundar a tela.
+            if baixados - ultimo_aviso >= 256 * 1024 {
+                ultimo_aviso = baixados;
+                avisar("baixando", baixados, total);
+            }
+            if falha.as_deref() == Some("download") && baixados > total / 2 {
+                return Err("A conexão caiu durante o download (simulado). Tente de novo.".into());
+            }
+        }
+        if total > 0 && (bytes.len() as u64) < total {
+            return Err("O download terminou incompleto. Tente de novo.".into());
+        }
+        avisar("conferindo", bytes.len() as u64, total);
+        let esperado = if falha.as_deref() == Some("sha") { Some("0".repeat(64)) } else { sha256.clone() };
+        conferir_instalador(&bytes, esperado.as_deref())?;
+        // Só o instalador desta versão fica na pasta (os antigos ocupariam espaço à toa).
+        if let Ok(itens) = std::fs::read_dir(&pasta) {
+            for item in itens.flatten() {
+                if item.path() != destino {
+                    let _ = std::fs::remove_file(item.path());
                 }
             }
         }
-        conferir_instalador(&bytes, sha256.as_deref())?;
-        std::fs::write(&destino, &bytes).map_err(|e| e.to_string())?;
-        let _ = app2.emit("atualizacao-progresso", 100u8);
+        let parcial = destino.with_extension("parcial");
+        std::fs::write(&parcial, &bytes).map_err(|e| format!("Não foi possível salvar o instalador (disco cheio ou sem permissão?): {e}"))?;
+        std::fs::rename(&parcial, &destino).map_err(|e| format!("Não foi possível salvar o instalador: {e}"))?;
+        avisar("pronto", bytes.len() as u64, total);
         log::info!("atualização baixada e conferida: {}", destino.display());
         Ok(destino.to_string_lossy().into_owned())
     })
@@ -317,24 +384,24 @@ fn caminho_baixado(app: &AppHandle, caminho: &str) -> Result<PathBuf, String> {
     Ok(p)
 }
 
-/// Roda o instalador em modo passivo (só a barra de progresso) e, ao terminar, reabre o Dairus.
+/// Parâmetros do instalador NSIS do Tauri: `/P` = passivo (só a barra de progresso; fecha o
+/// Dairus sozinho se ele ainda estiver aberto), `/UPDATE` = atualização (mantém atalhos e
+/// configurações) e `/R` = reabre o Dairus quando terminar.
+pub fn argumentos_instalador(reabrir: bool) -> Vec<&'static str> {
+    let mut args = vec!["/P", "/UPDATE"];
+    if reabrir {
+        args.push("/R");
+    }
+    args
+}
+
+/// Roda o instalador direto, sem passar pelo `cmd` (com o `cmd`, as aspas do caminho
+/// quebravam o comando: o Dairus fechava e nada era instalado).
 fn executar_instalador(instalador: &PathBuf, reabrir: bool) -> Result<(), String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const SEM_JANELA: u32 = 0x0800_0000;
-        let mut script = format!("\"{}\" /P", instalador.display());
-        if reabrir {
-            script = format!("{script} && start \"\" \"{}\"", exe.display());
-        }
-        std::process::Command::new("cmd").args(["/C", &script]).creation_flags(SEM_JANELA).spawn().map_err(|e| format!("Não foi possível abrir o instalador: {e}"))?;
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = (reabrir, exe);
-        std::process::Command::new(instalador).spawn().map_err(|e| format!("Não foi possível abrir o instalador: {e}"))?;
-    }
+    std::process::Command::new(instalador)
+        .args(argumentos_instalador(reabrir))
+        .spawn()
+        .map_err(|e| format!("Não foi possível abrir o instalador: {e}"))?;
     Ok(())
 }
 
@@ -344,7 +411,11 @@ pub fn instalar_baixada(app: AppHandle, caminho: String) -> Result<(), String> {
     let p = caminho_baixado(&app, &caminho)?;
     log::info!("instalando atualização: {}", p.display());
     executar_instalador(&p, true)?;
-    app.exit(0);
+    // Dá um instante para a tela mostrar "Reiniciando…" antes de fechar.
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        app.exit(0);
+    });
     Ok(())
 }
 
@@ -389,6 +460,27 @@ mod testes {
             draft: false,
             prerelease: false,
         }
+    }
+
+    #[test]
+    fn instalador_roda_direto_com_os_parametros_do_tauri() {
+        assert_eq!(argumentos_instalador(true), vec!["/P", "/UPDATE", "/R"]);
+        assert_eq!(argumentos_instalador(false), vec!["/P", "/UPDATE"]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn abre_programa_em_caminho_com_espacos() {
+        // O defeito antigo: "cmd /C" com o caminho entre aspas não executava nada.
+        // Agora o instalador é aberto direto, e um caminho com espaços precisa funcionar.
+        let pasta = std::env::temp_dir().join("dairus teste atualização");
+        std::fs::create_dir_all(&pasta).unwrap();
+        let alvo = pasta.join("programa de teste.exe");
+        let sistema = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
+        std::fs::copy(PathBuf::from(sistema).join("System32").join("whoami.exe"), &alvo).unwrap();
+        let saida = std::process::Command::new(&alvo).output().unwrap();
+        assert!(saida.status.success());
+        let _ = std::fs::remove_dir_all(&pasta);
     }
 
     #[test]
