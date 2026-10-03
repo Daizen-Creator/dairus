@@ -81,6 +81,9 @@ export function ConfiguracoesPage() {
   const [verificacaoSemanal, setVerificacaoSemanal] = usePreferencia<boolean>("verificacao_semanal", true);
   const [ultimaVerificacao] = usePreferencia<string | null>("verificacao_semanal_ultima", null);
   const [atualizacaoAuto, setAtualizacaoAuto] = usePreferencia<boolean>("atualizacao_auto", true);
+  const [baixarAuto, setBaixarAuto] = usePreferencia<boolean>("atualizacao_baixar_auto", true);
+  const [instalarAoSair, setInstalarAoSair] = usePreferencia<boolean>("atualizacao_instalar_ao_sair", true);
+  const [beta, setBeta] = usePreferencia<boolean>("atualizacao_beta", false);
   const [versaoApp, setVersaoApp] = useState("");
 
   useEffect(() => {
@@ -282,6 +285,12 @@ export function ConfiguracoesPage() {
           <Button tamanho="pequeno" variante="secundaria" onClick={() => window.dispatchEvent(new CustomEvent(EVENTO_VERIFICAR))}>Verificar atualizações</Button>
           <label className="flex items-center gap-2 text-xs text-texto-primario"><input type="checkbox" checked={atualizacaoAuto} onChange={() => setAtualizacaoAuto(!atualizacaoAuto)} className="h-4 w-4 accent-[var(--cor-primaria)]" />Procurar versões novas sozinho (a cada 6 horas)</label>
         </div>
+        <div className="mt-2 flex flex-wrap gap-4 text-xs text-texto-primario">
+          <label className="flex items-center gap-2"><input type="checkbox" checked={baixarAuto} onChange={() => setBaixarAuto(!baixarAuto)} className="h-4 w-4 accent-[var(--cor-primaria)]" />Baixar a atualização em segundo plano</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={instalarAoSair} onChange={() => setInstalarAoSair(!instalarAoSair)} className="h-4 w-4 accent-[var(--cor-primaria)]" />Instalar sozinho quando eu fechar o Dairus</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={beta} onChange={() => setBeta(!beta)} className="h-4 w-4 accent-[var(--cor-primaria)]" />Receber versões de teste (beta)</label>
+        </div>
+        <p className="mt-1 text-[11px] text-texto-secundario">As versões vêm do GitHub (Daizen-Creator/dairus) e, se ele estiver fora do ar, do Supabase. O instalador é conferido (tamanho, formato e SHA-256 quando publicado) antes de instalar, e um backup é feito antes de atualizar na hora.</p>
         <div className="mt-3 flex flex-wrap gap-4 text-sm"><Link to="/backup" className="text-primaria hover:underline">Backup e PIN</Link><Link to="/ia" className="text-primaria hover:underline">Chave do Gemini</Link><Link to="/contabilidade" className="text-primaria hover:underline">Auditoria</Link><Link to="/ajuda" className="text-primaria hover:underline">Ajuda e tutorial</Link></div>
       </Secao>
       </>)}

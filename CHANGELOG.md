@@ -13,6 +13,9 @@ mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 - Sincronização automática entre computadores pela nuvem.
 - Criptografia do banco e dos backups, com código de recuperação.
 - Aviso de versão nova com a lista do que mudou e atualização com um clique.
+- Atualização automática: procura versão nova no GitHub (com reserva no Supabase), baixa em segundo plano, confere o SHA-256 e instala ao fechar ou com "Reiniciar e atualizar". Canal beta opcional.
+- Tela de login nova, com recursos do app, novidades, status da conexão, contas recentes e ajuda para problemas ao entrar.
+- Página de retorno do login (127.0.0.1) com ícone na aba, visual do Dairus e fechamento automático; o app volta para a frente sozinho.
 - Arquivo de log para diagnóstico.
 - Nova aba de Investimentos: carteira, cotações, proventos, simuladores, imposto de renda e análises com IA (informativas).
 - Lançamentos: subcategorias, etiquetas (#tags), anexos, regras de categoria, receitas e contas automáticas, reajuste anual, divisão de despesas.

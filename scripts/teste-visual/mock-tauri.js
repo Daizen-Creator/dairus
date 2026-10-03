@@ -138,6 +138,7 @@
   };
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
   const agora = Math.floor(Date.now() / 1000);
+  if (window.__SEM_SESSAO__) { localStorage.removeItem("dairus-sessao"); return; }
   localStorage.setItem("dairus-sessao", JSON.stringify({ access_token: "x.y.z", refresh_token: "r", token_type: "bearer", expires_in: 999999, expires_at: agora + 999999, user: { id: "00000000-0000-4000-8000-000000000001", email: "teste@dairus.app", aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: { full_name: "Pessoa Teste" }, created_at: "2026-01-01" } }));
   localStorage.setItem("00000000-0000-4000-8000-000000000001:tutorial_visto", "true");
   if (!window.__SEM_CHAVE__) localStorage.setItem("00000000-0000-4000-8000-000000000001:gemini_chave", JSON.stringify("AIzaTESTE"));

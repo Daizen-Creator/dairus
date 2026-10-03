@@ -39,6 +39,7 @@ aes-gcm = "0.10"
 argon2 = "0.5"
 zeroize = "1"
 ureq = "2"
+sha2 = "0.10"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

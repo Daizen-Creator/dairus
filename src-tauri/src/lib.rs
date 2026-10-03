@@ -170,6 +170,9 @@ pub fn run() {
             lancamentos_extras::caminho_pasta_importar,
             atualizacao::verificar_atualizacao,
             atualizacao::instalar_atualizacao,
+            atualizacao::baixar_atualizacao,
+            atualizacao::instalar_baixada,
+            atualizacao::instalar_ao_sair,
             sincronizacao::impressao_dados,
             sincronizacao::gerar_copia_sync,
             sistema::pasta_de_logs,
@@ -227,6 +230,7 @@ pub fn run() {
         .run(|app, evento| {
             // Ao sair, grava a última versão do banco criptografado.
             if let tauri::RunEvent::Exit = evento {
+                atualizacao::ao_sair();
                 let estado = app.state::<AppState>();
                 let conn = estado.conn.lock().expect("mutex da conexão envenenado");
                 if let Err(erro) = cripto::persistir(&conn, false) {
