@@ -24,6 +24,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
       - name: Notas da versão (CHANGELOG.md)
+        id: notas
         shell: bash
         run: |
           versao="${GITHUB_REF_NAME#v}"
@@ -32,6 +33,12 @@ jobs:
             dentro { print }
           ' CHANGELOG.md > notas.md
           [ -s notas.md ] || echo "Versão $versao." > notas.md
+          # A tauri-action recebe o texto (releaseBody), não um arquivo.
+          {
+            echo "corpo<<FIM_DAS_NOTAS"
+            cat notas.md
+            echo "FIM_DAS_NOTAS"
+          } >> "$GITHUB_OUTPUT"
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -39,6 +46,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Dairus ${{ github.ref_name }}
-          releaseBodyPath: notas.md
+          releaseBody: ${{ steps.notas.outputs.corpo }}
           releaseDraft: false
           prerelease: false
