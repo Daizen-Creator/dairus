@@ -6,6 +6,13 @@ import {
   Eye,
   EyeOff,
   KeyRound,
+  History,
+  MessageSquarePlus,
+  NotebookPen,
+  Paperclip,
+  Pencil,
+  RefreshCw,
+  Volume2,
   ListChecks,
   Mic,
   PlugZap,
@@ -140,6 +147,12 @@ export function IaPage() {
   const [contexto, setContexto] = useState<string | null>(null);
   const [testando, setTestando] = useState(false);
   const [copiado, setCopiado] = useState<number | null>(null);
+  const [anexo, setAnexo] = useState<{ mime: string; base64: string; nome: string } | null>(null);
+  const [gravacao, setGravacao] = useState<import("../../services/audio").Gravacao | null>(null);
+  const [salvas, setSalvas] = usePreferencia<string[]>("ia_perguntas_salvas", []);
+  const [conversas, setConversas] = usePreferencia<Array<{ titulo: string; data: string; mensagens: Mensagem[] }>>("ia_conversas", []);
+  const [verConversas, setVerConversas] = useState(false);
+  const entradaArquivo = useRef<HTMLInputElement>(null);
   const fimRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const [secao, setSecao] = useAbaDaPagina<"conversa" | "lancar" | "analises" | "organizar" | "configuracao">("ia", "conversa");
@@ -182,18 +195,22 @@ export function IaPage() {
     setContexto(contexto ? null : await montarContexto(blocos, anonimo, nTransacoes));
   }
 
-  async function enviar(texto: string) {
-    const t = texto.trim();
+  async function enviar(texto: string, anexo?: { mime: string; base64: string; nome: string }) {
+    const t = texto.trim() || (anexo ? (anexo.mime.startsWith("audio/") ? "Responda ao que eu disse no áudio." : "Analise o anexo.") : "");
     if (!t || enviando) return;
-    const novo: Mensagem[] = [...mensagens, { papel: "usuario", texto: t }];
+    // O anexo vai só na pergunta; no histórico salvo fica apenas o nome (não pesa no arquivo).
+    const visivel: Mensagem = { papel: "usuario", texto: anexo ? `${t}\n📎 ${anexo.nome}` : t };
+    const novo: Mensagem[] = [...mensagens, visivel];
+    const paraEnviar: Mensagem[] = [...mensagens, { papel: "usuario", texto: t, anexo: anexo ? { mime: anexo.mime, base64: anexo.base64 } : undefined }];
     setMensagens(novo);
     setPergunta("");
+    setAnexo(null);
     const controle = new AbortController();
     abortRef.current = controle;
     try {
       setEnviando(true);
       const ctx = await montarContexto(blocos, anonimo, nTransacoes);
-      const r = await chamarGemini({ chave, modelo: modeloEfetivo, instrucao: `${INSTRUCAO}\n${TONS[tom]}`, contexto: ctx, temperatura, historico: novo.slice(-12), sinal: controle.signal });
+      const r = await chamarGemini({ chave, modelo: modeloEfetivo, instrucao: `${INSTRUCAO}\n${TONS[tom]}`, contexto: ctx, temperatura, historico: paraEnviar.slice(-12), sinal: controle.signal });
       setMensagens([...novo, { papel: "ia" as const, texto: r.texto, tokens: r.tokens }].slice(-60));
     } catch (e) {
       if ((e as Error).name === "AbortError") {
@@ -207,6 +224,67 @@ export function IaPage() {
       setEnviando(false);
       abortRef.current = null;
     }
+  }
+
+  /** Refaz a última resposta (útil quando veio ruim). */
+  function regenerar() {
+    const ultimaPergunta = [...mensagens].reverse().find((m) => m.papel === "usuario");
+    if (!ultimaPergunta) return;
+    const idx = mensagens.lastIndexOf(ultimaPergunta);
+    const antes = mensagens.slice(0, idx);
+    setMensagens(antes);
+    setTimeout(() => enviar(ultimaPergunta.texto.replace(/\n📎 .*$/, "")), 0);
+  }
+
+  /** Volta a última pergunta para a caixa de texto, para corrigir. */
+  function editarUltima() {
+    const ultimaPergunta = [...mensagens].reverse().find((m) => m.papel === "usuario");
+    if (!ultimaPergunta) return;
+    setMensagens(mensagens.slice(0, mensagens.lastIndexOf(ultimaPergunta)));
+    setPergunta(ultimaPergunta.texto.replace(/\n📎 .*$/, ""));
+  }
+
+  function lerEmVozAlta(texto: string) {
+    if (!("speechSynthesis" in window)) return toast.error("Este computador não tem leitura em voz alta.");
+    window.speechSynthesis.cancel();
+    const fala = new SpeechSynthesisUtterance(texto.replace(/[*#_`]/g, ""));
+    fala.lang = "pt-BR";
+    window.speechSynthesis.speak(fala);
+  }
+
+  async function escolherArquivo(arquivo: File) {
+    if (arquivo.size > 15 * 1024 * 1024) return toast.error("Arquivo grande demais (máx. 15 MB).");
+    const { arquivoParaAnexo } = await import("../../services/gemini");
+    setAnexo({ ...(await arquivoParaAnexo(arquivo)), nome: arquivo.name });
+  }
+
+  async function alternarVoz() {
+    const { iniciarGravacao } = await import("../../services/audio");
+    if (gravacao) {
+      const g = gravacao;
+      setGravacao(null);
+      try {
+        const wav = await g.parar();
+        const { arquivoParaAnexo } = await import("../../services/gemini");
+        await enviar(pergunta, { ...(await arquivoParaAnexo(wav)), nome: "áudio gravado" });
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : String(e));
+      }
+      return;
+    }
+    try {
+      setGravacao(await iniciarGravacao());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  function novaConversa() {
+    if (mensagens.length) {
+      const titulo = mensagens.find((m) => m.papel === "usuario")?.texto.slice(0, 50) ?? "Conversa";
+      setConversas([{ titulo, data: new Date().toISOString().slice(0, 10), mensagens }, ...conversas].slice(0, 10));
+    }
+    setMensagens([]);
   }
 
   async function copiar(i: number, texto: string) {
@@ -313,9 +391,33 @@ export function IaPage() {
               <div className="flex items-center gap-2 text-xs text-texto-secundario">
                 {totalTokens > 0 && <span>{totalTokens.toLocaleString("pt-BR")} tokens nesta conversa</span>}
                 <Button variante="fantasma" tamanho="pequeno" onClick={exportarConversa} disabled={mensagens.length === 0}><Download size={13} /> Exportar</Button>
+                <Button variante="fantasma" tamanho="pequeno" onClick={regenerar} disabled={enviando || !mensagens.some((m) => m.papel === "usuario")}><RefreshCw size={13} /> Refazer</Button>
+                <Button variante="fantasma" tamanho="pequeno" onClick={editarUltima} disabled={enviando || !mensagens.some((m) => m.papel === "usuario")}><Pencil size={13} /> Editar última</Button>
+                <Button variante="fantasma" tamanho="pequeno" onClick={novaConversa} disabled={mensagens.length === 0}><MessageSquarePlus size={13} /> Nova</Button>
+                <Button variante="fantasma" tamanho="pequeno" onClick={() => setVerConversas(!verConversas)} disabled={conversas.length === 0}><History size={13} /> Anteriores ({conversas.length})</Button>
                 <Button variante="fantasma" tamanho="pequeno" onClick={() => setMensagens([])} disabled={mensagens.length === 0}><Trash2 size={13} /> Limpar</Button>
               </div>
             </div>
+            {verConversas && (
+              <ul className="mb-3 space-y-1 rounded-lg border border-borda p-2 text-xs">
+                {conversas.map((c, k) => (
+                  <li key={k} className="flex items-center justify-between gap-2">
+                    <button onClick={() => { novaConversa(); setMensagens(c.mensagens); setConversas(conversas.filter((_, j) => j !== k)); setVerConversas(false); }} className="truncate text-left text-primaria hover:underline">{c.data.split("-").reverse().join("/")} · {c.titulo}</button>
+                    <button onClick={() => setConversas(conversas.filter((_, j) => j !== k))} aria-label="Apagar conversa" className="text-texto-secundario hover:text-erro"><Trash2 size={11} /></button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {salvas.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {salvas.map((q) => (
+                  <span key={q} className="flex items-center gap-1 rounded-full border border-alerta/50 px-2 py-0.5 text-xs text-texto-primario">
+                    <button onClick={() => enviar(q)} disabled={enviando} className="hover:text-primaria">★ {q.length > 60 ? `${q.slice(0, 60)}…` : q}</button>
+                    <button onClick={() => setSalvas(salvas.filter((x) => x !== q))} aria-label="Tirar das salvas" className="text-texto-secundario hover:text-erro">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="h-[calc(100vh-420px)] min-h-64 space-y-3 overflow-y-auto pr-1">
               {mensagens.length === 0 && (
                 <div className="flex flex-wrap gap-2">
@@ -329,7 +431,11 @@ export function IaPage() {
                   <div className={`relative max-w-[88%] rounded-2xl px-3.5 py-2 text-sm ${m.papel === "usuario" ? "bg-gradient-to-r from-primaria to-destaque text-primaria-texto" : "border border-borda bg-fundo text-texto-primario"}`}>
                     {m.papel === "ia" ? <Texto texto={m.texto} /> : <p className="whitespace-pre-wrap">{m.texto}</p>}
                     {m.papel === "ia" && (
-                      <button onClick={() => copiar(i, m.texto)} aria-label="Copiar resposta" className="absolute -right-2 -top-2 rounded-full border border-borda bg-cartao p-1 text-texto-secundario opacity-0 transition-opacity hover:text-primaria group-hover:opacity-100">{copiado === i ? <Check size={12} /> : <Copy size={12} />}</button>
+                      <span className="absolute -right-2 -top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button onClick={() => copiar(i, m.texto)} aria-label="Copiar resposta" className="rounded-full border border-borda bg-cartao p-1 text-texto-secundario hover:text-primaria">{copiado === i ? <Check size={12} /> : <Copy size={12} />}</button>
+                        <button onClick={() => lerEmVozAlta(m.texto)} aria-label="Ler em voz alta" className="rounded-full border border-borda bg-cartao p-1 text-texto-secundario hover:text-primaria"><Volume2 size={12} /></button>
+                        <button onClick={() => { lerPreferencia<string>("notas_inicio").then((n) => salvarPreferencia("notas_inicio", `${n ? n + "\n\n" : ""}${m.texto.slice(0, 1500)}`)).then(() => toast.success("Guardado no bloco de notas do Início.")); }} aria-label="Guardar nas notas" className="rounded-full border border-borda bg-cartao p-1 text-texto-secundario hover:text-primaria"><NotebookPen size={12} /></button>
+                      </span>
                     )}
                   </div>
                 </div>
@@ -337,7 +443,15 @@ export function IaPage() {
               {enviando && <p className="text-xs text-texto-secundario">Pensando…</p>}
               <div ref={fimRef} />
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); enviar(pergunta); }} className="mt-3 flex items-end gap-2">
+            {anexo && (
+              <p className="mt-2 flex items-center gap-2 text-xs text-texto-secundario"><Paperclip size={12} /> {anexo.nome} <button onClick={() => setAnexo(null)} className="hover:text-erro" aria-label="Tirar anexo">×</button></p>
+            )}
+            <input ref={entradaArquivo} type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) escolherArquivo(f); e.target.value = ""; }} />
+            <form onSubmit={(e) => { e.preventDefault(); enviar(pergunta, anexo ?? undefined); }} onPaste={(e) => { const img = [...e.clipboardData.items].find((x) => x.type.startsWith("image/"))?.getAsFile(); if (img) { e.preventDefault(); escolherArquivo(new File([img], "print.png", { type: img.type })); } }} className="mt-3 flex items-end gap-2">
+              <div className="flex flex-col gap-1">
+                <button type="button" onClick={() => entradaArquivo.current?.click()} title="Anexar foto, print ou PDF" aria-label="Anexar arquivo" className="rounded-lg border border-borda p-2 text-texto-secundario hover:text-primaria"><Paperclip size={15} /></button>
+                <button type="button" onClick={alternarVoz} title={gravacao ? "Parar e enviar" : "Falar"} aria-label="Falar com a IA" className={`rounded-lg border p-2 ${gravacao ? "border-erro text-erro" : "border-borda text-texto-secundario hover:text-primaria"}`}>{gravacao ? <Square size={15} /> : <Mic size={15} />}</button>
+              </div>
               <textarea
                 value={pergunta}
                 onChange={(e) => setPergunta(e.target.value)}
@@ -347,11 +461,14 @@ export function IaPage() {
                 aria-label="Pergunta"
                 className={`${CLASSE_INPUT} flex-1 resize-none`}
               />
-              {enviando ? (
-                <Button type="button" variante="perigo" onClick={() => abortRef.current?.abort()}><Square size={13} /> Parar</Button>
-              ) : (
-                <Button type="submit" disabled={!pergunta.trim()}><Send size={14} /> Enviar</Button>
-              )}
+              <div className="flex flex-col gap-1">
+                {enviando ? (
+                  <Button type="button" variante="perigo" onClick={() => abortRef.current?.abort()}><Square size={13} /> Parar</Button>
+                ) : (
+                  <Button type="submit" disabled={!pergunta.trim() && !anexo}><Send size={14} /> Enviar</Button>
+                )}
+                <button type="button" onClick={() => { const q = pergunta.trim(); if (q && !salvas.includes(q)) { setSalvas([...salvas, q].slice(-12)); toast.success("Pergunta salva (★ acima da conversa)."); } }} disabled={!pergunta.trim()} className="text-[11px] text-texto-secundario hover:text-alerta disabled:opacity-40">★ Salvar pergunta</button>
+              </div>
             </form>
             <p className="mt-2 text-xs text-texto-secundario">As respostas são geradas por IA e podem conter erros. Não são aconselhamento financeiro profissional. A conversa fica salva neste computador (últimas 60 mensagens).</p>
           </>
