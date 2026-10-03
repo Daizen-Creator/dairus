@@ -3,6 +3,13 @@
 Cada versão publicada no GitHub usa a seção correspondente daqui como lista de
 mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 
+## Próxima versão
+
+- IA: chaves do Google que começam com AQ. voltaram a funcionar (vão primeiro ao Google AI Studio; o Vertex fica de reserva).
+- IA: modelos atualizados (Gemini Flash-Lite como padrão); se o modelo estiver lotado ou indisponível, o app troca sozinho para outro.
+- IA: controle de ritmo da chave (requisições por minuto ajustáveis, uma por vez, nova tentativa automática quando o Google pede para esperar) e contador de uso do dia.
+- Radar de Compras: preços buscados em várias lojas pelo comparador Zoom (Buscapé de reserva), com lista de ofertas por loja e registro com um clique. O Mercado Livre bloqueou a busca antiga.
+
 ## 0.2.0
 
 - Compra parcelada no cartão: ocupa o limite inteiro e cada parcela cai na fatura do mês certo.

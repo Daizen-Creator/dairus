@@ -49,7 +49,7 @@ const PENDENTES = [
 const CHAVES_EXPORTAVEIS = [
   "nome_usuario", "ocultar_saldos", "conta_principal", "conta_padrao", "categoria_padrao", "pagina_inicial",
   "ui_fonte", "ui_sem_animacoes", "dashboard_secoes_ocultas", "orcamento_renda_base", "perfil_renda",
-  "backup_auto", "backup_frequencia", "backup_retencao", "gemini_modelo", "gemini_tom", "gemini_temperatura",
+  "backup_auto", "backup_frequencia", "backup_retencao", "gemini_modelo", "gemini_rpm", "gemini_tom", "gemini_temperatura",
   "gemini_blocos", "gemini_anonimo", "tema_ativo", "marcas_usuario", "avisos_windows", "fechar_para_bandeja",
   "bloquear_ao_minimizar", "sync_auto", "atualizacao_auto", "invest_alvo", "invest_dia_aporte", "invest_valor_aporte",
   "invest_cotacoes_auto", "pasta_vigiada", "assinaturas_ignoradas", "chave_pix", "orcamento_auto", "meta_envelopes",

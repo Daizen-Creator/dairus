@@ -27,7 +27,7 @@ import { lerPreferencia, salvarPreferencia } from "../../services/armazenamento"
 import { extras } from "../../services/extras";
 import { dataAtualISO, formatarCentavos, nomeMesAno, primeiroDiaDoMesISO, ultimoDiaDoMesISO } from "../../services/formato";
 import { usePreferencia } from "../../state/usePreferencia";
-import { chamarGemini, limparChave, tipoDaChave } from "../../services/gemini";
+import { chamarGemini, limparChave, MODELO_PADRAO, MODELOS_DISPONIVEIS, modeloAtualizado, rotuloDaChave, tipoDaChave, usoDeHoje } from "../../services/gemini";
 
 import type { Mensagem } from "../../services/gemini";
 import { TextoIA as Texto } from "./TextoIA";
@@ -47,11 +47,7 @@ const BLOCOS: Array<{ id: Bloco; rotulo: string; padrao: boolean }> = [
   { id: "transacoes", rotulo: "Últimas transações", padrao: false },
 ];
 
-const MODELOS = [
-  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (rápido)" },
-  { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro (mais capaz)" },
-  { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
-];
+const MODELOS = MODELOS_DISPONIVEIS;
 
 const SUGESTOES = [
   "Resuma meus gastos deste mês.",
@@ -124,7 +120,11 @@ async function montarContexto(blocos: Set<Bloco>, anonimo: boolean, nTransacoes:
 
 export function IaPage() {
   const [chave, setChave] = useState("");
-  const [modelo, setModelo] = usePreferencia<string>("gemini_modelo", "gemini-2.5-flash");
+  const [modeloSalvo, setModelo] = usePreferencia<string>("gemini_modelo", MODELO_PADRAO);
+  const modelo = modeloAtualizado(modeloSalvo);
+  const [rpm, setRpm] = usePreferencia<number>("gemini_rpm", 10);
+  const [usoHoje, setUsoHoje] = useState(0);
+  const [aguardando, setAguardando] = useState<string | null>(null);
   const [modeloLivre, setModeloLivre] = useState("");
   const [tom, setTom] = usePreferencia<string>("gemini_tom", "CONCISO");
   const [temperatura, setTemperatura] = usePreferencia<number>("gemini_temperatura", 0.4);
@@ -152,6 +152,19 @@ export function IaPage() {
   }, []);
 
   useEffect(() => {
+    usoDeHoje().then(setUsoHoje);
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const aoEsperar = (ev: Event) => {
+      const { ms, motivo } = (ev as CustomEvent<{ ms: number; motivo: string }>).detail;
+      setAguardando(`Aguardando ${Math.ceil(ms / 1000)} s (${motivo})…`);
+      clearTimeout(t);
+      t = setTimeout(() => setAguardando(null), ms);
+    };
+    window.addEventListener("dairus-gemini-espera", aoEsperar);
+    return () => { window.removeEventListener("dairus-gemini-espera", aoEsperar); clearTimeout(t); };
+  }, []);
+
+  useEffect(() => {
     fimRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [mensagens, enviando]);
 
@@ -163,14 +176,15 @@ export function IaPage() {
     setRascunhoChave("");
     if (!nova) return toast.success("Chave removida.");
     const tipo = tipoDaChave(nova);
-    toast.success(tipo === "VERTEX" ? "Chave do Vertex AI (modo expresso) salva. Clique em “Testar conexão”." : tipo === "AI_STUDIO" ? "Chave do Google AI Studio salva. Clique em “Testar conexão”." : "Chave salva, mas o formato não é o esperado (AIza… ou AQ.…). Teste a conexão.");
+    toast.success(tipo === "GOOGLE_AQ" ? "Chave do Google (AQ.) salva. Clique em “Testar conexão”." : tipo === "AI_STUDIO" ? "Chave do Google AI Studio salva. Clique em “Testar conexão”." : "Chave salva, mas o formato não é o esperado (AIza… ou AQ.…). Teste a conexão.");
   }
 
   async function testarConexao() {
     try {
       setTestando(true);
       const r = await chamarGemini({ chave, modelo: modeloEfetivo, instrucao: "Responda apenas: ok", contexto: "(teste de conexão)", temperatura: 0, historico: [{ papel: "usuario", texto: "teste" }] });
-      toast.success(`Conexão ok com ${modeloEfetivo}${r.tokens ? ` (${r.tokens} tokens no teste)` : ""}.`);
+      setUsoHoje(await usoDeHoje());
+      toast.success(`Conexão ok com ${r.modeloUsado}${r.modeloUsado !== modeloEfetivo ? ` (${modeloEfetivo} indisponível agora)` : ""}${r.tokens ? ` (${r.tokens} tokens no teste)` : ""}.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
@@ -195,6 +209,7 @@ export function IaPage() {
       const ctx = await montarContexto(blocos, anonimo, nTransacoes);
       const r = await chamarGemini({ chave, modelo: modeloEfetivo, instrucao: `${INSTRUCAO}\n${TONS[tom]}`, contexto: ctx, temperatura, historico: novo.slice(-12), sinal: controle.signal });
       setMensagens([...novo, { papel: "ia" as const, texto: r.texto, tokens: r.tokens }].slice(-60));
+      setUsoHoje(await usoDeHoje());
     } catch (e) {
       if ((e as Error).name === "AbortError") {
         toast.info("Pergunta cancelada.");
@@ -271,8 +286,14 @@ export function IaPage() {
               <span className="w-7 tabular-nums text-xs">{temperatura.toFixed(1)}</span>
             </label>
           </div>
-          {chave && <p className="mt-3 text-xs text-texto-secundario">Chave salva: <strong className="text-texto-primario">{tipoDaChave(chave) === "VERTEX" ? "Vertex AI (modo expresso)" : tipoDaChave(chave) === "AI_STUDIO" ? "Google AI Studio" : "formato desconhecido"}</strong> · termina em …{chave.slice(-4)}</p>}
-          <p className="mt-3 text-xs leading-relaxed text-texto-secundario">Aceita chave do Google AI Studio (começa com AIza) ou do Vertex AI em modo expresso (começa com AQ.). Ela fica salva apenas neste computador (arquivo de preferências do app, sem criptografia). Nada é enviado antes de você perguntar.</p>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-texto-secundario">
+            <label className="flex items-center gap-2" title="Limite de ritmo: o app espera entre uma requisição e outra para não estourar a cota da chave.">Requisições por minuto
+              <Select aria-label="Requisições por minuto" value={String(rpm)} onValueChange={(v) => setRpm(Number(v))} options={[2, 5, 10, 15, 30].map((n) => ({ value: String(n), label: `${n}/min${n === 10 ? " (padrão)" : ""}` }))} className="w-32" />
+            </label>
+            <span className="text-xs">{usoHoje} requisições hoje</span>
+          </div>
+          {chave && <p className="mt-3 text-xs text-texto-secundario">Chave salva: <strong className="text-texto-primario">{rotuloDaChave(chave)}</strong> · termina em …{chave.slice(-4)}</p>}
+          <p className="mt-3 text-xs leading-relaxed text-texto-secundario">Aceita chave do Google AI Studio (AIza… ou AQ.…); chaves AQ. do Vertex AI em modo expresso também funcionam. Se o modelo escolhido estiver lotado ou indisponível, o app usa outro automaticamente. Ela fica salva apenas neste computador (arquivo de preferências do app, sem criptografia). Nada é enviado antes de você perguntar.</p>
         </Secao>
 
         <Secao titulo={<><ShieldCheck size={16} className="text-sucesso" /> O que é enviado ao Google</>}>
@@ -334,7 +355,7 @@ export function IaPage() {
                   </div>
                 </div>
               ))}
-              {enviando && <p className="text-xs text-texto-secundario">Pensando…</p>}
+              {enviando && <p className="text-xs text-texto-secundario">{aguardando ?? "Pensando…"}</p>}
               <div ref={fimRef} />
             </div>
             <form onSubmit={(e) => { e.preventDefault(); enviar(pergunta); }} className="mt-3 flex items-end gap-2">

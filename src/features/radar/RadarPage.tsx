@@ -13,7 +13,7 @@ import { StatCard } from "../../components/ui/StatCard";
 import { contabilidade } from "../../services/contabilidade";
 import { planejamento } from "../../services/planejamento";
 import { usePreferencia } from "../../state/usePreferencia";
-import { buscarERegistrar } from "./radarAuto";
+import { buscarERegistrar, lojaDaOferta, registrarOferta, type Oferta } from "./radarAuto";
 import type { Meta } from "../../types/extras";
 import { exportarCsv, reais } from "../../services/exportacao";
 import { extras } from "../../services/extras";
@@ -63,7 +63,7 @@ function resumir(item: ItemRadar, hoje: string) {
   return { menor, maior, ultimo, media, alvo, noAlvo, distAlvo, tendencia, lojasOrdenadas, desatualizado, economia, variacaoTotal };
 }
 
-const urlBusca = (nome: string) => `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(nome)}`;
+const urlBusca = (nome: string) => `https://www.zoom.com.br/search?q=${encodeURIComponent(nome)}`;
 
 export function RadarPage() {
   const [itens, setItens] = useState<ItemRadar[]>([]);
@@ -84,6 +84,7 @@ export function RadarPage() {
   const hoje = dataAtualISO();
   const [metas, setMetas] = useState<Meta[]>([]);
   const [buscando, setBuscando] = useState<string | null>(null);
+  const [ofertas, setOfertas] = useState<{ id: string; lista: Oferta[] } | null>(null);
   const [analise, setAnalise] = useState<{ id: string; texto: string | null } | null>(null);
 
   async function analisarComIA(item: ItemRadar) {
@@ -111,8 +112,9 @@ export function RadarPage() {
     try {
       setBuscando(item.id);
       const r = await buscarERegistrar(item, hoje);
-      if (!r.oferta) toast.info("Nenhuma oferta encontrada no Mercado Livre para esse nome. Tente um nome mais específico.");
-      else toast.success(`Menor preço encontrado: ${formatarCentavos(r.oferta.precoCentavos)} (${r.oferta.titulo.slice(0, 60)}).${r.noAlvo ? " Chegou ao preço-alvo!" : ""}`, { duration: 8000 });
+      setOfertas(r.ofertas.length ? { id: item.id, lista: r.ofertas } : null);
+      if (!r.oferta) toast.info("Nenhuma oferta encontrada nas lojas para esse nome. Tente um nome mais específico (marca e modelo).");
+      else toast.success(`Menor preço: ${formatarCentavos(r.oferta.precoCentavos)} na ${r.oferta.loja} (${r.oferta.titulo.slice(0, 50)}). Registrado no histórico.${r.noAlvo ? " Chegou ao preço-alvo!" : ""}`, { duration: 8000 });
       await carregar();
     } catch (e) {
       toast.error(`Não foi possível buscar agora: ${String(e)}`);
@@ -301,7 +303,7 @@ export function RadarPage() {
       {(secao === "novo") && (<>
       <label className="flex items-center gap-2 text-sm text-texto-primario">
         <input type="checkbox" checked={radarAuto} onChange={() => setRadarAuto(!radarAuto)} className="h-4 w-4 accent-[var(--cor-primaria)]" />
-        Buscar preços sozinho todo dia (Mercado Livre) e avisar quando baixar ou chegar ao alvo
+        Buscar preços sozinho todo dia nas lojas (Magazine Luiza, Amazon, Fast Shop e outras, pelo Zoom) e avisar quando baixar ou chegar ao alvo
       </label>
       <Secao titulo="Novo produto">
         <form onSubmit={criar} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -363,13 +365,37 @@ export function RadarPage() {
                     {!r.noAlvo && r.distAlvo !== null && <span className="rounded-full border border-borda px-2 py-0.5 text-[11px] text-texto-secundario">{r.distAlvo.toFixed(0)}% acima do alvo</span>}
                     {T && <span className="inline-flex items-center gap-1 text-[11px] font-medium" style={{ color: T.cor }}><T.I size={12} /> {T.t}</span>}
                     <button onClick={() => analisarComIA(item)} disabled={analise?.id === item.id && analise.texto === null} className="inline-flex items-center gap-1 rounded-md border border-borda px-2 py-1 text-[11px] text-texto-secundario hover:border-primaria hover:text-primaria disabled:opacity-50" title="A IA avalia o histórico de preços e o seu orçamento">{analise?.id === item.id && analise.texto === null ? "Analisando…" : "Analisar com IA"}</button>
-                    <button onClick={() => buscarAgora(item)} disabled={buscando === item.id} className="inline-flex items-center gap-1 rounded-md border border-primaria/60 px-2 py-1 text-[11px] text-primaria hover:bg-primaria/10 disabled:opacity-50" title="Busca o menor preço no Mercado Livre e registra">{buscando === item.id ? "Buscando…" : "Buscar preço agora"}</button>
+                    <button onClick={() => buscarAgora(item)} disabled={buscando === item.id} className="inline-flex items-center gap-1 rounded-md border border-primaria/60 px-2 py-1 text-[11px] text-primaria hover:bg-primaria/10 disabled:opacity-50" title="Busca o produto em várias lojas (pelo comparador Zoom) e registra o menor preço">{buscando === item.id ? "Buscando…" : "Buscar preço agora"}</button>
                     <Select aria-label={`Meta ligada a ${item.nome}`} value={item.meta_id ?? ""} onValueChange={(v) => ligarMeta(item, v)} options={[{ value: "", label: "Sem meta" }, ...metas.map((m) => ({ value: m.id, label: `Meta: ${m.nome}` }))]} className="w-40" />
-                    <a href={urlBusca(item.nome)} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 rounded-md border border-borda px-2 py-1 text-[11px] text-texto-secundario hover:border-primaria hover:text-primaria" title="Abre uma busca de preços no seu navegador (você registra o resultado)"><ExternalLink size={11} /> Pesquisar preços</a>
+                    <a href={urlBusca(item.nome)} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 rounded-md border border-borda px-2 py-1 text-[11px] text-texto-secundario hover:border-primaria hover:text-primaria" title="Abre a comparação de preços no seu navegador"><ExternalLink size={11} /> Ver no comparador</a>
                     <button onClick={() => { setEditando(item.id); setEd({ nome: item.nome, alvo: item.preco_alvo_centavos ? centavosParaValorInput(item.preco_alvo_centavos) : "" }); }} aria-label={`Editar ${item.nome}`} className="rounded-md p-1.5 text-texto-secundario hover:bg-borda/50 hover:text-primaria"><Pencil size={14} /></button>
                     <button onClick={() => (confirmarExcluir === item.id ? excluir(item) : setConfirmarExcluir(item.id))} aria-label={`Remover ${item.nome}`} title={confirmarExcluir === item.id ? "Clique de novo para confirmar" : "Remover"} className={`rounded-md p-1.5 hover:bg-erro/15 ${confirmarExcluir === item.id ? "text-erro" : "text-texto-secundario hover:text-erro"}`}><Trash2 size={15} /></button>
                   </div>
                 </div>
+                {ofertas?.id === item.id && (
+                  <div className="mt-3 rounded-lg border border-primaria/40 bg-primaria/5 p-3">
+                    <div className="mb-2 flex items-center justify-between"><span className="text-xs font-semibold text-primaria">Ofertas encontradas ({ofertas.lista.length})</span><button onClick={() => setOfertas(null)} aria-label="Fechar ofertas" className="text-texto-secundario hover:text-texto-primario"><X size={12} /></button></div>
+                    <ul className="max-h-56 space-y-1.5 overflow-y-auto text-xs">
+                      {ofertas.lista.slice(0, 12).map((o) => {
+                        const jaTem = item.precos.some((p) => p.data === hoje && p.loja === lojaDaOferta(o) && p.preco_centavos === o.precoCentavos);
+                        return (
+                          <li key={o.url || o.titulo} className="flex items-center justify-between gap-3">
+                            <span className="min-w-0">
+                              <span className="block truncate text-texto-primario" title={o.titulo}>{o.titulo}</span>
+                              <span className="text-texto-secundario">{o.loja}{o.lojas.length > 1 ? ` · ${o.lojas.length} lojas: ${o.lojas.join(", ")}` : ""}</span>
+                            </span>
+                            <span className="flex shrink-0 items-center gap-2">
+                              <span className="font-semibold tabular-nums text-texto-primario">{formatarCentavos(o.precoCentavos)}</span>
+                              {o.url && <a href={o.url} target="_blank" rel="noreferrer noopener" aria-label="Abrir oferta" className="text-primaria"><ExternalLink size={12} /></a>}
+                              <button disabled={jaTem} onClick={() => registrarOferta(item, o, hoje).then(() => { toast.success("Preço registrado."); return carregar(); }).catch((e) => toast.error(String(e)))} className="rounded border border-borda px-1.5 py-0.5 text-[11px] text-texto-secundario hover:border-primaria hover:text-primaria disabled:opacity-50">{jaTem ? "Registrado" : "Registrar"}</button>
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
+
                 {analise?.id === item.id && analise.texto && (
                   <div className="mt-3 rounded-lg border border-primaria/40 bg-primaria/5 p-3 text-sm text-texto-primario">
                     <div className="mb-1 flex items-center justify-between"><span className="text-xs font-semibold text-primaria">Análise da IA (pode conter erros)</span><button onClick={() => setAnalise(null)} aria-label="Fechar análise" className="text-texto-secundario hover:text-texto-primario"><X size={12} /></button></div>

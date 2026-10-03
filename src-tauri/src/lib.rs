@@ -128,6 +128,7 @@ pub fn run() {
             investimentos::salvar_indicadores,
             investimentos::listar_indicadores,
             mercado::buscar_json_mercado,
+            mercado::buscar_precos_lojas,
             lancamentos_extras::definir_tags,
             lancamentos_extras::listar_tags,
             lancamentos_extras::anexar_arquivo,
