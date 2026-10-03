@@ -43,5 +43,5 @@ export function lancamento(p: Partial<Lancamento> & Pick<Lancamento, "id" | "dat
 }
 
 export function agendamento(p: Partial<Agendamento> & Pick<Agendamento, "id" | "descricao" | "vencimento">): Agendamento {
-  return { valor_centavos: 10_000, categoria_despesa_id: "despesa-alimentacao", etiqueta: null, lancamento_id: null, pago_em: null, recorrencia: null, ...p };
+  return { valor_centavos: 10_000, categoria_despesa_id: "despesa-alimentacao", etiqueta: null, lancamento_id: null, pago_em: null, recorrencia: null, tipo: "PAGAR", automatico: false, conta_id: null, reajuste_anual: null, mes_reajuste: null, pessoa: null, ...p };
 }

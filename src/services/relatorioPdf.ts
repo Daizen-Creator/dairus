@@ -276,7 +276,7 @@ export async function gerarRelatorioPdf(d: DadosRelatorio): Promise<Uint8Array> 
   // Destaques (coluna direita)
   const xd = M + colEsq + 8;
   const ld = UTIL - colEsq - 8;
-  const abertos = d.agendamentos.filter((a) => !a.pago_em);
+  const abertos = d.agendamentos.filter((a) => !a.pago_em && a.tipo !== "RECEBER");
   const hojeISO = new Date().toISOString().slice(0, 10);
   const atrasados = abertos.filter((a) => a.vencimento < hojeISO);
   const saldoContas = d.contas.filter((c) => c.tipo === "ATIVO" && c.subtipo !== "CATEGORIA" && c.ativa).reduce((s, c) => s + c.saldo_atual_centavos, 0);

@@ -173,7 +173,7 @@ export function ContasBancariasPage() {
 
   const dinheiro = (centavos: number) => (ocultar ? "R$ ••••" : formatarCentavos(centavos));
   const saldoTotal = ativas.reduce((s, c) => s + c.saldo_atual_centavos, 0);
-  const aPagar = agendamentos.filter((a) => !a.pago_em).reduce((s, a) => s + a.valor_centavos, 0);
+  const aPagar = agendamentos.filter((a) => !a.pago_em && a.tipo !== "RECEBER").reduce((s, a) => s + a.valor_centavos, 0);
   const maior = [...ativas].sort((a, b) => b.saldo_atual_centavos - a.saldo_atual_centavos)[0];
   const negativas = ativas.filter((c) => c.saldo_atual_centavos < 0);
   const entradasMes = ativas.reduce((s, c) => s + (movimentoMes.get(c.id)?.entradas ?? 0), 0);

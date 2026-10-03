@@ -147,7 +147,7 @@ export function DashboardPage() {
     0,
   );
 
-  const contasAPagar = agendamentos.filter((a) => !a.pago_em);
+  const contasAPagar = agendamentos.filter((a) => !a.pago_em && a.tipo !== "RECEBER");
   const totalAPagar = contasAPagar.reduce((soma, a) => soma + a.valor_centavos, 0);
   const atrasadas = contasAPagar.filter((a) => a.vencimento < hoje).length;
 

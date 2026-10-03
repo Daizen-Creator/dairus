@@ -98,8 +98,10 @@ async function montarContexto(blocos: Set<Bloco>, anonimo: boolean, nTransacoes:
     linhas.push(`Limites do orçamento: ${orcs.length ? orcs.map((o) => `${nomes.get(o.categoria_id)} ${formatarCentavos(o.limite_centavos)}`).join("; ") : "nenhum"}.`);
   }
   if (blocos.has("contas_a_pagar")) {
-    const abertos = agend.filter((a) => !a.pago_em);
+    const abertos = agend.filter((a) => !a.pago_em && a.tipo !== "RECEBER");
     linhas.push(`Contas a pagar em aberto: ${abertos.length ? abertos.map((a) => `${nome(a.descricao)} ${formatarCentavos(a.valor_centavos)} vence ${a.vencimento}`).join("; ") : "nenhuma"}.`);
+    const aReceber = agend.filter((a) => !a.pago_em && a.tipo === "RECEBER");
+    if (aReceber.length) linhas.push(`Receitas previstas: ${aReceber.map((a) => `${nome(a.descricao)} ${formatarCentavos(a.valor_centavos)} em ${a.vencimento}`).join("; ")}.`);
   }
   if (blocos.has("metas")) {
     linhas.push(`Metas: ${metas.length ? metas.map((m) => `${nome(m.nome)} ${formatarCentavos(m.guardado_centavos)} de ${formatarCentavos(m.valor_alvo_centavos)}${m.prazo ? ` até ${m.prazo}` : ""}`).join("; ") : "nenhuma"}.`);

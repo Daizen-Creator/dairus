@@ -162,6 +162,14 @@ export interface Agendamento {
   lancamento_id: string | null;
   pago_em: string | null;
   recorrencia: Recorrencia | null;
+  /** PAGAR = conta a pagar; RECEBER = receita agendada (salário, VA, freela). */
+  tipo: "PAGAR" | "RECEBER";
+  /** Lança sozinho no vencimento, na `conta_id`. */
+  automatico: boolean;
+  conta_id: string | null;
+  reajuste_anual: number | null;
+  mes_reajuste: number | null;
+  pessoa: string | null;
 }
 
 export interface NovoAgendamentoInput {
@@ -171,4 +179,10 @@ export interface NovoAgendamentoInput {
   categoria_despesa_id: string;
   etiqueta?: Etiqueta | null;
   recorrencia?: Recorrencia | null;
+  tipo?: "PAGAR" | "RECEBER";
+  automatico?: boolean;
+  conta_id?: string | null;
+  reajuste_anual?: number | null;
+  mes_reajuste?: number | null;
+  pessoa?: string | null;
 }

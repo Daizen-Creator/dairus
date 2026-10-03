@@ -56,7 +56,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
   if (!open) return null;
 
   const contasVisiveis = dados.contas.filter((c) => c.subtipo !== "CATEGORIA" && c.ativa && (c.tipo === "ATIVO" || c.tipo === "PASSIVO"));
-  const abertos = dados.agendamentos.filter((a) => !a.pago_em);
+  const abertos = dados.agendamentos.filter((a) => !a.pago_em && a.tipo !== "RECEBER");
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24" onClick={() => onOpenChange(false)}>

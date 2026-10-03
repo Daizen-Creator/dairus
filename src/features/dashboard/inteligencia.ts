@@ -103,7 +103,7 @@ export function calcularMetricas(e: EntradaInteligencia) {
 export function gerarAlertas(e: EntradaInteligencia): Alerta[] {
   const { hoje } = e;
   const alertas: Alerta[] = [];
-  const abertos = e.agendamentos.filter((a) => !a.pago_em);
+  const abertos = e.agendamentos.filter((a) => !a.pago_em && a.tipo !== "RECEBER");
 
   const atrasados = abertos.filter((a) => a.vencimento < hoje);
   if (atrasados.length > 0) {
@@ -196,7 +196,7 @@ export function calcularSaude(e: EntradaInteligencia, m: ReturnType<typeof calcu
   const poup = m.taxaPoupanca ?? 0;
   detalhes.push({ nome: "Poupança do mês", pontos: Math.round(Math.max(0, Math.min(1, poup / 20)) * 30), maximo: 30, dica: poup >= 20 ? "Você está poupando 20% ou mais." : "Meta: poupar 20% da renda." });
 
-  const atrasadas = e.agendamentos.filter((a) => !a.pago_em && a.vencimento < e.hoje).length;
+  const atrasadas = e.agendamentos.filter((a) => !a.pago_em && a.tipo !== "RECEBER" && a.vencimento < e.hoje).length;
   detalhes.push({ nome: "Contas em dia", pontos: Math.max(0, 25 - atrasadas * 8), maximo: 25, dica: atrasadas ? `${atrasadas} conta(s) atrasada(s).` : "Nenhuma conta atrasada." });
 
   const mesLim = limitesDoMes(e.hoje);

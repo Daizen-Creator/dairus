@@ -32,7 +32,12 @@ export function calcularAvisos(e: EntradaAvisos): AvisoSistema[] {
   const avisos: AvisoSistema[] = [];
   const r = formatarCentavos;
 
-  for (const a of e.agendamentos.filter((x) => !x.pago_em)) {
+  for (const a of e.agendamentos.filter((x) => !x.pago_em && x.tipo === "RECEBER" && !x.automatico)) {
+    const d = diasEntre(e.hoje, a.vencimento);
+    if (d === 0) avisos.push({ id: `receber-${a.id}`, titulo: `${a.descricao} previsto para hoje`, corpo: `${r(a.valor_centavos)} · confirme o recebimento no Dairus.` });
+    else if (d < 0 && d >= -7) avisos.push({ id: `receber-atraso-${a.id}`, titulo: `${a.descricao} ainda não confirmado`, corpo: `${r(a.valor_centavos)} previsto para ${a.vencimento.split("-").reverse().join("/")}.` });
+  }
+  for (const a of e.agendamentos.filter((x) => !x.pago_em && x.tipo !== "RECEBER")) {
     const d = diasEntre(e.hoje, a.vencimento);
     if (d === 3 || d === 1 || d === 0) {
       const quando = d === 0 ? "vence hoje" : d === 1 ? "vence amanhã" : "vence em 3 dias";
@@ -94,7 +99,7 @@ export function filtrarNovos(
 /** Texto do ícone da bandeja: saldo disponível e a próxima conta a pagar. */
 export function textoDaBandeja(contas: Conta[], agendamentos: Agendamento[], hoje: string): string {
   const saldo = contas.filter((c) => c.tipo === "ATIVO" && c.subtipo !== "CATEGORIA" && c.ativa).reduce((s, c) => s + c.saldo_atual_centavos, 0);
-  const proxima = agendamentos.filter((a) => !a.pago_em && a.vencimento >= hoje).sort((a, b) => a.vencimento.localeCompare(b.vencimento))[0];
+  const proxima = agendamentos.filter((a) => !a.pago_em && a.tipo !== "RECEBER" && a.vencimento >= hoje).sort((a, b) => a.vencimento.localeCompare(b.vencimento))[0];
   const linhas = [`Dairus · saldo ${formatarCentavos(saldo)}`];
   if (proxima) linhas.push(`Próxima: ${proxima.descricao} ${proxima.vencimento.slice(8, 10)}/${proxima.vencimento.slice(5, 7)} (${formatarCentavos(proxima.valor_centavos)})`);
   return linhas.join("\n");
