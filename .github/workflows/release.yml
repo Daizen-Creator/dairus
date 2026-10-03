@@ -37,7 +37,7 @@ jobs:
             cat notas.md
             echo "FIM_DAS_NOTAS"
           } >> "$GITHUB_ENV"
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
