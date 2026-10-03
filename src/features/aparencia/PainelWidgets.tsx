@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
 import { useWidgetsStore } from "../../state/widgets-store";
 import { CatalogoWidgets } from "../dashboard/WidgetsInicio";
-import { MODELOS, colunasDoTamanho, infoDoWidget, type LayoutWidgets, type ModeloLayout, type Tamanho, type WidgetId } from "../dashboard/layoutWidgets";
+import { LAYOUT_PADRAO, MODELOS, colunasDoTamanho, infoDoWidget, type LayoutWidgets, type ModeloLayout, type ModeloPainel, type Tamanho, type WidgetId } from "../dashboard/layoutWidgets";
 
 function Bloco({ titulo, descricao, children, acao }: { titulo: string; descricao?: string; children: React.ReactNode; acao?: React.ReactNode }) {
   return (
@@ -81,8 +81,13 @@ export function PainelWidgets() {
     reordenar(ativos.indexOf(e.active.id as WidgetId), ativos.indexOf(e.over.id as WidgetId));
   };
 
-  const aplicar = (m: ModeloLayout) => {
-    aplicarModelo(m);
+  const aplicar = (m: ModeloPainel) => {
+    const modelo: ModeloLayout = {
+      ...m,
+      layout: m.layout ?? LAYOUT_PADRAO,
+      tamanhos: m.tamanhos ?? {},
+    };
+    aplicarModelo(modelo);
     toast.success(`Layout “${m.nome}” aplicado no Início.`);
   };
 
@@ -96,7 +101,7 @@ export function PainelWidgets() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {MODELOS.map((m) => (
             <button key={m.id} onClick={() => aplicar(m)} className="rounded-xl border border-borda bg-fundo p-3 text-left transition-colors hover:border-primaria">
-              <Previa widgets={m.widgets} tamanho={(id) => m.tamanhos[id] ?? 1} layout={m.layout} mini />
+              <Previa widgets={m.widgets} tamanho={(id) => m.tamanhos?.[id] ?? 1} layout={m.layout ?? LAYOUT_PADRAO} mini />
               <p className="mt-2 text-sm font-semibold text-texto-primario">{m.nome}</p>
               <p className="text-[11px] text-texto-secundario">{m.descricao}</p>
             </button>

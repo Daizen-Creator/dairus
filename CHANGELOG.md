@@ -3,6 +3,15 @@
 Cada versão publicada no GitHub usa a seção correspondente daqui como lista de
 mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 
+## 0.2.4
+
+- Dashboard totalmente personalizável: layout livre com widgets em grade, ordenação, remoção e modelos prontos para uso rápido.
+- Novo fluxo de widgets do início: painel "Meus widgets" e botão "Editar layout" com suporte para alterar tamanho, posição e composição do dashboard.
+- Ajuste do catálogo: widget de foto pessoal removido da interface, respeitando o pedido de não exibir "Minhas fotos" no painel.
+- Sincronização da foto do perfil com a conta do Google e fallback visual quando a imagem falha.
+- Compatibilidade e validação do módulo de dashboard para layouts antigos e novos, com testes automatizados para evitar regressões.
+- Atualização do app e do instalador para a nova versão com suporte de auto update e publicação em release.
+
 ## 0.2.3
 
 - Início: "Editar layout" direto na tela: arraste os widgets para mudar a ordem, escolha o tamanho (P, M ou G = linha inteira), remova e adicione na hora.

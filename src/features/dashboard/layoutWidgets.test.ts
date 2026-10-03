@@ -19,7 +19,7 @@ describe("layout dos widgets do Início", () => {
 
   it("converte os widgets 'largos' antigos em tamanho 2", () => {
     expect(normalizarTamanhos(null, ["relogio", "inexistente"])).toEqual({ relogio: 2 });
-    expect(normalizarTamanhos({ fotos: 3, hoje: 7 }, ["relogio"])).toEqual({ relogio: 2, fotos: 3 });
+    expect(normalizarTamanhos({ fotos: 3, hoje: 7 }, ["relogio"])).toEqual({ hoje: 3, relogio: 2 });
   });
 
   it("move itens e monta as classes da grade", () => {

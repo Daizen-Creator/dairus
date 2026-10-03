@@ -4,6 +4,7 @@ mod cartoes;
 mod commands;
 mod conta;
 mod cripto;
+mod dashboards;
 mod db;
 mod documentos;
 mod extras;
@@ -145,6 +146,10 @@ pub fn run() {
             lancamentos_extras::processar_agendamentos_automaticos,
             lancamentos_extras::listar_pasta_importar,
             cartoes::listar_faturas,
+            dashboards::listar_dashboards,
+            dashboards::salvar_dashboard,
+            dashboards::ativar_dashboard,
+            dashboards::excluir_dashboard,
             documentos::listar_documentos,
             documentos::salvar_documento,
             documentos::excluir_documento,

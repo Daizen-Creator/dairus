@@ -1,6 +1,6 @@
 [package]
 name = "dairus"
-version = "0.2.3"
+version = "0.2.4"
 description = "Dairus - sistema financeiro pessoal"
 authors = ["Daniel Santos"]
 edition = "2021"
