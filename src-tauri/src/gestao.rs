@@ -267,6 +267,63 @@ pub fn excluir_lancamentos(state: State<AppState>, ids: Vec<String>) -> Res<usiz
     excluir_lancamentos_db(&mut conn, &ids)
 }
 
+/// Coloca a categoria dentro de outra (subcategoria) ou volta para principal (`pai` = None).
+pub fn definir_categoria_pai_db(conn: &Connection, id: &str, pai: Option<&str>) -> Res<()> {
+    let c = info(conn, id)?;
+    if c.tipo != "DESPESA" && c.tipo != "RECEITA" {
+        return Err("Só categorias podem virar subcategoria.".into());
+    }
+    if let Some(p) = pai {
+        if p == id {
+            return Err("Uma categoria não pode ficar dentro dela mesma.".into());
+        }
+        if info(conn, p)?.tipo != c.tipo {
+            return Err("A categoria principal precisa ser do mesmo tipo.".into());
+        }
+        // Evita ciclo: o novo pai não pode estar dentro desta categoria.
+        let mut atual = Some(p.to_string());
+        let mut passos = 0;
+        while let Some(x) = atual {
+            if x == id {
+                return Err("Isso criaria um ciclo (a principal está dentro desta).".into());
+            }
+            passos += 1;
+            if passos > 20 {
+                break;
+            }
+            atual = conn.query_row("SELECT categoria_pai_id FROM contas_contabeis WHERE id = ?1", [&x], |r| r.get(0)).optional().map_err(e)?.flatten();
+        }
+    }
+    conn.execute("UPDATE contas_contabeis SET categoria_pai_id = ?2 WHERE id = ?1", params![id, pai]).map_err(e)?;
+    Ok(())
+}
+
+/// Renomeia uma categoria (inclusive as que vêm com o app: o nome é só rótulo).
+pub fn renomear_categoria_db(conn: &Connection, id: &str, nome: &str) -> Res<()> {
+    let nome = nome.trim();
+    if nome.is_empty() || nome.chars().count() > 60 {
+        return Err("Nome inválido (1 a 60 letras).".into());
+    }
+    let c = info(conn, id)?;
+    if c.tipo != "DESPESA" && c.tipo != "RECEITA" {
+        return Err("Use a tela da conta para renomear contas.".into());
+    }
+    conn.execute("UPDATE contas_contabeis SET nome = ?2 WHERE id = ?1", params![id, nome]).map_err(e)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn definir_categoria_pai(state: State<AppState>, conta_id: String, pai_id: Option<String>) -> Res<()> {
+    let conn = state.conn.lock().expect("mutex envenenado");
+    definir_categoria_pai_db(&conn, &conta_id, pai_id.as_deref())
+}
+
+#[tauri::command]
+pub fn renomear_categoria(state: State<AppState>, conta_id: String, nome: String) -> Res<()> {
+    let conn = state.conn.lock().expect("mutex envenenado");
+    renomear_categoria_db(&conn, &conta_id, &nome)
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -355,5 +412,18 @@ mod testes {
         assert!(trocar_conta_lancamento_db(&mut conn, &l, "despesa-alimentacao", "despesa-lazer").unwrap_err().contains("estornado"));
         assert_eq!(excluir_lancamentos_db(&mut conn, &[l]).unwrap(), 2);
         assert_eq!(engine::saldo_conta(&conn, &c).unwrap(), 10_000);
+    }
+
+    #[test]
+    fn move_e_renomeia_categoria_sem_ciclo() {
+        let conn = banco();
+        definir_categoria_pai_db(&conn, "despesa-lazer", Some("despesa-outras")).unwrap();
+        assert!(definir_categoria_pai_db(&conn, "despesa-outras", Some("despesa-lazer")).unwrap_err().contains("ciclo"));
+        assert!(definir_categoria_pai_db(&conn, "despesa-lazer", Some("receita-salario")).unwrap_err().contains("mesmo tipo"));
+        definir_categoria_pai_db(&conn, "despesa-lazer", None).unwrap();
+        renomear_categoria_db(&conn, "despesa-alimentacao", "Comida").unwrap();
+        let nome: String = conn.query_row("SELECT nome FROM contas_contabeis WHERE id = 'despesa-alimentacao'", [], |r| r.get(0)).unwrap();
+        assert_eq!(nome, "Comida");
+        assert!(renomear_categoria_db(&conn, "ativo-dinheiro", "X").is_err());
     }
 }

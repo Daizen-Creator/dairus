@@ -32,6 +32,8 @@ import { opcoesCategoria, somarSubcategorias } from "../../services/categorias";
 import { planejamento, type LimiteMes } from "../../services/planejamento";
 import { limiteEfetivo, ritmo } from "./calculoOrcamento";
 import { PlanejamentoExtra } from "./PlanejamentoExtra";
+import { GerenciarCategoria } from "./GerenciarCategoria";
+import { FerramentasOrcamento } from "./FerramentasOrcamento";
 import {
   centavosParaValorInput,
   dataAtualISO,
@@ -44,7 +46,7 @@ import { iconeDaCategoria } from "../dashboard/categoriaIcone";
 import type { Conta, Lancamento } from "../../types/accounting";
 import type { Orcamento } from "../../types/extras";
 
-const NECESSIDADES = new Set(["despesa-moradia", "despesa-alimentacao", "despesa-transporte", "despesa-saude", "despesa-educacao"]);
+const NECESSIDADES_PADRAO = ["despesa-moradia", "despesa-alimentacao", "despesa-transporte", "despesa-saude", "despesa-educacao"];
 const MESES_CURTOS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
 type Ordem = "NOME" | "USO" | "GASTO";
@@ -86,6 +88,8 @@ export function OrcamentoPage() {
   const [secao, setSecao] = useAbaDaPagina<"categorias" | "planejamento">("orcamento", "categorias");
   const [limitesMes, setLimitesMes] = useState<LimiteMes[]>([]);
   const [rascunhoMes, setRascunhoMes] = useState<Record<string, string>>({});
+  const [necessidades, setNecessidades] = usePreferencia<string[]>("necessidades", NECESSIDADES_PADRAO);
+  const NECESSIDADES = new Set(necessidades);
 
   const hoje = dataAtualISO();
 
@@ -359,6 +363,13 @@ export function OrcamentoPage() {
               <p className="text-xs text-texto-secundario">
                 {formatarCentavos(gasto)} gastos{lim > 0 && ` de ${formatarCentavos(lim)} · ${Math.round(pct)}%`}
                 <span className="ml-2 opacity-80">média 3m {formatarCentavos(media3(c.id))}</span>
+                {(() => {
+                  const ant = historico.porMes[historico.porMes.length - 2]?.get(c.id) ?? 0;
+                  if (!ant || !gasto) return null;
+                  const d = Math.round((gasto / ant - 1) * 100);
+                  return <span className={`ml-2 ${d > 0 ? "text-erro" : "text-sucesso"}`}>{d > 0 ? "+" : ""}{d}% vs mês anterior</span>;
+                })()}
+                {lim > 0 && <span className="ml-2 opacity-80">≈ {formatarCentavos(Math.round(lim / (mes.diasNoMes / 7)))}/semana</span>}
               </p>
             </div>
           </div>
@@ -452,6 +463,16 @@ export function OrcamentoPage() {
                 </label>
               )}
             </div>
+            <GerenciarCategoria
+              categoria={c}
+              contas={contas}
+              lancamentos={lancamentos}
+              inicio={mes.inicio}
+              fim={mes.fim}
+              necessidade={NECESSIDADES.has(c.id)}
+              onNecessidade={(v) => setNecessidades(v ? [...necessidades, c.id] : necessidades.filter((x) => x !== c.id))}
+              onAlterado={() => { setExpandida(null); carregar(); }}
+            />
           </div>
         )}
       </li>
@@ -530,6 +551,20 @@ export function OrcamentoPage() {
         </Secao>
       </div>
 
+      )}
+
+      {secao === "planejamento" && (
+        <FerramentasOrcamento
+          categorias={categorias}
+          gastoMes={gastoMes}
+          media3={media3}
+          renda={renda}
+          totalGasto={totalGasto}
+          mesRef={mesRef}
+          limitesMes={limitesMes}
+          orcamentos={orcamentos}
+          onAlterado={carregar}
+        />
       )}
 
       {secao === "planejamento" && <PlanejamentoExtra contas={contas} lancamentos={lancamentos} hoje={hoje} media3={media3} />}

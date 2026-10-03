@@ -198,6 +198,8 @@ pub fn run() {
             gestao::mesclar_contas,
             gestao::trocar_conta_lancamento,
             gestao::excluir_lancamentos,
+            gestao::definir_categoria_pai,
+            gestao::renomear_categoria,
             conta::abrir_conta_com_senha,
             conta::recuperar_conta_com_codigo,
             conta::ativar_criptografia,

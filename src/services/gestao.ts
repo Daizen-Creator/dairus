@@ -22,3 +22,8 @@ export const gestaoLancamentos = {
   /** Apaga de vez (com estornos/correções ligados). */
   excluir: (ids: string[]) => invoke<number>("excluir_lancamentos", { ids }),
 };
+
+export const gestaoCategorias = {
+  definirPai: (contaId: string, paiId: string | null) => invoke<void>("definir_categoria_pai", { contaId, paiId }),
+  renomear: (contaId: string, nome: string) => invoke<void>("renomear_categoria", { contaId, nome }),
+};
