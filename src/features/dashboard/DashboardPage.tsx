@@ -34,7 +34,7 @@ import { BannerMotivacional } from "./BannerMotivacional";
 import { CardAtalho } from "./CardAtalho";
 import { calcularPeriodo, SeletorPeriodo, type Periodo } from "./SeletorPeriodo";
 import { StatusRodape } from "./StatusRodape";
-import { CardResumoSemanal } from "./CardResumoSemanal";
+import { CardDiagnosticoIA, CardResumoSemanal } from "./CardResumoSemanal";
 import { StatCard } from "../../components/ui/StatCard";
 import { IconeCoisa } from "../../components/ui/IconeCoisa";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -244,6 +244,7 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
         <div className="min-w-0 space-y-6">
           {secao === "resumo" && (<>
+          <CardDiagnosticoIA oculto={ocultar} />
           <CardResumoSemanal dinheiro={dinheiro} />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard

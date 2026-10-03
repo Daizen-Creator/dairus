@@ -1,5 +1,6 @@
-import { CalendarDays, X } from "lucide-react";
-import type { ResumoSemanal } from "../../services/automacoesRelatorios";
+import { CalendarDays, Sparkles, X } from "lucide-react";
+import type { DiagnosticoMensal, ResumoSemanal } from "../../services/automacoesRelatorios";
+import { TextoIA } from "../ia/TextoIA";
 import { formatarCentavos, formatarDataISOParaBR } from "../../services/formato";
 import { usePreferencia } from "../../state/usePreferencia";
 
@@ -31,6 +32,23 @@ export function CardResumoSemanal({ dinheiro = formatarCentavos }: { dinheiro?: 
           <p className="mt-2 text-sm text-texto-secundario">{resumo.dica}</p>
         </>
       )}
+    </section>
+  );
+}
+
+/** Diagnóstico do mês anterior escrito pela IA no começo do mês. */
+export function CardDiagnosticoIA({ oculto = false }: { oculto?: boolean }) {
+  const [diag] = usePreferencia<DiagnosticoMensal | null>("diagnostico_ia_ultimo", null);
+  const [dispensado, setDispensado] = usePreferencia<string>("diagnostico_ia_dispensado", "");
+  if (!diag || dispensado === diag.mes) return null;
+  return (
+    <section className="rounded-2xl border border-borda bg-cartao p-4">
+      <div className="flex items-start justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-texto-primario"><Sparkles size={15} className="text-primaria" /> Diagnóstico de {diag.mes.split("-").reverse().join("/")} (IA)</h2>
+        <button onClick={() => setDispensado(diag.mes)} aria-label="Dispensar diagnóstico" className="text-texto-secundario hover:text-texto-primario"><X size={14} /></button>
+      </div>
+      <div className="mt-2 text-sm text-texto-secundario">{oculto ? "Valores ocultos." : <TextoIA texto={diag.texto} />}</div>
+      <p className="mt-2 text-[11px] text-texto-secundario">Gerado por IA; pode conter erros. Não é aconselhamento financeiro.</p>
     </section>
   );
 }

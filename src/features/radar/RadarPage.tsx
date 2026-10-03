@@ -17,6 +17,7 @@ import { buscarERegistrar } from "./radarAuto";
 import type { Meta } from "../../types/extras";
 import { exportarCsv, reais } from "../../services/exportacao";
 import { extras } from "../../services/extras";
+import { TextoIA } from "../ia/TextoIA";
 import { centavosParaValorInput, dataAtualISO, formatarCentavos, formatarDataISOParaBR, valorInputParaCentavos } from "../../services/formato";
 import type { Conta } from "../../types/accounting";
 import type { ItemRadar } from "../../types/extras";
@@ -83,6 +84,27 @@ export function RadarPage() {
   const hoje = dataAtualISO();
   const [metas, setMetas] = useState<Meta[]>([]);
   const [buscando, setBuscando] = useState<string | null>(null);
+  const [analise, setAnalise] = useState<{ id: string; texto: string | null } | null>(null);
+
+  async function analisarComIA(item: ItemRadar) {
+    setAnalise({ id: item.id, texto: null });
+    try {
+      const { perguntarIA, INSTRUCAO_BASE } = await import("../../services/gemini");
+      const { carregarFatos } = await import("../../services/fatosFinanceiros");
+      const f = await carregarFatos(dataAtualISO());
+      const historico = [...item.precos].sort((a, b) => a.data.localeCompare(b.data)).map((p) => `${p.data} ${p.loja} ${formatarCentavos(p.preco_centavos)}`).join("; ");
+      const meta = metas.find((m) => m.id === item.meta_id);
+      const texto = await perguntarIA({
+        instrucao: INSTRUCAO_BASE,
+        contexto: `Produto: ${item.nome}. Preço-alvo: ${item.preco_alvo_centavos ? formatarCentavos(item.preco_alvo_centavos) : "não definido"}. Histórico de preços: ${historico || "nenhum"}.${meta ? ` Meta ligada: ${formatarCentavos(meta.guardado_centavos)} guardados de ${formatarCentavos(meta.valor_alvo_centavos)}.` : ""} Saldo em contas: ${formatarCentavos(f.saldoLiquido)}. Gasto médio mensal: ${formatarCentavos(f.gastoMedioMensal)}. Reserva cobre ${f.mesesDeReserva ?? "?"} meses.`,
+        pergunta: "Em até 8 linhas: o preço atual está bom comparado ao histórico? Tendência (subindo, caindo, estável)? Vale comprar agora ou esperar (ex.: datas de promoção como Black Friday)? Cabe no meu orçamento sem prejudicar a reserva? Diga o que é estimativa.",
+      });
+      setAnalise({ id: item.id, texto });
+    } catch (e) {
+      setAnalise(null);
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  }
   const [radarAuto, setRadarAuto] = usePreferencia<boolean>("radar_auto", false);
 
   async function buscarAgora(item: ItemRadar) {
@@ -340,6 +362,7 @@ export function RadarPage() {
                     {r.noAlvo && <span className="inline-flex items-center gap-1 rounded-full border border-sucesso/70 bg-sucesso/10 px-2 py-0.5 text-[11px] font-semibold text-sucesso shadow-[0_0_10px_-4px_var(--cor-sucesso)]"><BellRing size={11} /> No preço-alvo</span>}
                     {!r.noAlvo && r.distAlvo !== null && <span className="rounded-full border border-borda px-2 py-0.5 text-[11px] text-texto-secundario">{r.distAlvo.toFixed(0)}% acima do alvo</span>}
                     {T && <span className="inline-flex items-center gap-1 text-[11px] font-medium" style={{ color: T.cor }}><T.I size={12} /> {T.t}</span>}
+                    <button onClick={() => analisarComIA(item)} disabled={analise?.id === item.id && analise.texto === null} className="inline-flex items-center gap-1 rounded-md border border-borda px-2 py-1 text-[11px] text-texto-secundario hover:border-primaria hover:text-primaria disabled:opacity-50" title="A IA avalia o histórico de preços e o seu orçamento">{analise?.id === item.id && analise.texto === null ? "Analisando…" : "Analisar com IA"}</button>
                     <button onClick={() => buscarAgora(item)} disabled={buscando === item.id} className="inline-flex items-center gap-1 rounded-md border border-primaria/60 px-2 py-1 text-[11px] text-primaria hover:bg-primaria/10 disabled:opacity-50" title="Busca o menor preço no Mercado Livre e registra">{buscando === item.id ? "Buscando…" : "Buscar preço agora"}</button>
                     <Select aria-label={`Meta ligada a ${item.nome}`} value={item.meta_id ?? ""} onValueChange={(v) => ligarMeta(item, v)} options={[{ value: "", label: "Sem meta" }, ...metas.map((m) => ({ value: m.id, label: `Meta: ${m.nome}` }))]} className="w-40" />
                     <a href={urlBusca(item.nome)} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 rounded-md border border-borda px-2 py-1 text-[11px] text-texto-secundario hover:border-primaria hover:text-primaria" title="Abre uma busca de preços no seu navegador (você registra o resultado)"><ExternalLink size={11} /> Pesquisar preços</a>
@@ -347,6 +370,12 @@ export function RadarPage() {
                     <button onClick={() => (confirmarExcluir === item.id ? excluir(item) : setConfirmarExcluir(item.id))} aria-label={`Remover ${item.nome}`} title={confirmarExcluir === item.id ? "Clique de novo para confirmar" : "Remover"} className={`rounded-md p-1.5 hover:bg-erro/15 ${confirmarExcluir === item.id ? "text-erro" : "text-texto-secundario hover:text-erro"}`}><Trash2 size={15} /></button>
                   </div>
                 </div>
+                {analise?.id === item.id && analise.texto && (
+                  <div className="mt-3 rounded-lg border border-primaria/40 bg-primaria/5 p-3 text-sm text-texto-primario">
+                    <div className="mb-1 flex items-center justify-between"><span className="text-xs font-semibold text-primaria">Análise da IA (pode conter erros)</span><button onClick={() => setAnalise(null)} aria-label="Fechar análise" className="text-texto-secundario hover:text-texto-primario"><X size={12} /></button></div>
+                    <TextoIA texto={analise.texto} />
+                  </div>
+                )}
 
                 {r.menor && r.ultimo && (
                   <div className="mt-3 grid gap-4 lg:grid-cols-[1fr_1.2fr]">

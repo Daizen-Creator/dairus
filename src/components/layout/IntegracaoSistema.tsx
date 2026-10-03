@@ -106,6 +106,8 @@ export async function verificarAvisosAgora(): Promise<number> {
   }
   const resumo = await rel.resumoSemanalAutomatico(hoje).catch(() => null);
   if (resumo) mensagens.push(resumo);
+  const diagnostico = await rel.diagnosticoMensalAutomatico(hoje).catch((e) => { registrarNoLog("warn", `diagnóstico IA: ${String(e)}`); return null; });
+  if (diagnostico) mensagens.push(diagnostico);
   const notificacoesLigadas = (await lerPreferencia<boolean>("avisos_windows")) !== false;
   if (notificacoesLigadas) for (const m of mensagens) await notificar("Dairus", m);
   if (mensagens.length) {

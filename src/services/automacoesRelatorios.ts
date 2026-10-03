@@ -113,3 +113,30 @@ export async function avisosDeRelatorios(hoje: string): Promise<AvisoSistema[]> 
   if (hoje.slice(5, 7) === "03") avisos.push({ id: `ir-${hoje.slice(0, 4)}`, titulo: "Época do Imposto de Renda", corpo: `O pacote do IR de ${Number(hoje.slice(0, 4)) - 1} está pronto em Relatórios → Imposto de Renda (e Investimentos → Impostos).` });
   return avisos;
 }
+
+export interface DiagnosticoMensal {
+  mes: string;
+  texto: string;
+  gerado_em: string;
+}
+
+/** No começo de cada mês, a IA escreve o diagnóstico do mês que terminou (precisa da chave). */
+export async function diagnosticoMensalAutomatico(hoje: string): Promise<string | null> {
+  if ((await lerPreferencia<boolean>("diagnostico_ia_auto")) === false) return null;
+  if (!(await lerPreferencia<string>("gemini_chave"))) return null;
+  const [a, m] = hoje.split("-").map(Number);
+  const fimAnterior = new Date(Date.UTC(a, m - 1, 0)).toISOString().slice(0, 10);
+  const mes = fimAnterior.slice(0, 7);
+  const atual = await lerPreferencia<DiagnosticoMensal>("diagnostico_ia_ultimo");
+  if (atual?.mes === mes) return null;
+  const { carregarFatos, fatosEmTexto } = await import("./fatosFinanceiros");
+  const { perguntarIA, INSTRUCAO_BASE } = await import("./gemini");
+  const privado = (await lerPreferencia<boolean>("gemini_anonimo")) ?? false;
+  const texto = await perguntarIA({
+    instrucao: `${INSTRUCAO_BASE}\nOs números já foram calculados pelo Dairus: use-os sem recalcular.`,
+    contexto: fatosEmTexto(await carregarFatos(fimAnterior), privado),
+    pergunta: `O mês ${mes} acabou de fechar. Escreva o diagnóstico em até 10 linhas: nota de 0 a 10, o que foi bem, o que pesou (com valores) e 3 ações para o mês que começa.`,
+  });
+  await salvarPreferencia("diagnostico_ia_ultimo", { mes, texto, gerado_em: new Date().toISOString() } satisfies DiagnosticoMensal);
+  return `Diagnóstico de ${mes.split("-").reverse().join("/")} pronto no Início.`;
+}
