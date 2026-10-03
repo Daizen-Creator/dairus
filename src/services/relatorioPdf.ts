@@ -25,6 +25,8 @@ export interface DadosRelatorio {
   metas: Meta[];
   bens: Bem[];
   secoes: Set<SecaoPdf>;
+  /** Comentário escrito pela IA (seção opcional "Comentário da IA"). */
+  comentarioIA?: string | null;
 }
 
 type RGB = [number, number, number];
@@ -394,6 +396,25 @@ export async function gerarRelatorioPdf(d: DadosRelatorio): Promise<Uint8Array> 
       [...abertos].sort((a, b) => a.vencimento.localeCompare(b.vencimento)).map((a) => [dataBR(a.vencimento), a.descricao, real(a.valor_centavos), a.vencimento < hojeISO ? "Atrasada" : "Pendente"]),
       [2],
     );
+  }
+
+  if (d.comentarioIA?.trim()) {
+    y = espaco(doc, y, 30);
+    y = titulo(doc, "Comentário do período (gerado por IA)", y);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...COR.texto);
+    const limpo = d.comentarioIA.replace(/\*\*/g, "").replace(/^\s*[-*]\s+/gm, "• ");
+    for (const linha of doc.splitTextToSize(limpo, LARGURA - 2 * M) as string[]) {
+      y = espaco(doc, y, 6);
+      doc.text(linha, M, y);
+      y += 4.6;
+    }
+    doc.setFontSize(7.5);
+    doc.setTextColor(120, 120, 120);
+    y = espaco(doc, y, 6);
+    doc.text("Texto gerado por IA a partir dos números do Dairus; pode conter erros e não é aconselhamento financeiro.", M, y + 1);
+    y += 8;
   }
 
   if (d.secoes.has("metas") && d.metas.length) {

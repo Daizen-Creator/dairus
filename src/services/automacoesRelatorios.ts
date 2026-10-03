@@ -81,7 +81,8 @@ export async function pdfMensalAutomatico(hoje: string, titular: { nome: string;
   const { gerarRelatorioPdf } = await import("./relatorioPdf");
   const { SECOES_PDF } = await import("./relatorioPdfSecoes");
   const secoes = new Set((await lerPreferencia<string[]>("pdf_secoes")) ?? SECOES_PDF.filter((x) => x.padrao).map((x) => x.id));
-  const bytes = await gerarRelatorioPdf({ inicio, fim, titularNome: titular.nome, titularEmail: titular.email, contas, lancamentos, agendamentos, orcamentos, metas, bens, secoes: secoes as never });
+  const comentarioIA = secoes.has("ia") ? await comentarioIADoPeriodo(inicio, fim) : null;
+  const bytes = await gerarRelatorioPdf({ inicio, fim, titularNome: titular.nome, titularEmail: titular.email, contas, lancamentos, agendamentos, orcamentos, metas, bens, secoes: secoes as never, comentarioIA });
   const nome = `relatorio-dairus-${mes}.pdf`;
   await extras.salvarExportacaoBinaria(nome, bytes);
   let naNuvem = false;
@@ -139,4 +140,21 @@ export async function diagnosticoMensalAutomatico(hoje: string): Promise<string 
   });
   await salvarPreferencia("diagnostico_ia_ultimo", { mes, texto, gerado_em: new Date().toISOString() } satisfies DiagnosticoMensal);
   return `Diagnóstico de ${mes.split("-").reverse().join("/")} pronto no Início.`;
+}
+
+/** Texto da IA para o PDF do período (seção "ia"). Sem chave ou sem internet devolve null. */
+export async function comentarioIADoPeriodo(inicio: string, fim: string): Promise<string | null> {
+  if (!(await lerPreferencia<string>("gemini_chave"))) return null;
+  try {
+    const { carregarFatos, fatosEmTexto } = await import("./fatosFinanceiros");
+    const { perguntarIA, INSTRUCAO_BASE } = await import("./gemini");
+    const privado = (await lerPreferencia<boolean>("gemini_anonimo")) ?? false;
+    return await perguntarIA({
+      instrucao: `${INSTRUCAO_BASE}\nOs números já foram calculados pelo Dairus: use-os sem recalcular. Texto corrido, sem tabelas.`,
+      contexto: fatosEmTexto(await carregarFatos(fim), privado),
+      pergunta: `Escreva um comentário de 8 a 12 linhas para o relatório do período ${inicio} a ${fim}: visão geral, destaques positivos, pontos de atenção (com valores) e 3 recomendações práticas.`,
+    });
+  } catch {
+    return null;
+  }
 }

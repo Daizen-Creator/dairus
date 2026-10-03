@@ -29,7 +29,9 @@ export async function gerarEAbrirPdf(inicio: string, fim: string, secoes: Set<Se
   ]);
   // A biblioteca de PDF só é carregada quando alguém gera um relatório.
   const { gerarRelatorioPdf } = await import("../../services/relatorioPdf");
-  const bytes = await gerarRelatorioPdf({ inicio, fim, titularNome: titular.nome, titularEmail: titular.email, contas, lancamentos, agendamentos, orcamentos, metas, bens, secoes });
+  const comentarioIA = secoes.has("ia") ? await import("../../services/automacoesRelatorios").then((m) => m.comentarioIADoPeriodo(inicio, fim)) : null;
+  if (secoes.has("ia") && !comentarioIA) toast.info("Não foi possível gerar o comentário da IA (chave ou internet); o PDF sai sem ele.");
+  const bytes = await gerarRelatorioPdf({ inicio, fim, titularNome: titular.nome, titularEmail: titular.email, contas, lancamentos, agendamentos, orcamentos, metas, bens, secoes, comentarioIA });
   const caminho = await extras.salvarExportacaoBinaria(`relatorio-dairus-${inicio}-a-${fim}.pdf`, bytes);
   toast.success("Relatório em PDF gerado.", { description: caminho, duration: 10000, action: { label: "Abrir", onClick: () => abrirArquivo(caminho) } });
   await abrirArquivo(caminho);
