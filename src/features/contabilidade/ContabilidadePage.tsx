@@ -7,6 +7,7 @@ import { CLASSE_INPUT, Secao } from "../../components/ui/Campos";
 import { Select } from "../../components/ui/Select";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { contabilidade } from "../../services/contabilidade";
+import { usePreferencia } from "../../state/usePreferencia";
 import { exportarCsv, reais } from "../../services/exportacao";
 import { extras } from "../../services/extras";
 import { opcoesCategoria } from "../../services/categorias";
@@ -15,13 +16,15 @@ import { balancete, razaoDaConta, resultadoPorTipo } from "../../services/relato
 import { calcularPeriodo, SeletorPeriodo, type Periodo } from "../dashboard/SeletorPeriodo";
 import type { Conta, Lancamento, TipoConta } from "../../types/accounting";
 import type { RegistroAuditoria } from "../../types/extras";
+import { AbaAnalisesContabeis } from "./AbaAnalisesContabeis";
 
-type Aba = "balancete" | "balanco" | "dre" | "diario" | "razao" | "plano" | "manual" | "auditoria";
+type Aba = "balancete" | "balanco" | "dre" | "analises" | "diario" | "razao" | "plano" | "manual" | "auditoria";
 
 const ABAS: Array<{ id: Aba; rotulo: string }> = [
   { id: "balancete", rotulo: "Balancete" },
   { id: "balanco", rotulo: "Balanço patrimonial" },
   { id: "dre", rotulo: "Receitas e despesas" },
+  { id: "analises", rotulo: "Indicadores e fluxo" },
   { id: "diario", rotulo: "Livro diário" },
   { id: "razao", rotulo: "Razão" },
   { id: "plano", rotulo: "Plano de contas" },
@@ -62,6 +65,7 @@ export function ContabilidadePage() {
   const [verArquivadas, setVerArquivadas] = useState(false);
   const [novaCategoria, setNovaCategoria] = useState({ nome: "", tipo: "DESPESA" as "DESPESA" | "RECEITA", pai: "" });
   const [manual, setManual] = useState({ data: hoje, descricao: "", observacao: "" });
+  const [modelosContabeis, setModelosContabeis] = usePreferencia<Array<{ nome: string; partidas: PartidaManual[] }>>("modelos_contabeis", []);
   const [partidas, setPartidas] = useState<PartidaManual[]>([
     { conta: "", tipo: "DEBITO", valor: "" },
     { conta: "", tipo: "CREDITO", valor: "" },
@@ -221,7 +225,7 @@ export function ContabilidadePage() {
     }
   };
 
-  const mostraPeriodo = aba === "balancete" || aba === "dre" || aba === "diario" || aba === "razao";
+  const mostraPeriodo = aba === "balancete" || aba === "dre" || aba === "analises" || aba === "diario" || aba === "razao";
 
   return (
     <div className="space-y-6">
@@ -326,6 +330,8 @@ export function ContabilidadePage() {
         </div>
       )}
 
+      {aba === "analises" && <AbaAnalisesContabeis lancamentos={lancamentos} contas={contas} inicio={periodo.inicio} fim={periodo.fim} />}
+
       {aba === "diario" && (
         <Secao titulo={`Livro diário (${diario.length} lançamento(s))`} acao={<div className="sem-impressao relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-texto-secundario" /><input value={buscaDiario} onChange={(e) => setBuscaDiario(e.target.value)} placeholder="Buscar…" aria-label="Buscar no diário" className={`${CLASSE_INPUT} w-52 py-1.5 pl-8`} /></div>}>
           {diario.length === 0 ? <p className="text-sm text-texto-secundario">Nenhum lançamento no período.</p> : (
@@ -415,7 +421,23 @@ export function ContabilidadePage() {
               ))}
             </ul>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <Button type="button" variante="secundaria" tamanho="pequeno" onClick={() => setPartidas([...partidas, { conta: "", tipo: "DEBITO", valor: "" }])}><Plus size={13} /> Adicionar partida</Button>
+              <span className="flex flex-wrap gap-2">
+                <Button type="button" variante="secundaria" tamanho="pequeno" onClick={() => setPartidas([...partidas, { conta: "", tipo: "DEBITO", valor: "" }])}><Plus size={13} /> Adicionar partida</Button>
+                {somaD !== somaC && (somaD > 0 || somaC > 0) && (
+                  <Button type="button" variante="fantasma" tamanho="pequeno" onClick={() => {
+                    const dif = Math.abs(somaD - somaC);
+                    const tipo: PartidaManual["tipo"] = somaD > somaC ? "CREDITO" : "DEBITO";
+                    const vazia = partidas.findIndex((p) => !valorInputParaCentavos(p.valor) && p.tipo === tipo);
+                    const valor = (dif / 100).toFixed(2).replace(".", ",");
+                    setPartidas(vazia >= 0 ? partidas.map((p, j) => (j === vazia ? { ...p, valor } : p)) : [...partidas, { conta: "", tipo, valor }]);
+                  }}>Completar diferença</Button>
+                )}
+                <Button type="button" variante="fantasma" tamanho="pequeno" onClick={() => setPartidas(partidas.map((p) => ({ ...p, tipo: p.tipo === "DEBITO" ? "CREDITO" : "DEBITO" })))}>Inverter D/C</Button>
+                <Button type="button" variante="fantasma" tamanho="pequeno" disabled={!equilibrado || !manual.descricao.trim()} onClick={() => { setModelosContabeis([...modelosContabeis, { nome: manual.descricao.trim(), partidas }]); toast.success("Modelo salvo."); }}>Salvar como modelo</Button>
+                {modelosContabeis.length > 0 && (
+                  <Select aria-label="Usar modelo" value="" onValueChange={(v) => { const m = modelosContabeis[Number(v)]; if (m) { setManual({ ...manual, descricao: m.nome }); setPartidas(m.partidas); } }} options={[{ value: "", label: "Usar modelo…" }, ...modelosContabeis.map((m, k) => ({ value: String(k), label: m.nome }))]} className="w-40" />
+                )}
+              </span>
               <p className="text-sm tabular-nums"><span className="text-texto-secundario">Débitos </span><strong>{formatarCentavos(somaD)}</strong> <span className="ml-3 text-texto-secundario">Créditos </span><strong>{formatarCentavos(somaC)}</strong> <span className="ml-3 text-xs" style={{ color: equilibrado ? "var(--cor-sucesso)" : "var(--cor-alerta)" }}>{equilibrado ? "Equilibrado ✓" : somaD === 0 && somaC === 0 ? "" : `Diferença ${formatarCentavos(Math.abs(somaD - somaC))}`}</span></p>
             </div>
             <Button type="submit" disabled={!equilibrado}>Registrar lançamento</Button>
