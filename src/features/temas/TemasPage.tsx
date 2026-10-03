@@ -1,4 +1,11 @@
 import { useMemo, useState } from "react";
+import { Brush, LayoutPanelLeft, Palette, Sparkles, Type, Wallpaper } from "lucide-react";
+import { Abas, useAbaDaPagina } from "../../components/ui/Abas";
+import { AlertaContraste } from "../aparencia/AlertaContraste";
+import { PainelFundo } from "../aparencia/PainelFundo";
+import { PainelMenu } from "../aparencia/PainelMenu";
+import { PainelPredefinicoes } from "../aparencia/PainelPredefinicoes";
+import { PainelTexto } from "../aparencia/PainelTexto";
 import { toast } from "sonner";
 import { useThemeStore } from "../../state/theme-store";
 import { Button } from "../../components/ui/Button";
@@ -83,7 +90,7 @@ function CartaoTema({
   );
 }
 
-export function TemasPage() {
+function ListaTemas() {
   const {
     todosOsTemas,
     temaSelecionadoId,
@@ -154,8 +161,7 @@ export function TemasPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-texto-primario">Temas</h1>
-          <p className="text-sm text-texto-secundario">Tema ativo: {temaAtivo().nome}</p>
+          <p className="text-sm text-texto-secundario">Tema ativo: <strong className="text-texto-primario">{temaAtivo().nome}</strong> · {todosOsTemas().length} temas de cores</p>
         </div>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-texto-secundario">
@@ -260,6 +266,38 @@ export function TemasPage() {
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+type AbaAparencia = "predefinicoes" | "temas" | "fundo" | "menu" | "texto";
+
+/** Temas e aparência: predefinições, temas de cores, fundo, menu e texto/formas. Tudo muda na hora. */
+export function TemasPage() {
+  const [aba, setAba] = useAbaDaPagina<AbaAparencia>("temas", "predefinicoes");
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="flex items-center gap-2 text-xl font-semibold text-texto-primario"><Brush size={22} className="text-primaria" /> Temas e aparência</h1>
+        <p className="text-sm text-texto-secundario">Deixe o Dairus do seu jeito: tudo muda na hora e fica salvo na sua conta.</p>
+      </div>
+      <Abas
+        ativa={aba}
+        onChange={setAba}
+        abas={[
+          { id: "predefinicoes", rotulo: "Visuais prontos", icone: Sparkles },
+          { id: "temas", rotulo: "Cores (temas)", icone: Palette },
+          { id: "fundo", rotulo: "Fundo", icone: Wallpaper },
+          { id: "menu", rotulo: "Menu", icone: LayoutPanelLeft },
+          { id: "texto", rotulo: "Texto e formas", icone: Type },
+        ]}
+      />
+      <AlertaContraste />
+      {aba === "predefinicoes" && <PainelPredefinicoes />}
+      {aba === "temas" && <ListaTemas />}
+      {aba === "fundo" && <PainelFundo />}
+      {aba === "menu" && <PainelMenu />}
+      {aba === "texto" && <PainelTexto />}
     </div>
   );
 }

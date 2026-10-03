@@ -57,7 +57,7 @@ export async function enviarArquivoParaNuvem(subpasta: string, nome: string, byt
   if (error) throw new Error(error.message);
 }
 
-/** Apaga todos os arquivos da conta na nuvem (backups, sincronização e relatórios). Devolve quantos apagou. */
+/** Apaga tudo da conta na nuvem (backups, sincronização, relatórios e aparência). Devolve quantos arquivos apagou. */
 export async function apagarTudoDaNuvem(): Promise<number> {
   const raiz = await pastaDaConta();
   const arquivos: string[] = [];
@@ -74,6 +74,13 @@ export async function apagarTudoDaNuvem(): Promise<number> {
   await visitar(raiz, 0);
   for (let i = 0; i < arquivos.length; i += 100) {
     const { error } = await supabase.storage.from(BUCKET).remove(arquivos.slice(i, i + 100));
+    if (error) throw new Error(error.message);
+  }
+  // A aparência (fundo, menu, fonte) também fica na nuvem, numa tabela própria.
+  const { data: sessao } = await supabase.auth.getSession();
+  const uid = sessao.session?.user.id;
+  if (uid) {
+    const { error } = await supabase.from("preferencias_aparencia").delete().eq("user_id", uid);
     if (error) throw new Error(error.message);
   }
   return arquivos.length;

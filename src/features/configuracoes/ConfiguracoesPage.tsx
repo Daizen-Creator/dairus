@@ -9,6 +9,7 @@ import { Select } from "../../components/ui/Select";
 import { contabilidade } from "../../services/contabilidade";
 import { extras } from "../../services/extras";
 import { lerPreferencia, salvarPreferencia } from "../../services/armazenamento";
+import { useAparenciaStore } from "../../state/aparencia-store";
 import { usePreferencia } from "../../state/usePreferencia";
 import { verificarAvisosAgora } from "../../components/layout/IntegracaoSistema";
 import { abrirComWindows, lerLog, notificar, pastaDeLogs } from "../../services/sistema";
@@ -68,7 +69,9 @@ export function ConfiguracoesPage() {
   const [contaPadrao, setContaPadrao] = usePreferencia<string>("conta_padrao", "");
   const [categoriaPadrao, setCategoriaPadrao] = usePreferencia<string>("categoria_padrao", "");
   const [paginaInicial, setPaginaInicial] = usePreferencia<string>("pagina_inicial", "/");
-  const [fonte, setFonte] = usePreferencia<number>("ui_fonte", 100);
+  // Tamanho do texto agora é parte da Aparência (salvo na nuvem junto com o resto).
+  const fonte = useAparenciaStore((x) => x.aparencia.tipografia.tamanho);
+  const setFonte = (v: number) => useAparenciaStore.getState().alterar({ tipografia: { tamanho: v } });
   const [semAnimacoes, setSemAnimacoes] = usePreferencia<boolean>("ui_sem_animacoes", false);
   const [ocultar, setOcultar] = usePreferencia<boolean>("ocultar_saldos", false);
   const [importando, setImportando] = useState("");
@@ -122,9 +125,6 @@ export function ConfiguracoesPage() {
   useEffect(() => setRascunhoNome(nome), [nome]);
 
   // Aplica na hora (sem precisar reiniciar) o tamanho do texto e a redução de animações.
-  useEffect(() => {
-    document.documentElement.style.fontSize = `${fonte}%`;
-  }, [fonte]);
   useEffect(() => {
     document.documentElement.classList.toggle("sem-animacoes", semAnimacoes);
   }, [semAnimacoes]);

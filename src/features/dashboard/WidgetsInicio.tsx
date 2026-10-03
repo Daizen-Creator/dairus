@@ -9,8 +9,9 @@ import type { Agendamento, Conta, Lancamento } from "../../types/accounting";
 import type { Meta } from "../../types/extras";
 import { calcularCiclo } from "../contas/ciclo";
 import { assinaturasDoMes, gastosRecentes, proximosRecebimentos } from "./widgetsInicio";
+import { WidgetFotos, WidgetRelogio, WidgetVideo } from "./WidgetsMidia";
 
-type Widget = "fimdomes" | "hoje" | "sequencia" | "metas" | "receber" | "faturas" | "assinaturas" | "investido" | "atalhos" | "notas" | "foco";
+type Widget = "fimdomes" | "hoje" | "sequencia" | "metas" | "receber" | "faturas" | "assinaturas" | "investido" | "atalhos" | "notas" | "foco" | "relogio" | "fotos" | "video";
 
 const WIDGETS: Array<{ id: Widget; rotulo: string }> = [
   { id: "fimdomes", rotulo: "Saldo previsto no fim do mês" },
@@ -24,6 +25,9 @@ const WIDGETS: Array<{ id: Widget; rotulo: string }> = [
   { id: "atalhos", rotulo: "Meus atalhos" },
   { id: "notas", rotulo: "Bloco de notas" },
   { id: "foco", rotulo: "Foco do mês" },
+  { id: "relogio", rotulo: "Relógio (com outros fusos)" },
+  { id: "fotos", rotulo: "Minhas fotos (álbum)" },
+  { id: "video", rotulo: "Vídeo" },
 ];
 const PADRAO: Widget[] = ["fimdomes", "hoje", "sequencia", "metas", "receber", "faturas"];
 
@@ -148,6 +152,9 @@ export function WidgetsInicio({ contas, lancamentos, agendamentos, metas, hoje, 
             <p className="mt-1 text-[11px] text-texto-secundario">Renova todo mês.</p>
           </Cartao>
         )}
+        {ativosSet.has("relogio") && <WidgetRelogio />}
+        {ativosSet.has("fotos") && <WidgetFotos />}
+        {ativosSet.has("video") && <WidgetVideo />}
       </div>
     </section>
   );

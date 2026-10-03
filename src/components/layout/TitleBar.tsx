@@ -7,7 +7,8 @@ import { fecharJanela } from "../../services/sistema";
 async function fecharConformePreferencia() {
   await fecharJanela((await lerPreferencia<boolean>("fechar_para_bandeja")) ?? false);
 }
-import { Minus, Moon, Square, Sun, Settings, X } from "lucide-react";
+import { Menu, Minus, Moon, Square, Sun, Settings, X } from "lucide-react";
+import { useAparenciaStore } from "../../state/aparencia-store";
 import { GlobalSearch } from "./GlobalSearch";
 import { Notificacoes } from "./Notificacoes";
 import { MenuConta } from "./MenuConta";
@@ -22,6 +23,8 @@ export function TitleBar() {
   const modoAutomatico = useThemeStore((s) => s.modoAutomatico);
   const alternarModoAutomatico = useThemeStore((s) => s.alternarModoAutomatico);
   const temaAtivo = useThemeStore((s) => s.temaAtivo());
+  const modoMenu = useAparenciaStore((s) => s.aparencia.menu.modo);
+  const alternarGaveta = useAparenciaStore((s) => s.alternarGaveta);
 
   useEffect(() => {
     janela.isMaximized().then(setMaximizada);
@@ -60,10 +63,21 @@ export function TitleBar() {
     <header
       data-tauri-drag-region
       onMouseDown={iniciarArraste}
-      className="sem-impressao flex shrink-0 select-none items-center justify-between border-b border-borda bg-superficie px-3"
+      className="menu-app sem-impressao relative z-30 flex shrink-0 select-none items-center justify-between border-b border-borda px-3"
       style={{ height: "var(--altura-barra-titulo)" }}
     >
       <div className="flex shrink-0 items-center gap-2.5">
+        {modoMenu === "gaveta" && (
+          <button
+            type="button"
+            aria-label="Abrir menu"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => alternarGaveta()}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-texto-secundario transition-colors hover:bg-borda/50 hover:text-texto-primario"
+          >
+            <Menu size={18} />
+          </button>
+        )}
         <img
           src="/dairus.svg"
           alt=""

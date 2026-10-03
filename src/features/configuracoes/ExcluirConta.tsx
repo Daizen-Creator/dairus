@@ -28,6 +28,7 @@ export function ExcluirConta() {
         });
         toast.success(`${n} arquivo(s) apagado(s) da nuvem.`);
       }
+      await import("../aparencia/midia").then((m) => m.apagarMidiasDaConta()).catch(() => 0);
       await limparPreferenciasDaConta();
       await invoke("excluir_dados_conta", { usuarioId: id, confirmacao: texto.trim() });
       esquecerConta(id);
@@ -41,7 +42,7 @@ export function ExcluirConta() {
 
   return (
     <Secao titulo={<><Trash2 size={16} className="text-erro" /> Excluir conta e dados</>}>
-      <p className="text-xs text-texto-secundario">Apaga deste computador o banco de dados da conta, as preferências, os backups e as exportações (pasta Documentos\Dairus\…). Opcionalmente apaga também os backups, a sincronização e os relatórios na nuvem. Não dá para desfazer: faça um backup antes se quiser guardar algo. O login Google continua existindo (é do Google).</p>
+      <p className="text-xs text-texto-secundario">Apaga deste computador o banco de dados da conta, as preferências, as fotos e vídeos da aparência, os backups e as exportações (pasta Documentos\Dairus\…). Opcionalmente apaga também os backups, a sincronização, os relatórios e a aparência na nuvem. Não dá para desfazer: faça um backup antes se quiser guardar algo. O login Google continua existindo (é do Google).</p>
       {!aberto ? (
         <Button className="mt-3" tamanho="pequeno" variante="perigo" onClick={() => setAberto(true)}>Quero excluir meus dados</Button>
       ) : (

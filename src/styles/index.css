@@ -10,7 +10,8 @@
 @theme inline {
   --color-fundo: var(--cor-fundo);
   --color-superficie: var(--cor-superficie);
-  --color-cartao: var(--cor-cartao);
+  /* Transparência dos cartões (Aparência): deixa o fundo escolhido aparecer. */
+  --color-cartao: color-mix(in srgb, var(--cor-cartao) calc(var(--opacidade-cartao, 1) * 100%), transparent);
   --color-primaria: var(--cor-primaria);
   --color-primaria-texto: var(--cor-primaria-texto);
   --color-secundaria: var(--cor-secundaria);
@@ -65,6 +66,11 @@ body,
   height: 100%;
 }
 
+/* Tamanho base do texto (Aparência): tudo em rem acompanha. */
+html {
+  font-size: var(--tamanho-fonte, 100%);
+}
+
 body {
   margin: 0;
   background:
@@ -72,7 +78,7 @@ body {
     radial-gradient(circle at 90% 80%, color-mix(in srgb, var(--cor-destaque) 8%, transparent), transparent 35%),
     var(--cor-fundo);
   color: var(--cor-texto-primario);
-  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--fonte-app, "Inter Variable", "Segoe UI", system-ui, -apple-system, sans-serif);
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   transition: background-color 150ms ease, color 150ms ease;
@@ -82,8 +88,8 @@ body {
    está atrás. Só tem efeito visível em temas com --cor-cartao translúcida
    (ex.: Neon Dark usa rgba); nos demais temas é inofensivo. */
 .bg-cartao {
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(var(--desfoque-cartao, 18px));
+  -webkit-backdrop-filter: blur(var(--desfoque-cartao, 18px));
   /* Degradê de fundo dos painéis: clarão azul no canto superior esquerdo
      esfriando para roxo sutil e depois transparente. Cards coloridos
      (saldo, atalhos) sobrescrevem isto com o degradê da própria cor. */
@@ -155,13 +161,53 @@ body {
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
-/* Preferência "reduzir animações" (Configurações). */
-html.sem-animacoes *, html.sem-animacoes *::before, html.sem-animacoes *::after {
+/* Preferência "reduzir animações" (Configurações e Aparência). */
+html.sem-animacoes *, html.sem-animacoes *::before, html.sem-animacoes *::after,
+html.sem-animacoes-ui *, html.sem-animacoes-ui *::before, html.sem-animacoes-ui *::after {
   animation-duration: 0.01ms !important;
   transition-duration: 0.01ms !important;
 }
 
 /* Modo compacto: menos espaço em volta dos blocos para caber mais na tela. */
-html.compacto { font-size: 93.75%; }
+html.compacto { font-size: calc(var(--tamanho-fonte, 100%) * 0.9375); }
 html.compacto .space-y-6 > :not(:last-child) { margin-bottom: 1rem; }
 html.compacto .p-4 { padding: 0.75rem; }
+
+/* ---------------------------------------------------------------------------
+   Aparência personalizada (tela Temas → Fundo, Menu, Texto e formas). */
+
+/* Com fundo próprio, a área central fica transparente para o fundo aparecer. */
+html.fundo-personalizado body { background: var(--cor-fundo); }
+html.fundo-personalizado main.bg-fundo { background: transparent; }
+
+/* Sem sombras: visual "flat". */
+html.sem-sombras *:not(:focus-visible) { box-shadow: none !important; }
+
+/* Sem brilho neon (gráficos, botões e cartões coloridos). */
+html.sem-brilho * { text-shadow: none !important; }
+html.sem-brilho .barra-receitas path,
+html.sem-brilho .barra-despesas path,
+html.sem-brilho .barra-saldo path { filter: none; }
+html.sem-brilho [class*="shadow-[0_"],
+html.sem-brilho [style*="box-shadow"] { box-shadow: none !important; }
+
+/* Menu (lateral ou superior) com cor, transparência e vidro fosco próprios. */
+.menu-app {
+  background-color: color-mix(in srgb, var(--menu-fundo, var(--cor-superficie)) calc(var(--menu-opacidade, 1) * 100%), transparent);
+  backdrop-filter: blur(var(--menu-desfoque, 0px)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--menu-desfoque, 0px)) saturate(140%);
+}
+.menu-item-ativo {
+  background-image: linear-gradient(90deg, var(--menu-selecionado, var(--cor-primaria)), color-mix(in srgb, var(--menu-selecionado, var(--cor-primaria)) 72%, var(--cor-destaque)));
+  box-shadow: 0 2px 16px -2px var(--menu-selecionado, var(--cor-primaria));
+  color: #fff;
+}
+.menu-item:not(.menu-item-ativo):hover { background-color: var(--menu-hover); }
+
+/* Fundos animados: movimento lento, desligado com "reduzir animações". */
+@keyframes gaveta-entra { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes fundo-deriva { 0% { transform: translate3d(-6%, -4%, 0) scale(1.05); } 50% { transform: translate3d(5%, 4%, 0) scale(1.15); } 100% { transform: translate3d(-6%, -4%, 0) scale(1.05); } }
+@keyframes fundo-gira { to { transform: rotate(360deg); } }
+@keyframes fundo-onda { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+@keyframes fundo-sobe { 0% { transform: translateY(20vh) scale(0.8); opacity: 0; } 15% { opacity: 0.7; } 100% { transform: translateY(-120vh) scale(1.1); opacity: 0; } }
+html.sem-animacoes .fundo-animado *, html.sem-animacoes-ui .fundo-animado * { animation: none !important; }

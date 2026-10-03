@@ -7,6 +7,7 @@ import { lerPreferencia } from "../services/armazenamento";
 import { definirMarcasUsuario, type MarcaUsuario } from "../features/dashboard/marcas";
 import { useSegurancaStore } from "../state/seguranca-store";
 import { aplicarTemaPadrao, useThemeStore } from "../state/theme-store";
+import { useAparenciaStore } from "../state/aparencia-store";
 import { useAuthStore } from "../state/auth-store";
 import { PreparandoConta, TelaLogin } from "../components/auth/PortaoDeConta";
 
@@ -65,6 +66,9 @@ export function App() {
   useEffect(() => {
     if (!contaAberta) return;
     inicializar().catch((e) => setErroFatal(String(e)));
+    useAparenciaStore.getState().inicializar().catch(() => {
+      // aparência é conveniência: se falhar, fica a padrão
+    });
     lerPreferencia<MarcaUsuario[]>("marcas_usuario").then((m) => definirMarcasUsuario(m ?? [])).catch(() => {});
     inicializarSeguranca().catch((e) => setErroFatal(String(e)));
     executarBackupAutomatico().catch(() => {
@@ -75,11 +79,7 @@ export function App() {
   // Preferências de interface: tamanho do texto, animações reduzidas e tela inicial.
   useEffect(() => {
     if (!carregado) return;
-    lerPreferencia<number>("ui_fonte").then((f) => {
-      document.documentElement.style.fontSize = f && f >= 85 && f <= 125 ? `${f}%` : "";
-    });
     lerPreferencia<boolean>("ui_sem_animacoes").then((v) => document.documentElement.classList.toggle("sem-animacoes", !!v));
-    lerPreferencia<string>("ui_fonte_familia").then((f) => { document.body.style.fontFamily = f ?? ""; });
     lerPreferencia<boolean>("ui_compacto").then((v) => document.documentElement.classList.toggle("compacto", !!v));
     lerPreferencia<string>("pagina_inicial").then((rota) => {
       if (rota && rota !== "/" && (window.location.hash === "" || window.location.hash === "#/")) window.location.hash = `#${rota}`;

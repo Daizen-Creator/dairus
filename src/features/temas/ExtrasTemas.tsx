@@ -1,31 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { CalendarDays, Dices, Eye, Paintbrush, RotateCcw, Type } from "lucide-react";
+import { CalendarDays, Dices, Eye, Paintbrush, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
-import { Select } from "../../components/ui/Select";
 import { usePreferencia } from "../../state/usePreferencia";
 import { definirCorPrimaria, useThemeStore } from "../../state/theme-store";
 import type { Tema } from "../../types/theme";
 import { aleatorio } from "./temasExtras";
 
-const FONTES = [
-  { value: "", label: "Fonte padrão" },
-  { value: "system-ui, 'Segoe UI', sans-serif", label: "Do Windows (Segoe UI)" },
-  { value: "Georgia, 'Times New Roman', serif", label: "Com serifa" },
-  { value: "'Cascadia Code', Consolas, monospace", label: "Monoespaçada" },
-  { value: "Verdana, Tahoma, sans-serif", label: "Mais legível (Verdana)" },
-];
-
-export function aplicarFonte(f: string) {
-  document.body.style.fontFamily = f;
-}
-
-/** Atalhos de tema: aleatório, testar por 10 s, tema do dia, cor primária própria, fonte e restaurar. */
+/** Atalhos de tema: aleatório, testar por 10 s, tema do dia, cor primária própria e restaurar. */
 export function ExtrasTemas({ temas, favoritos }: { temas: Tema[]; favoritos: string[] }) {
   const { selecionarTema, temaAtivo } = useThemeStore();
   const [temaDia, setTemaDia] = usePreferencia<boolean>("tema_do_dia", false);
   const [cor, setCor] = usePreferencia<string>("cor_primaria_custom", "");
-  const [fonte, setFonte] = usePreferencia<string>("ui_fonte_familia", "");
   const [testando, setTestando] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
   useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
@@ -52,9 +38,6 @@ export function ExtrasTemas({ temas, favoritos }: { temas: Tema[]; favoritos: st
         <input type="color" value={cor || temaAtivo().cores.primaria} onChange={(e) => { setCor(e.target.value); definirCorPrimaria(e.target.value); }} aria-label="Cor principal personalizada" className="h-7 w-9 cursor-pointer rounded border border-borda bg-transparent" />
         {cor && <button onClick={() => { setCor(""); definirCorPrimaria(null); }} className="text-xs text-texto-secundario hover:underline">a do tema</button>}
       </label>
-      <span className="flex items-center gap-1.5"><Type size={13} className="text-texto-secundario" />
-        <Select aria-label="Fonte" value={fonte} onValueChange={(v) => { setFonte(v); aplicarFonte(v); }} options={FONTES} className="w-48" />
-      </span>
     </div>
   );
 }

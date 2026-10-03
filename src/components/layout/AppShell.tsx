@@ -2,7 +2,8 @@ import { Suspense, type ReactNode } from "react";
 import { Outlet } from "react-router-dom";
 import { Toaster } from "sonner";
 import { TitleBar } from "./TitleBar";
-import { Sidebar } from "./Sidebar";
+import { MenuSuperior, Sidebar } from "./Sidebar";
+import { FundoApp } from "./FundoApp";
 import { IntegracaoSistema } from "./IntegracaoSistema";
 import { LancamentoRapido } from "./LancamentoRapido";
 import { AvisoSincronizacao } from "./AvisoSincronizacao";
@@ -14,11 +15,13 @@ import { Tutorial } from "../../features/ajuda/Tutorial";
 export function AppShell({ carregando }: { carregando?: ReactNode }) {
   return (
     <div className="flex h-full flex-col">
+      <FundoApp />
       <TitleBar />
       <AvisoSincronizacao />
       <AvisoAtualizacao />
       <FaixaOffline />
       <FaixaViagem />
+      <MenuSuperior />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main className="min-w-0 flex-1 overflow-y-auto bg-fundo">
