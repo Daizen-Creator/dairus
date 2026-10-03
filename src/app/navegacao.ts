@@ -15,6 +15,7 @@ import {
   Sparkles,
   ShieldCheck,
   Settings,
+  CircleHelp,
   type LucideIcon,
 } from "lucide-react";
 
@@ -75,4 +76,5 @@ export const NAVEGACAO: ItemNavegacao[] = [
     rotulo: "Backup e Segurança",
     icone: ShieldCheck,
   },
+  { rota: "/ajuda", rotulo: "Ajuda", icone: CircleHelp },
 ];

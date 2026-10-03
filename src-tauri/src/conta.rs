@@ -351,3 +351,51 @@ mod testes {
         assert_eq!(parametro("x=1", "code"), None);
     }
 }
+
+/// Apaga TUDO desta conta neste computador: banco (normal e cifrado), preferências,
+/// backups e exportações. A nuvem é apagada antes, pelo app (precisa do login).
+/// `confirmacao` precisa ser exatamente "EXCLUIR".
+#[tauri::command]
+pub fn excluir_dados_conta(app: AppHandle, state: State<AppState>, usuario_id: String, confirmacao: String) -> Res<()> {
+    let id = id_valido(&usuario_id)?.to_string();
+    if confirmacao != "EXCLUIR" {
+        return Err("Digite EXCLUIR para confirmar.".into());
+    }
+    if USUARIO_ATUAL.lock().expect("mutex envenenado").as_deref() != Some(id.as_str()) {
+        return Err("Só é possível excluir a conta que está aberta.".into());
+    }
+    // Troca para um banco vazio em memória SEM gravar nada (nem o cifrado).
+    let vazio = crate::db::abrir_conexao(Path::new(":memory:")).map_err(e)?;
+    crate::db::executar_migracoes(&vazio).map_err(e)?;
+    {
+        let mut guarda = state.conn.lock().expect("mutex envenenado");
+        crate::cripto::encerrar_sessao();
+        *guarda = vazio;
+    }
+    *USUARIO_ATUAL.lock().expect("mutex envenenado") = None;
+    let dados = app.path().app_data_dir().map_err(e)?;
+    let mut falhas = Vec::new();
+    let mut remover_pasta = |p: PathBuf| {
+        if p.exists() {
+            if let Err(err) = std::fs::remove_dir_all(&p) {
+                falhas.push(format!("{}: {err}", p.display()));
+            }
+        }
+    };
+    remover_pasta(dados.join("contas").join(&id));
+    if let Ok(docs) = app.path().document_dir() {
+        remover_pasta(docs.join("Dairus").join(&id));
+    }
+    let prefs = dados.join(format!("preferencias-{id}.json"));
+    if prefs.exists() {
+        if let Err(err) = std::fs::remove_file(&prefs) {
+            falhas.push(format!("{}: {err}", prefs.display()));
+        }
+    }
+    if falhas.is_empty() {
+        log::info!("Dados locais da conta excluídos a pedido do usuário.");
+        Ok(())
+    } else {
+        Err(format!("Alguns arquivos não puderam ser apagados (feche outros programas e tente de novo): {}", falhas.join("; ")))
+    }
+}

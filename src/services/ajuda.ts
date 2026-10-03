@@ -41,3 +41,33 @@ export function buscarAjuda(termo: string): TopicoAjuda[] {
     .sort((a, b) => b.n - a.n)
     .map((x) => x.t);
 }
+
+export interface Passo {
+  id: string;
+  titulo: string;
+  rota: string;
+  feito: boolean;
+}
+
+/** Mentor de primeira vez: o que falta para o Dairus ficar redondo. */
+export function primeirosPassos(d: {
+  contas: Array<{ id: string; tipo: string; subtipo: string | null; sistema: boolean; ativa: boolean }>;
+  lancamentos: number;
+  agendamentos: number;
+  orcamentos: number;
+  metas: number;
+  backupAuto: boolean;
+  chaveIA: boolean;
+}): Passo[] {
+  const minhas = d.contas.filter((c) => c.ativa && !c.sistema);
+  return [
+    { id: "conta", titulo: "Cadastrar sua conta bancária com o saldo de hoje", rota: "/contas-bancarias", feito: minhas.some((c) => c.tipo === "ATIVO" && c.subtipo !== "CATEGORIA" && c.subtipo !== "INVESTIMENTO") },
+    { id: "cartao", titulo: "Cadastrar seu cartão de crédito (se tiver)", rota: "/cartoes", feito: minhas.some((c) => c.subtipo === "CARTAO_CREDITO") },
+    { id: "lancamento", titulo: "Fazer o primeiro lançamento (ou importar um extrato)", rota: "/lancamentos", feito: d.lancamentos > 0 },
+    { id: "agenda", titulo: "Agendar as contas fixas do mês (aluguel, luz, internet…)", rota: "/lancamentos", feito: d.agendamentos > 0 },
+    { id: "orcamento", titulo: "Definir limites no orçamento", rota: "/orcamento", feito: d.orcamentos > 0 },
+    { id: "meta", titulo: "Criar uma meta (ex.: reserva de emergência)", rota: "/metas", feito: d.metas > 0 },
+    { id: "backup", titulo: "Ligar o backup automático", rota: "/backup", feito: d.backupAuto },
+    { id: "ia", titulo: "Conectar a IA (opcional, chave grátis do Google)", rota: "/ia", feito: d.chaveIA },
+  ];
+}

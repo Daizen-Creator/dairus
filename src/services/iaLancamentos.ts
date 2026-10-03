@@ -163,5 +163,9 @@ export async function gravarProposta(p: Proposta): Promise<Lancamento> {
   if (erro) throw new Error(erro);
   if (p.tipo === "RECEITA") return contabilidade.registrarRecebimento({ conta_destino_id: p.conta_id!, conta_receita_id: p.categoria_id!, valor_centavos: p.valor_centavos, data: p.data, descricao: p.descricao });
   if (p.tipo === "TRANSFERENCIA") return contabilidade.registrarTransferencia({ conta_origem_id: p.conta_id!, conta_destino_id: p.conta_destino_id!, valor_centavos: p.valor_centavos, data: p.data, descricao: p.descricao });
-  return contabilidade.registrarDespesa({ conta_origem_id: p.conta_id!, categoria_despesa_id: p.categoria_id!, valor_centavos: p.valor_centavos, data: p.data, descricao: p.descricao, parcelas: p.parcelas });
+  const l = await contabilidade.registrarDespesa({ conta_origem_id: p.conta_id!, categoria_despesa_id: p.categoria_id!, valor_centavos: p.valor_centavos, data: p.data, descricao: p.descricao, parcelas: p.parcelas });
+  const { tagsComViagem } = await import("./modoViagem");
+  const tags = await tagsComViagem([], p.data);
+  if (tags.length) await import("./lancamentosExtras").then((m) => m.lancExtras.definirTags(l.id, tags)).catch(() => {});
+  return l;
 }

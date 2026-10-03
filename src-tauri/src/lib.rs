@@ -191,6 +191,7 @@ pub fn run() {
             conta::situacao_conta,
             conta::abrir_conta,
             conta::fechar_conta,
+            conta::excluir_dados_conta,
             conta::abrir_conta_com_senha,
             conta::recuperar_conta_com_codigo,
             conta::ativar_criptografia,

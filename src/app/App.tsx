@@ -11,6 +11,7 @@ import { useAuthStore } from "../state/auth-store";
 import { PreparandoConta, TelaLogin } from "../components/auth/PortaoDeConta";
 
 // Cada página é carregada só quando aberta (app abre mais rápido).
+const AjudaPage = lazy(() => import("../features/ajuda/AjudaPage").then((m) => ({ default: m.AjudaPage })));
 const DashboardPage = lazy(() => import("../features/dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const ContasBancariasPage = lazy(() => import("../features/contas/ContasBancariasPage").then((m) => ({ default: m.ContasBancariasPage })));
 const CartoesPage = lazy(() => import("../features/contas/CartoesPage").then((m) => ({ default: m.CartoesPage })));
@@ -120,6 +121,7 @@ export function App() {
             <Route path="backup" element={<BackupPage />} />
             <Route path="temas" element={<TemasPage />} />
             <Route path="configuracoes" element={<ConfiguracoesPage />} />
+            <Route path="ajuda" element={<AjudaPage />} />
           </Route>
         </Routes>
       </HashRouter>

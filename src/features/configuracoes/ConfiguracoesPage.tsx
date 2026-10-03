@@ -14,6 +14,8 @@ import { verificarAvisosAgora } from "../../components/layout/IntegracaoSistema"
 import { abrirComWindows, lerLog, notificar, pastaDeLogs } from "../../services/sistema";
 import { EVENTO_VERIFICAR } from "../../components/layout/AvisoAtualizacao";
 import type { Conta } from "../../types/accounting";
+import { ExcluirConta } from "./ExcluirConta";
+import { ModoViagemConfig } from "./ModoViagemConfig";
 import type { InfoBanco } from "../../types/extras";
 
 const PAGINAS_INICIAIS = [
@@ -50,6 +52,8 @@ const CHAVES_EXPORTAVEIS = [
   "bloquear_ao_minimizar", "sync_auto", "atualizacao_auto", "invest_alvo", "invest_dia_aporte", "invest_valor_aporte",
   "invest_cotacoes_auto", "pasta_vigiada", "assinaturas_ignoradas", "chave_pix", "orcamento_auto", "meta_envelopes",
   "meta_sobra", "meta_arredondar", "meta_lembrete", "desafios", "categorias_superfluas",
+  "resumo_semanal", "resumo_semanal_ia", "pdf_mensal_auto", "pdf_mensal_nuvem", "pdf_secoes", "diagnostico_ia_auto",
+  "tema_auto_horario", "verificacao_semanal", "dashboard_coluna_recolhida",
 ];
 
 export function ConfiguracoesPage() {
@@ -70,6 +74,8 @@ export function ConfiguracoesPage() {
   const [bloquearAoMinimizar, setBloquearAoMinimizar] = usePreferencia<boolean>("bloquear_ao_minimizar", true);
   const [iniciarComWindows, setIniciarComWindows] = useState(false);
   const [log, setLog] = useState<string | null>(null);
+  const [verificacaoSemanal, setVerificacaoSemanal] = usePreferencia<boolean>("verificacao_semanal", true);
+  const [ultimaVerificacao] = usePreferencia<string | null>("verificacao_semanal_ultima", null);
   const [atualizacaoAuto, setAtualizacaoAuto] = usePreferencia<boolean>("atualizacao_auto", true);
   const [versaoApp, setVersaoApp] = useState("");
 
@@ -208,6 +214,7 @@ export function ConfiguracoesPage() {
         </dl>
         <p className="mt-2 text-xs text-texto-secundario">Estes valores são fixos nesta versão.</p>
       </Secao>
+      <ModoViagemConfig />
       </>)}
 
       {(secao === "windows") && (<>
@@ -227,6 +234,7 @@ export function ConfiguracoesPage() {
             <label className="flex items-center gap-2 text-texto-primario"><input type="checkbox" checked={iniciarComWindows} onChange={alternarInicio} className="h-4 w-4 accent-[var(--cor-primaria)]" />Abrir junto com o Windows (começa na bandeja, perto do relógio)</label>
             <label className="flex items-center gap-2 text-texto-primario"><input type="checkbox" checked={fecharParaBandeja} onChange={() => setFecharParaBandeja(!fecharParaBandeja)} className="h-4 w-4 accent-[var(--cor-primaria)]" />O botão fechar só esconde na bandeja (os avisos continuam)</label>
             <label className="flex items-center gap-2 text-texto-primario"><input type="checkbox" checked={bloquearAoMinimizar} onChange={() => setBloquearAoMinimizar(!bloquearAoMinimizar)} className="h-4 w-4 accent-[var(--cor-primaria)]" />Com PIN ativo, bloquear ao minimizar ou quando o Windows bloquear</label>
+            <label className="flex items-center gap-2 text-texto-primario"><input type="checkbox" checked={verificacaoSemanal} onChange={() => setVerificacaoSemanal(!verificacaoSemanal)} className="h-4 w-4 accent-[var(--cor-primaria)]" />Verificar o banco de dados uma vez por semana e avisar se houver problema{ultimaVerificacao ? ` (última: ${ultimaVerificacao.split("-").reverse().join("/")})` : ""}</label>
             <p className="text-xs text-texto-secundario">O ícone da bandeja mostra o saldo e a próxima conta ao passar o mouse; clique para abrir, botão direito para o menu (Abrir, Lançamento rápido, Sair).</p>
           </div>
         </Secao>
@@ -268,9 +276,11 @@ export function ConfiguracoesPage() {
           <Button tamanho="pequeno" variante="secundaria" onClick={() => window.dispatchEvent(new CustomEvent(EVENTO_VERIFICAR))}>Verificar atualizações</Button>
           <label className="flex items-center gap-2 text-xs text-texto-primario"><input type="checkbox" checked={atualizacaoAuto} onChange={() => setAtualizacaoAuto(!atualizacaoAuto)} className="h-4 w-4 accent-[var(--cor-primaria)]" />Procurar versões novas sozinho (a cada 6 horas)</label>
         </div>
-        <div className="mt-3 flex flex-wrap gap-4 text-sm"><Link to="/backup" className="text-primaria hover:underline">Backup e PIN</Link><Link to="/ia" className="text-primaria hover:underline">Chave do Gemini</Link><Link to="/contabilidade" className="text-primaria hover:underline">Auditoria</Link></div>
+        <div className="mt-3 flex flex-wrap gap-4 text-sm"><Link to="/backup" className="text-primaria hover:underline">Backup e PIN</Link><Link to="/ia" className="text-primaria hover:underline">Chave do Gemini</Link><Link to="/contabilidade" className="text-primaria hover:underline">Auditoria</Link><Link to="/ajuda" className="text-primaria hover:underline">Ajuda e tutorial</Link></div>
       </Secao>
       </>)}
+
+      {(secao === "sobre") && <ExcluirConta />}
 
       {(secao === "sobre") && (<>
       <section className="rounded-xl border border-dashed border-borda bg-superficie p-4">

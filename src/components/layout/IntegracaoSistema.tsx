@@ -108,6 +108,23 @@ export async function verificarAvisosAgora(): Promise<number> {
   if (resumo) mensagens.push(resumo);
   const diagnostico = await rel.diagnosticoMensalAutomatico(hoje).catch((e) => { registrarNoLog("warn", `diagnóstico IA: ${String(e)}`); return null; });
   if (diagnostico) mensagens.push(diagnostico);
+  // Verificação semanal do banco (integridade e débito = crédito).
+  if ((await lerPreferencia<boolean>("verificacao_semanal")) !== false) {
+    const ultima = await lerPreferencia<string>("verificacao_semanal_ultima");
+    if (!ultima || Date.parse(`${hoje}T12:00:00Z`) - Date.parse(`${ultima}T12:00:00Z`) >= 7 * 86_400_000) {
+      try {
+        const problemas = await extras.verificarIntegridade();
+        await salvarPreferencia("verificacao_semanal_ultima", hoje);
+        await salvarPreferencia("verificacao_semanal_resultado", problemas);
+        if (problemas.length) {
+          registrarNoLog("error", `verificação semanal: ${problemas.join(" | ")}`);
+          await notificar("Dairus encontrou um problema no banco", `${problemas[0]} Abra Backup → Verificar e, se preciso, restaure um backup.`);
+        }
+      } catch (e) {
+        registrarNoLog("warn", `verificação semanal: ${String(e)}`);
+      }
+    }
+  }
   const notificacoesLigadas = (await lerPreferencia<boolean>("avisos_windows")) !== false;
   if (notificacoesLigadas) for (const m of mensagens) await notificar("Dairus", m);
   if (mensagens.length) {
