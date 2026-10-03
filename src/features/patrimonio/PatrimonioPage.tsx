@@ -29,6 +29,7 @@ import { Skeleton } from "../../components/ui/Skeleton";
 import { StatCard } from "../../components/ui/StatCard";
 import { contabilidade } from "../../services/contabilidade";
 import { AbaEmprestimos } from "./AbaEmprestimos";
+import { FerramentasBem, FerramentasPatrimonio } from "./FerramentasPatrimonio";
 import { marcosDoPatrimonio, serieMensal } from "./linhaDoTempo";
 import { exportarCsv, reais } from "../../services/exportacao";
 import { extras } from "../../services/extras";
@@ -163,6 +164,10 @@ export function PatrimonioPage() {
   const liquidez = totalPassivos > 0 ? ativosContas / totalPassivos : null;
   const maiorAtivo = [...bens.filter((b) => b.tipo === "BEM")].sort((a, b) => b.valor_centavos - a.valor_centavos)[0];
   const maiorPassivo = [...bens.filter((b) => b.tipo === "DIVIDA")].sort((a, b) => b.valor_centavos - a.valor_centavos)[0];
+  const despesasIds = new Set(contas.filter((c) => c.tipo === "DESPESA").map((c) => c.id));
+  const inicio3 = new Date(Date.UTC(+hoje.slice(0, 4), +hoje.slice(5, 7) - 4, 1)).toISOString().slice(0, 10);
+  const fim3 = new Date(Date.UTC(+hoje.slice(0, 4), +hoje.slice(5, 7) - 1, 0)).toISOString().slice(0, 10);
+  const gastoMensal = Math.round(lancamentos.filter((l) => l.data >= inicio3 && l.data <= fim3).reduce((s, l) => s + l.partidas.filter((p) => despesasIds.has(p.conta_id)).reduce((a, p) => a + (p.tipo === "DEBITO" ? p.valor_centavos : -p.valor_centavos), 0), 0) / 3);
   const desatualizados = bens.filter((b) => b.valor_centavos > 0 && diasEntre(b.avaliacoes[0].data, hoje) > 90);
 
   const composicao = [
@@ -339,6 +344,7 @@ export function PatrimonioPage() {
           </div>
         )}
 
+        {aberto && <FerramentasBem bem={b} contas={contas} onAlterado={carregar} />}
         {aberto && (
           <div className="mt-3 grid gap-4 border-t border-borda pt-3 lg:grid-cols-2">
             <ul className="space-y-1 text-xs text-texto-secundario">
@@ -387,6 +393,8 @@ export function PatrimonioPage() {
 
       <Abas ativa={secao} onChange={setSecao} abas={[{ id: "itens", rotulo: "Bens e dívidas", icone: Building2, contador: desatualizados.length }, { id: "adicionar", rotulo: "Adicionar", icone: Gem }, { id: "visao", rotulo: "Evolução e composição", icone: Scale }, { id: "emprestimos", rotulo: "Empréstimos", icone: Landmark }]} />
       {secao === "emprestimos" && <AbaEmprestimos onAlterado={carregar} />}
+
+      {secao === "visao" && <FerramentasPatrimonio bens={bens} liquido={liquido} gastoMensal={gastoMensal} onAlterado={carregar} />}
 
       {secao === "visao" && (
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
