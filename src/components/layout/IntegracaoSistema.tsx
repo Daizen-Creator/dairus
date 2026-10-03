@@ -172,6 +172,13 @@ export async function verificarAvisosAgora(): Promise<number> {
     ...(await rel.avisosDeRelatorios(hoje).catch(() => [])),
     ...(await avisosDeTeto(hoje, contas, lancamentos).catch(() => [])),
     ...(await avisosDeCobranca(hoje).catch(() => [])),
+    ...(await (async () => {
+      const dias = (await lerPreferencia<number>("lembrete_backup_dias")) ?? 14;
+      if (!dias) return [];
+      const ultimo = (await extras.listarBackups()).map((b) => b.criado_em.slice(0, 10)).sort().pop();
+      const idade = ultimo ? Math.round((Date.parse(`${hoje}T12:00:00Z`) - Date.parse(`${ultimo}T12:00:00Z`)) / 86_400_000) : Infinity;
+      return idade >= dias ? [{ id: `backup-${hoje.slice(0, 7)}-${Math.floor(Number(hoje.slice(8, 10)) / 7)}`, titulo: "Faça um backup", corpo: ultimo ? `O último backup tem ${idade} dias. Abra Backup e Segurança → Fazer backup agora.` : "Você ainda não tem backup. Abra Backup e Segurança." }] : [];
+    })().catch(() => [])),
     ...(await import("../../features/contas/ferramentasContas").then(async (m) =>
       m.abaixoDoMinimo(contas, (await lerPreferencia<Record<string, number>>("saldo_minimo_contas")) ?? {}).map((x) => ({
         id: `minimo-${x.conta.id}`,
