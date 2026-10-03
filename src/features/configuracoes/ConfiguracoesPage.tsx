@@ -39,7 +39,7 @@ const ATALHOS: Array<[string, string]> = [
 ];
 
 const PENDENTES = [
-  "Botão “Paguei” dentro da notificação do Windows (o Windows só permite isso para apps com instalador assinado; hoje o aviso abre o Dairus)",
+  "Botão “Paguei” dentro da notificação do Windows (o Windows só permite isso para apps com instalador assinado; hoje o aviso só informa e você marca como paga no app)",
   "Metas em dupla e comparação anônima com outros usuários (precisam de um servidor compartilhado)",
   "Leitura do QR Code da NFC-e direto da SEFAZ (hoje: foto da nota lida pela IA)",
   "Conexão direta com bancos (Open Finance): hoje é por extrato OFX/CSV, pasta vigiada ou notificação colada",
