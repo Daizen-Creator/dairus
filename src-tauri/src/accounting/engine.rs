@@ -60,6 +60,7 @@ fn inserir_lancamento_na_transacao(
     if input.partidas.len() < 2 {
         return Err(AccountingError::PartidasInsuficientes);
     }
+    validar_entrada_lancamento(&input.data, &input.descricao, input.observacao.as_deref(), input.partidas.len())?;
     if let Some(n) = input.parcelas {
         if !(2..=72).contains(&n) {
             return Err(AccountingError::DadoInvalido("O parcelamento precisa ter de 2 a 72 parcelas.".into()));
@@ -73,13 +74,13 @@ fn inserir_lancamento_na_transacao(
     let mut soma_creditos: i64 = 0;
 
     for partida in &input.partidas {
-        if partida.valor_centavos <= 0 {
+        if partida.valor_centavos <= 0 || partida.valor_centavos > VALOR_MAXIMO_CENTAVOS {
             return Err(AccountingError::ValorInvalido);
         }
         conta_existe_e_ativa(tx, &partida.conta_id)?;
         match partida.tipo {
-            TipoPartida::Debito => soma_debitos += partida.valor_centavos,
-            TipoPartida::Credito => soma_creditos += partida.valor_centavos,
+            TipoPartida::Debito => soma_debitos = soma_debitos.checked_add(partida.valor_centavos).ok_or(AccountingError::ValorInvalido)?,
+            TipoPartida::Credito => soma_creditos = soma_creditos.checked_add(partida.valor_centavos).ok_or(AccountingError::ValorInvalido)?,
         }
     }
 
@@ -661,6 +662,26 @@ pub fn listar_lancamentos(conn: &Connection, limite: i64) -> Resultado<Vec<Lanca
 }
 
 const ETIQUETAS_VALIDAS: [&str; 3] = ["MENSALIDADE", "ASSINATURA", "FIXO"];
+
+/// Maior valor aceito numa partida: R$ 100 bilhões (protege contra valores absurdos e estouro na soma).
+pub const VALOR_MAXIMO_CENTAVOS: i64 = 10_000_000_000_000;
+
+/// Validação de entrada do lançamento (lista branca de formato e tamanho).
+fn validar_entrada_lancamento(data: &str, descricao: &str, observacao: Option<&str>, partidas: usize) -> Resultado<()> {
+    if chrono::NaiveDate::parse_from_str(data, "%Y-%m-%d").is_err() || data.len() != 10 {
+        return Err(AccountingError::DadoInvalido(format!("Data inválida: use o formato AAAA-MM-DD (recebido \"{}\").", data.chars().take(20).collect::<String>())));
+    }
+    if descricao.chars().count() > 300 {
+        return Err(AccountingError::DadoInvalido("A descrição pode ter no máximo 300 caracteres.".into()));
+    }
+    if observacao.is_some_and(|o| o.chars().count() > 5000) {
+        return Err(AccountingError::DadoInvalido("A observação pode ter no máximo 5.000 caracteres.".into()));
+    }
+    if partidas > 500 {
+        return Err(AccountingError::DadoInvalido("Um lançamento pode ter no máximo 500 partidas.".into()));
+    }
+    Ok(())
+}
 
 fn validar_etiqueta(etiqueta: &Option<String>) -> Resultado<()> {
     match etiqueta {
@@ -1285,5 +1306,20 @@ mod testes_receitas_automaticas {
         assert_eq!(valor_com_reajuste(100_000, "2026-12-10", "2027-01-10", Some(0.08), Some(1)), 108_000);
         assert_eq!(valor_com_reajuste(100_000, "2027-01-10", "2027-02-10", Some(0.08), Some(1)), 100_000);
         assert_eq!(valor_com_reajuste(100_000, "2026-11-10", "2026-12-10", None, None), 100_000);
+    }
+}
+
+#[cfg(test)]
+mod testes_validacao_entrada {
+    use super::*;
+
+    #[test]
+    fn recusa_data_texto_ou_partidas_fora_do_formato() {
+        assert!(validar_entrada_lancamento("2026-10-03", "Mercado", None, 2).is_ok());
+        assert!(validar_entrada_lancamento("2026-13-40", "x", None, 2).is_err());
+        assert!(validar_entrada_lancamento("2026-10-03'; DROP TABLE lancamentos;--", "x", None, 2).is_err());
+        assert!(validar_entrada_lancamento("2026-10-03", &"a".repeat(301), None, 2).is_err());
+        assert!(validar_entrada_lancamento("2026-10-03", "x", Some(&"a".repeat(5001)), 2).is_err());
+        assert!(validar_entrada_lancamento("2026-10-03", "x", None, 501).is_err());
     }
 }

@@ -331,15 +331,23 @@ pub fn abrir_arquivo(caminho: &Path) -> Res<Connection> {
     }
 }
 
+/// Compara sem sair no primeiro byte diferente (o tempo não revela quanto da senha acertou).
+pub fn iguais_tempo_constante(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
 pub fn senha_confere(senha: &str) -> bool {
-    com_sessao(|s| s.as_ref().is_some_and(|s| s.senha.as_str() == senha))
+    com_sessao(|s| s.as_ref().is_some_and(|s| iguais_tempo_constante(s.senha.as_bytes(), senha.as_bytes())))
 }
 
 /// Troca a senha da sessão (o arquivo é regravado com o cabeçalho novo).
 pub fn trocar_senha(conn: &Connection, atual: &str, nova: &str) -> Res<()> {
     com_sessao(|guarda| -> Res<()> {
         let s = guarda.as_mut().ok_or("A criptografia não está ligada.")?;
-        if s.senha.as_str() != atual {
+        if !iguais_tempo_constante(s.senha.as_bytes(), atual.as_bytes()) {
             return Err("Senha atual incorreta.".into());
         }
         s.chaves = s.chaves.com_nova_senha(nova)?;

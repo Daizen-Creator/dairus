@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { Lock } from "lucide-react";
-import { useSegurancaStore } from "../../state/seguranca-store";
+import { PIN_TENTATIVAS_LIVRES, useSegurancaStore } from "../../state/seguranca-store";
 import { BarraJanela } from "./BarraJanela";
 
 /** Cobre o app com a tela de PIN quando bloqueado e bloqueia após inatividade. */
 export function BloqueioTela({ children }: { children: React.ReactNode }) {
-  const { pinAtivo, bloqueado, minutosInatividade, falhas, desbloquear, bloquear } = useSegurancaStore();
+  const { pinAtivo, bloqueado, minutosInatividade, falhas, bloqueadoAte, desbloquear, bloquear } = useSegurancaStore();
   const [pin, setPin] = useState("");
-  const [espera, setEspera] = useState(0);
+  const [agora, setAgora] = useState(() => Date.now());
+  const espera = Math.max(0, Math.ceil((bloqueadoAte - agora) / 1000));
 
   useEffect(() => {
     if (!pinAtivo || bloqueado || minutosInatividade <= 0) return;
@@ -37,22 +38,25 @@ export function BloqueioTela({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", aoTeclar);
   }, [pinAtivo, bloquear]);
 
+  // Relógio da espera (só roda enquanto há espera).
   useEffect(() => {
-    if (espera <= 0) return;
-    const t = window.setTimeout(() => setEspera(espera - 1), 1000);
-    return () => window.clearTimeout(t);
-  }, [espera]);
+    if (bloqueadoAte <= Date.now()) return;
+    const t = window.setInterval(() => setAgora(Date.now()), 1000);
+    setAgora(Date.now());
+    return () => window.clearInterval(t);
+  }, [bloqueadoAte]);
 
   if (!bloqueado) return <>{children}</>;
 
   async function entrar(ev: React.FormEvent) {
     ev.preventDefault();
     if (espera > 0 || !pin) return;
-    const ok = await desbloquear(pin);
+    await desbloquear(pin);
     setPin("");
-    // A cada 5 erros seguidos, espera crescente para dificultar tentativas em sequência.
-    if (!ok && (falhas + 1) % 5 === 0) setEspera(Math.min(300, 15 * (falhas + 1)));
+    setAgora(Date.now());
   }
+  const restam = PIN_TENTATIVAS_LIVRES - falhas;
+  const tempo = espera >= 60 ? `${Math.floor(espera / 60)}min ${String(espera % 60).padStart(2, "0")}s` : `${espera}s`;
 
   return (
     <div className="flex h-full flex-col bg-fundo">
@@ -79,8 +83,8 @@ export function BloqueioTela({ children }: { children: React.ReactNode }) {
           aria-label="PIN"
           className="mt-4 w-full rounded-lg border border-borda bg-fundo px-3 py-2 text-center text-lg tracking-[0.5em] text-texto-primario outline-none focus:border-primaria"
         />
-        {falhas > 0 && espera === 0 && <p className="mt-2 text-xs text-erro">PIN incorreto.</p>}
-        {espera > 0 && <p className="mt-2 text-xs text-erro">Muitas tentativas. Aguarde {espera}s.</p>}
+        {falhas > 0 && espera === 0 && <p className="mt-2 text-xs text-erro">PIN incorreto.{restam > 0 ? ` Restam ${restam} tentativa${restam === 1 ? "" : "s"} antes de uma pausa.` : ""}</p>}
+        {espera > 0 && <p className="mt-2 text-xs text-erro">Muitas tentativas erradas. Por segurança, aguarde {tempo}.</p>}
         <button
           type="submit"
           disabled={espera > 0}

@@ -9,6 +9,7 @@ mod extras;
 mod gestao;
 mod investimentos;
 mod lancamentos_extras;
+mod limitador;
 mod mercado;
 mod planejamento;
 mod planilha;

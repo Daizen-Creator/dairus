@@ -57,3 +57,47 @@ pub fn executar_migracoes(conn: &Connection) -> rusqlite::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod testes_sql {
+    /// Proteção contra SQL injection: todo SQL usa parâmetros (`?1`). Só nomes de
+    /// tabela fixos do próprio código podem entrar por `format!` — esta lista.
+    /// Se este teste falhar, troque a concatenação por parâmetros.
+    const PERMITIDOS: &[&str] = &[
+        "SELECT COUNT(*) FROM {tabela}",
+        "SELECT COUNT(*) FROM {t}",
+        "SELECT * FROM \\\"{}\\\" ORDER BY rowid",
+        "BEGIN;\\n{sql}\\nINSERT INTO schema_migrations",
+    ];
+
+    fn arquivos(pasta: &std::path::Path, saida: &mut Vec<std::path::PathBuf>) {
+        for item in std::fs::read_dir(pasta).unwrap().flatten() {
+            let p = item.path();
+            if p.is_dir() {
+                arquivos(&p, saida);
+            } else if p.extension().is_some_and(|e| e == "rs") {
+                saida.push(p);
+            }
+        }
+    }
+
+    #[test]
+    fn nenhum_sql_montado_com_texto_de_fora() {
+        let palavras = ["SELECT ", "INSERT ", "UPDATE ", "DELETE ", " WHERE ", "PRAGMA "];
+        let mut lista = Vec::new();
+        arquivos(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut lista);
+        let mut suspeitos = Vec::new();
+        for arq in lista {
+            let texto = std::fs::read_to_string(&arq).unwrap();
+            for (n, linha) in texto.lines().enumerate() {
+                let Some(i) = linha.find("format!(") else { continue };
+                let resto = &linha[i..];
+                let tem_sql = palavras.iter().any(|p| resto.to_uppercase().contains(p)) && resto.contains('{');
+                if tem_sql && !PERMITIDOS.iter().any(|ok| resto.contains(ok)) && !resto.contains("PERMITIDOS") {
+                    suspeitos.push(format!("{}:{}: {}", arq.display(), n + 1, linha.trim()));
+                }
+            }
+        }
+        assert!(suspeitos.is_empty(), "SQL montado com format! (use parâmetros):\n{}", suspeitos.join("\n"));
+    }
+}
