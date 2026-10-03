@@ -36,6 +36,7 @@ import { calcularPeriodo, SeletorPeriodo, type Periodo } from "./SeletorPeriodo"
 import { StatusRodape } from "./StatusRodape";
 import { CardDiagnosticoIA, CardResumoSemanal } from "./CardResumoSemanal";
 import { PrimeirosPassos } from "../ajuda/PrimeirosPassos";
+import { WidgetsInicio } from "./WidgetsInicio";
 import { StatCard } from "../../components/ui/StatCard";
 import { IconeCoisa } from "../../components/ui/IconeCoisa";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -249,6 +250,7 @@ export function DashboardPage() {
           <PrimeirosPassos compacto />
           <CardDiagnosticoIA oculto={ocultar} />
           <CardResumoSemanal dinheiro={dinheiro} />
+          <WidgetsInicio contas={contas} lancamentos={lancamentos} agendamentos={agendamentos} metas={metas} hoje={hoje} dinheiro={dinheiro} />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               titulo="Saldo em Conta"
