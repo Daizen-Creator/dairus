@@ -33,6 +33,7 @@ import { usePreferencia } from "../../state/usePreferencia";
 import { CONTAS_SISTEMA } from "../../types/accounting";
 import type { Conta, Lancamento } from "../../types/accounting";
 import { RecebimentoForm } from "./RecebimentoForm";
+import { CalculadorasSalario } from "./CalculadorasSalario";
 
 const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -93,7 +94,7 @@ export function SalarioPage() {
   const [incluir13, setIncluir13] = useState(true);
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [edDescricao, setEdDescricao] = useState("");
-  const [secao, setSecao] = useAbaDaPagina<"registrar" | "analises" | "historico">("salario", "registrar");
+  const [secao, setSecao] = useAbaDaPagina<"registrar" | "analises" | "calculadoras" | "historico">("salario", "registrar");
   const cores = useThemeStore((s) => s.temaAtivo()).cores.grafico;
   const hoje = dataAtualISO();
 
@@ -297,7 +298,9 @@ export function SalarioPage() {
         <StatCard titulo="Sobra do mês" valor={dinheiro(sobra)} corValor={sobra < 0 ? "erro" : "normal"} icone={Wallet} corIcone="alerta" subtitulo={rendaReferencia > 0 ? `${pctGasto.toFixed(0)}% da renda já gasta` : "Sem renda registrada"} />
       </div>
 
-      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "registrar", rotulo: "Registrar e perfil", icone: Banknote }, { id: "analises", rotulo: "Análises e simulador", icone: TrendingUp }, { id: "historico", rotulo: "Histórico", icone: CalendarClock }]} />
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "registrar", rotulo: "Registrar e perfil", icone: Banknote }, { id: "analises", rotulo: "Análises e simulador", icone: TrendingUp }, { id: "calculadoras", rotulo: "Calculadoras (13º, férias, CLT x PJ)", icone: Calculator }, { id: "historico", rotulo: "Histórico", icone: CalendarClock }]} />
+
+      {secao === "calculadoras" && <CalculadorasSalario bruto={perfil.bruto} liquido={perfil.liquido} horasMes={perfil.horasMes} diaPagamento={perfil.diaPagamento} contasDestino={contasDestino} />}
 
       {secao === "analises" && metaPct !== null && (
         <Secao titulo={<><Target size={16} className="text-destaque" /> Meta de renda mensal</>}>
