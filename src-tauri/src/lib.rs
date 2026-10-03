@@ -6,6 +6,7 @@ mod cripto;
 mod db;
 mod extras;
 mod investimentos;
+mod lancamentos_extras;
 mod mercado;
 mod planilha;
 mod sincronizacao;
@@ -125,6 +126,17 @@ pub fn run() {
             investimentos::salvar_indicadores,
             investimentos::listar_indicadores,
             mercado::buscar_json_mercado,
+            lancamentos_extras::definir_tags,
+            lancamentos_extras::listar_tags,
+            lancamentos_extras::anexar_arquivo,
+            lancamentos_extras::listar_anexos,
+            lancamentos_extras::abrir_anexo,
+            lancamentos_extras::ler_anexo,
+            lancamentos_extras::excluir_anexo,
+            lancamentos_extras::listar_regras,
+            lancamentos_extras::salvar_regra,
+            lancamentos_extras::excluir_regra,
+            lancamentos_extras::processar_agendamentos_automaticos,
             atualizacao::verificar_atualizacao,
             atualizacao::instalar_atualizacao,
             sincronizacao::impressao_dados,

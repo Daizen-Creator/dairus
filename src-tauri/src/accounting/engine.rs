@@ -699,6 +699,14 @@ pub fn proximo_vencimento(vencimento: &str, recorrencia: &str) -> Option<String>
     Some(proxima.format("%Y-%m-%d").to_string())
 }
 
+fn validar_tipo_agendamento(input: &NovoAgendamentoInput) -> Resultado<TipoConta> {
+    match input.tipo.as_str() {
+        "PAGAR" => Ok(TipoConta::Despesa),
+        "RECEBER" => Ok(TipoConta::Receita),
+        _ => Err(AccountingError::DadoInvalido("Tipo de agendamento inválido.".into())),
+    }
+}
+
 pub fn criar_agendamento(conn: &mut Connection, input: NovoAgendamentoInput) -> Resultado<Agendamento> {
     if input.descricao.trim().is_empty() {
         return Err(AccountingError::DadoInvalido("Informe uma descrição para a conta.".into()));
@@ -711,17 +719,35 @@ pub fn criar_agendamento(conn: &mut Connection, input: NovoAgendamentoInput) -> 
     }
     validar_etiqueta(&input.etiqueta)?;
     validar_recorrencia(&input.recorrencia)?;
+    let tipo_esperado = validar_tipo_agendamento(&input)?;
+    if input.automatico && input.conta_id.is_none() {
+        return Err(AccountingError::DadoInvalido("Para lançar sozinho, escolha a conta.".into()));
+    }
+    if let Some(r) = input.reajuste_anual {
+        if !(-0.9..=5.0).contains(&r) {
+            return Err(AccountingError::DadoInvalido("Reajuste anual fora do esperado.".into()));
+        }
+    }
 
     let tx = conn.transaction()?;
     let tipo = conta_existe_e_ativa(&tx, &input.categoria_despesa_id)?;
-    if tipo != TipoConta::Despesa {
-        return Err(AccountingError::DadoInvalido("A categoria precisa ser uma conta de despesa.".into()));
+    if tipo != tipo_esperado {
+        return Err(AccountingError::DadoInvalido(if tipo_esperado == TipoConta::Despesa {
+            "A categoria precisa ser uma conta de despesa.".into()
+        } else {
+            "A categoria precisa ser uma conta de receita.".into()
+        }));
     }
+    if let Some(c) = &input.conta_id {
+        conta_existe_e_ativa(&tx, c)?;
+    }
+    let pessoa = input.pessoa.as_ref().map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
 
     let id = Uuid::new_v4().to_string();
     tx.execute(
-        "INSERT INTO agendamentos (id, descricao, valor_centavos, vencimento, categoria_despesa_id, etiqueta, recorrencia)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO agendamentos (id, descricao, valor_centavos, vencimento, categoria_despesa_id, etiqueta, recorrencia,
+                                   tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             id,
             input.descricao.trim(),
@@ -730,6 +756,12 @@ pub fn criar_agendamento(conn: &mut Connection, input: NovoAgendamentoInput) -> 
             input.categoria_despesa_id,
             input.etiqueta,
             input.recorrencia,
+            input.tipo,
+            input.automatico as i64,
+            input.conta_id,
+            input.reajuste_anual,
+            input.mes_reajuste,
+            pessoa,
         ],
     )?;
     registrar_auditoria(&tx, "CRIAR_AGENDAMENTO", "agendamento", &id)?;
@@ -745,12 +777,19 @@ pub fn criar_agendamento(conn: &mut Connection, input: NovoAgendamentoInput) -> 
         lancamento_id: None,
         pago_em: None,
         recorrencia: input.recorrencia,
+        tipo: input.tipo,
+        automatico: input.automatico,
+        conta_id: input.conta_id,
+        reajuste_anual: input.reajuste_anual,
+        mes_reajuste: input.mes_reajuste,
+        pessoa,
     })
 }
 
 pub fn listar_agendamentos(conn: &Connection) -> Resultado<Vec<Agendamento>> {
     let mut stmt = conn.prepare(
-        "SELECT id, descricao, valor_centavos, vencimento, categoria_despesa_id, etiqueta, lancamento_id, pago_em, recorrencia
+        "SELECT id, descricao, valor_centavos, vencimento, categoria_despesa_id, etiqueta, lancamento_id, pago_em, recorrencia,
+                tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa
          FROM agendamentos ORDER BY (pago_em IS NOT NULL), vencimento, criado_em",
     )?;
     let linhas = stmt
@@ -765,6 +804,12 @@ pub fn listar_agendamentos(conn: &Connection) -> Resultado<Vec<Agendamento>> {
                 lancamento_id: row.get(6)?,
                 pago_em: row.get(7)?,
                 recorrencia: row.get(8)?,
+                tipo: row.get(9)?,
+                automatico: row.get::<_, i64>(10)? != 0,
+                conta_id: row.get(11)?,
+                reajuste_anual: row.get(12)?,
+                mes_reajuste: row.get(13)?,
+                pessoa: row.get(14)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -774,6 +819,26 @@ pub fn listar_agendamentos(conn: &Connection) -> Resultado<Vec<Agendamento>> {
 /// Paga uma conta agendada: cria o lançamento balanceado (Débito na
 /// categoria de despesa, Crédito na conta de origem) e marca o agendamento
 /// como pago — tudo numa transação só.
+/// Valor da próxima ocorrência, aplicando o reajuste anual quando a nova data cai no mês de reajuste.
+pub fn valor_com_reajuste(valor: i64, vencimento_atual: &str, proximo: &str, reajuste: Option<f64>, mes: Option<i32>) -> i64 {
+    match (reajuste, mes) {
+        (Some(r), Some(m)) => {
+            let mes_proximo: i32 = proximo[5..7].parse().unwrap_or(0);
+            let mudou_ano = proximo[..4] != vencimento_atual[..4] || vencimento_atual[5..7].parse::<i32>().unwrap_or(0) < m;
+            if mes_proximo == m && mudou_ano && proximo[..7] != vencimento_atual[..7] {
+                ((valor as f64) * (1.0 + r)).round() as i64
+            } else {
+                valor
+            }
+        }
+        _ => valor,
+    }
+}
+
+/// Paga (ou recebe) uma conta agendada: cria o lançamento balanceado e marca
+/// o agendamento como pago — tudo numa transação só. A pagar: Débito na
+/// categoria de despesa, Crédito na conta. A receber: Débito na conta,
+/// Crédito na categoria de receita.
 pub fn pagar_agendamento(
     conn: &mut Connection,
     agendamento_id: &str,
@@ -785,7 +850,8 @@ pub fn pagar_agendamento(
     }
     let tx = conn.transaction()?;
 
-    let (descricao, valor, categoria, etiqueta, pago_em, vencimento, recorrencia): (
+    #[allow(clippy::type_complexity)]
+    let (descricao, valor, categoria, etiqueta, pago_em, vencimento, recorrencia, tipo, automatico, conta_id, reajuste, mes_reajuste, pessoa): (
         String,
         i64,
         String,
@@ -793,12 +859,24 @@ pub fn pagar_agendamento(
         Option<String>,
         String,
         Option<String>,
+        String,
+        i64,
+        Option<String>,
+        Option<f64>,
+        Option<i32>,
+        Option<String>,
     ) = tx
         .query_row(
-            "SELECT descricao, valor_centavos, categoria_despesa_id, etiqueta, pago_em, vencimento, recorrencia
+            "SELECT descricao, valor_centavos, categoria_despesa_id, etiqueta, pago_em, vencimento, recorrencia,
+                    tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa
              FROM agendamentos WHERE id = ?1",
             [agendamento_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?)),
+            |row| {
+                Ok((
+                    row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?,
+                    row.get(7)?, row.get(8)?, row.get(9)?, row.get(10)?, row.get(11)?, row.get(12)?,
+                ))
+            },
         )
         .optional()?
         .ok_or_else(|| AccountingError::AgendamentoNaoEncontrado(agendamento_id.to_string()))?;
@@ -808,17 +886,25 @@ pub fn pagar_agendamento(
     }
 
     let proximo = recorrencia.as_deref().and_then(|r| proximo_vencimento(&vencimento, r));
+    let receber = tipo == "RECEBER";
     let input = NovoLancamentoInput {
         data: data_pagamento.to_string(),
         descricao: descricao.clone(),
-        observacao: None,
-        origem: "MANUAL".to_string(),
+        observacao: pessoa.as_ref().map(|p| format!("De/para: {p}")),
+        origem: if receber { "SALARIO".to_string() } else { "MANUAL".to_string() },
         etiqueta: etiqueta.clone(),
         parcelas: None,
-        partidas: vec![
-            PartidaInput { conta_id: categoria.clone(), tipo: TipoPartida::Debito, valor_centavos: valor },
-            PartidaInput { conta_id: conta_origem_id.to_string(), tipo: TipoPartida::Credito, valor_centavos: valor },
-        ],
+        partidas: if receber {
+            vec![
+                PartidaInput { conta_id: conta_origem_id.to_string(), tipo: TipoPartida::Debito, valor_centavos: valor },
+                PartidaInput { conta_id: categoria.clone(), tipo: TipoPartida::Credito, valor_centavos: valor },
+            ]
+        } else {
+            vec![
+                PartidaInput { conta_id: categoria.clone(), tipo: TipoPartida::Debito, valor_centavos: valor },
+                PartidaInput { conta_id: conta_origem_id.to_string(), tipo: TipoPartida::Credito, valor_centavos: valor },
+            ]
+        },
     };
     let lancamento = inserir_lancamento_na_transacao(&tx, &input, None, None)?;
 
@@ -828,18 +914,44 @@ pub fn pagar_agendamento(
     )?;
     registrar_auditoria(&tx, "PAGAR_AGENDAMENTO", "agendamento", agendamento_id)?;
 
-    // Conta recorrente: ao pagar esta, já deixa a próxima agendada.
+    // Recorrente: já deixa a próxima agendada (com reajuste anual, se houver).
     if let (Some(venc), Some(rec)) = (proximo, recorrencia) {
+        let novo_valor = valor_com_reajuste(valor, &vencimento, &venc, reajuste, mes_reajuste);
         let novo_id = Uuid::new_v4().to_string();
         tx.execute(
-            "INSERT INTO agendamentos (id, descricao, valor_centavos, vencimento, categoria_despesa_id, etiqueta, recorrencia)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![novo_id, descricao, valor, venc, categoria, etiqueta, rec],
+            "INSERT INTO agendamentos (id, descricao, valor_centavos, vencimento, categoria_despesa_id, etiqueta, recorrencia,
+                                       tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![novo_id, descricao, novo_valor, venc, categoria, etiqueta, rec, tipo, automatico, conta_id, reajuste, mes_reajuste, pessoa],
         )?;
         registrar_auditoria(&tx, "CRIAR_AGENDAMENTO", "agendamento", &novo_id)?;
     }
     tx.commit()?;
     Ok(lancamento)
+}
+
+/// Lança sozinho os agendamentos automáticos que já venceram. Devolve quantos lançou.
+pub fn processar_automaticos(conn: &mut Connection, hoje: &str) -> Resultado<Vec<Lancamento>> {
+    let pendentes: Vec<(String, String, String)> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, conta_id, vencimento FROM agendamentos
+             WHERE automatico = 1 AND pago_em IS NULL AND conta_id IS NOT NULL AND vencimento <= ?1
+             ORDER BY vencimento",
+        )?;
+        let v = stmt
+            .query_map([hoje], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        v
+    };
+    let mut feitos = Vec::new();
+    for (id, conta, vencimento) in pendentes {
+        feitos.push(pagar_agendamento(conn, &id, &conta, &vencimento)?);
+    }
+    // Um recorrente atrasado gera a próxima ocorrência, que também pode já ter vencido.
+    if !feitos.is_empty() {
+        feitos.extend(processar_automaticos(conn, hoje)?);
+    }
+    Ok(feitos)
 }
 
 /// Só agendamentos ainda não pagos podem ser removidos; um pago já virou
@@ -879,6 +991,12 @@ mod testes_agendamento {
             categoria_despesa_id: "despesa-educacao".to_string(),
             etiqueta: etiqueta.map(String::from),
             recorrencia: None,
+            tipo: "PAGAR".into(),
+            automatico: false,
+            conta_id: None,
+            reajuste_anual: None,
+            mes_reajuste: None,
+            pessoa: None,
         }
     }
 
@@ -956,6 +1074,12 @@ mod testes_recorrencia {
                 categoria_despesa_id: "despesa-moradia".into(),
                 etiqueta: Some("FIXO".into()),
                 recorrencia: Some("MENSAL".into()),
+                tipo: "PAGAR".into(),
+                automatico: false,
+                conta_id: None,
+                reajuste_anual: None,
+                mes_reajuste: None,
+                pessoa: None,
             },
         )
         .unwrap();
@@ -1103,5 +1227,63 @@ mod testes_correcao_e_parcelas {
             },
         );
         assert!(no_dinheiro.is_err());
+    }
+}
+
+#[cfg(test)]
+mod testes_receitas_automaticas {
+    use super::*;
+    use crate::db::{abrir_conexao, executar_migracoes};
+
+    fn salario(automatico: bool) -> NovoAgendamentoInput {
+        NovoAgendamentoInput {
+            descricao: "Salário".into(),
+            valor_centavos: 300_000,
+            vencimento: "2026-09-05".into(),
+            categoria_despesa_id: "receita-salario".into(),
+            etiqueta: None,
+            recorrencia: Some("MENSAL".into()),
+            tipo: "RECEBER".into(),
+            automatico,
+            conta_id: Some("ativo-dinheiro".into()),
+            reajuste_anual: None,
+            mes_reajuste: None,
+            pessoa: None,
+        }
+    }
+
+    #[test]
+    fn receita_agendada_credita_a_conta() {
+        let mut conn = abrir_conexao(std::path::Path::new(":memory:")).unwrap();
+        executar_migracoes(&conn).unwrap();
+        let ag = criar_agendamento(&mut conn, salario(false)).unwrap();
+        pagar_agendamento(&mut conn, &ag.id, "ativo-dinheiro", "2026-09-05").unwrap();
+        assert_eq!(saldo_conta(&conn, "ativo-dinheiro").unwrap(), 300_000);
+        assert_eq!(saldo_conta(&conn, "receita-salario").unwrap(), 300_000);
+        // Receita com categoria de despesa é recusada.
+        let mut errado = salario(false);
+        errado.categoria_despesa_id = "despesa-outras".into();
+        assert!(criar_agendamento(&mut conn, errado).is_err());
+    }
+
+    #[test]
+    fn automatico_lanca_os_meses_atrasados_sozinho() {
+        let mut conn = abrir_conexao(std::path::Path::new(":memory:")).unwrap();
+        executar_migracoes(&conn).unwrap();
+        criar_agendamento(&mut conn, salario(true)).unwrap();
+        let feitos = processar_automaticos(&mut conn, "2026-11-10").unwrap();
+        assert_eq!(feitos.len(), 3); // set, out, nov
+        assert_eq!(saldo_conta(&conn, "ativo-dinheiro").unwrap(), 900_000);
+        let abertos: Vec<_> = listar_agendamentos(&conn).unwrap().into_iter().filter(|a| a.pago_em.is_none()).collect();
+        assert_eq!(abertos.len(), 1);
+        assert_eq!(abertos[0].vencimento, "2026-12-05");
+        assert!(processar_automaticos(&mut conn, "2026-11-10").unwrap().is_empty());
+    }
+
+    #[test]
+    fn reajuste_anual_no_mes_certo() {
+        assert_eq!(valor_com_reajuste(100_000, "2026-12-10", "2027-01-10", Some(0.08), Some(1)), 108_000);
+        assert_eq!(valor_com_reajuste(100_000, "2027-01-10", "2027-02-10", Some(0.08), Some(1)), 100_000);
+        assert_eq!(valor_com_reajuste(100_000, "2026-11-10", "2026-12-10", None, None), 100_000);
     }
 }

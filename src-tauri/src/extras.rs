@@ -519,8 +519,15 @@ pub fn atualizar_agendamento(
     vencimento: String,
     etiqueta: Option<String>,
     recorrencia: Option<String>,
+    automatico: Option<bool>,
+    conta_id: Option<String>,
+    reajuste_anual: Option<f64>,
+    mes_reajuste: Option<i32>,
 ) -> Res<()> {
     let descricao = nome_valido(&descricao)?;
+    if automatico == Some(true) && conta_id.is_none() {
+        return Err("Para lançar sozinho, escolha a conta.".into());
+    }
     if valor_centavos <= 0 {
         return Err("O valor precisa ser maior que zero.".into());
     }
@@ -532,9 +539,11 @@ pub fn atualizar_agendamento(
     let conn = state.conn.lock().expect("mutex envenenado");
     let alteradas = conn
         .execute(
-            "UPDATE agendamentos SET descricao = ?1, valor_centavos = ?2, vencimento = ?3, etiqueta = ?4, recorrencia = ?5
+            "UPDATE agendamentos SET descricao = ?1, valor_centavos = ?2, vencimento = ?3, etiqueta = ?4, recorrencia = ?5,
+                    automatico = COALESCE(?7, automatico), conta_id = COALESCE(?8, conta_id),
+                    reajuste_anual = ?9, mes_reajuste = ?10
              WHERE id = ?6 AND pago_em IS NULL",
-            params![descricao, valor_centavos, vencimento, etiqueta, recorrencia, agendamento_id],
+            params![descricao, valor_centavos, vencimento, etiqueta, recorrencia, agendamento_id, automatico.map(|a| a as i64), conta_id, reajuste_anual, mes_reajuste],
         )
         .map_err(e)?;
     if alteradas == 0 {
@@ -603,7 +612,7 @@ pub fn arquivar_conta(state: State<AppState>, conta_id: String, arquivar: bool) 
 
 /// Categoria personalizada de despesa ou receita.
 #[tauri::command]
-pub fn criar_categoria(state: State<AppState>, nome: String, tipo: String) -> Res<String> {
+pub fn criar_categoria(state: State<AppState>, nome: String, tipo: String, pai_id: Option<String>) -> Res<String> {
     let nome = nome_valido(&nome)?;
     let prefixo = match tipo.as_str() {
         "DESPESA" => "5",
@@ -621,12 +630,22 @@ pub fn criar_categoria(state: State<AppState>, nome: String, tipo: String) -> Re
     if existe {
         return Err("Já existe uma categoria com esse nome.".into());
     }
+    // Subcategoria: o pai precisa ser uma categoria do mesmo tipo (ex.: Alimentação → Mercado).
+    if let Some(pai) = &pai_id {
+        let tipo_pai: Option<String> = conn
+            .query_row("SELECT tipo FROM contas_contabeis WHERE id = ?1 AND subtipo IS NOT 'CATEGORIA'", [pai], |r| r.get(0))
+            .optional()
+            .map_err(e)?;
+        if tipo_pai.as_deref() != Some(tipo.as_str()) {
+            return Err("A categoria principal precisa ser do mesmo tipo.".into());
+        }
+    }
     let sufixo = Uuid::new_v4().simple().to_string()[..8].to_string();
     let id = format!("cat-{sufixo}");
     conn.execute(
         "INSERT INTO contas_contabeis (id, codigo, nome, tipo, subtipo, categoria_pai_id, sistema)
-         VALUES (?1, ?2, ?3, ?4, NULL, NULL, 0)",
-        params![id, format!("{prefixo}.c-{sufixo}"), nome, tipo],
+         VALUES (?1, ?2, ?3, ?4, NULL, ?5, 0)",
+        params![id, format!("{prefixo}.c-{sufixo}"), nome, tipo, pai_id],
     )
     .map_err(e)?;
     Ok(id)
