@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
-import { ChevronDown, ChevronRight, Copy, Download, FileText, FilterX, Paperclip, Pencil, Search, Trash2 } from "lucide-react";
+import { Bookmark, ChevronDown, ChevronRight, Copy, Download, FileText, FilterX, Paperclip, Pencil, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
 import { CLASSE_INPUT } from "../../components/ui/Campos";
@@ -9,6 +9,9 @@ import { IconeCoisa } from "../../components/ui/IconeCoisa";
 import { Select } from "../../components/ui/Select";
 import { contabilidade } from "../../services/contabilidade";
 import { col, exportarCsv, exportarXlsx, reais } from "../../services/exportacao";
+import { gestaoLancamentos } from "../../services/gestao";
+import { lerPreferencia, salvarPreferencia } from "../../services/armazenamento";
+import { CHAVE_MODELOS, type ModeloLancamento } from "./ModelosLancamento";
 import { extras } from "../../services/extras";
 import { lancExtras, lerTags, type InfoAnexo } from "../../services/lancamentosExtras";
 import { nomeCategoria, opcoesCategoria } from "../../services/categorias";
@@ -83,6 +86,10 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
   const [edTags, setEdTags] = useState("");
   const [tagsPor, setTagsPor] = useState<Map<string, string[]>>(new Map());
   const [anexos, setAnexos] = useState<InfoAnexo[]>([]);
+  const [confirmarExcluir, setConfirmarExcluir] = useState<string | null>(null);
+  const [loteCategoria, setLoteCategoria] = useState("");
+  const [loteTag, setLoteTag] = useState("");
+  const [confirmarExcluirLote, setConfirmarExcluirLote] = useState(false);
 
   async function carregarExtras() {
     try {
@@ -135,6 +142,7 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
     [lancamentos, contaPorId, idsEstornados, filtros, periodo, tagsPor],
   );
   const totais = totalizar(itens);
+  const somaSelecionados = itens.filter((x) => selecionados.has(x.l.id)).reduce((s2, x) => s2 + x.a.valorCentavos, 0);
   const nFiltros = filtrosAtivos(f);
 
   // Atalho "/" foca a busca; Esc limpa o texto quando a busca está em foco.
@@ -251,6 +259,78 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
       setSelecionados(new Set());
       setConfirmarLote(false);
       onAlterado();
+    }
+  }
+
+  async function trocarConta(l: Lancamento, atual: string, nova: string) {
+    if (!nova || nova === atual) return;
+    try {
+      await gestaoLancamentos.trocarConta(l.id, atual, nova);
+      toast.success(`Trocado para ${contaPorId.get(nova)?.nome ?? "a nova conta"}.`);
+      onAlterado();
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  async function salvarComoModelo(l: Lancamento) {
+    const tipoDe = (id: string) => contaPorId.get(id)?.tipo;
+    const cat = l.partidas.find((p) => tipoDe(p.conta_id) === "DESPESA" || tipoDe(p.conta_id) === "RECEITA");
+    const conta = l.partidas.find((p) => tipoDe(p.conta_id) === "ATIVO" || tipoDe(p.conta_id) === "PASSIVO");
+    if (!cat || !conta) return toast.error("Só despesas e receitas simples viram modelo.");
+    const atuais = (await lerPreferencia<ModeloLancamento[]>(CHAVE_MODELOS)) ?? [];
+    await salvarPreferencia(CHAVE_MODELOS, [...atuais, { id: crypto.randomUUID(), tipo: tipoDe(cat.conta_id) as "DESPESA" | "RECEITA", descricao: l.descricao, valor_centavos: cat.valor_centavos, conta_id: conta.conta_id, categoria_id: cat.conta_id }]);
+    toast.success("Salvo em Lançar → Modelos.");
+  }
+
+  async function excluirDeVez(ids: string[]) {
+    try {
+      const n = await gestaoLancamentos.excluir(ids);
+      toast.success(`${n} lançamento(s) excluído(s) de vez.`);
+      setSelecionados(new Set());
+      setConfirmarExcluir(null);
+      setConfirmarExcluirLote(false);
+      onAlterado();
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  async function trocarCategoriaLote() {
+    if (!loteCategoria) return;
+    const nova = contaPorId.get(loteCategoria);
+    let feitos = 0;
+    const pulados: string[] = [];
+    for (const id of selecionados) {
+      const l = lancamentos.find((x) => x.id === id);
+      const cats = l?.partidas.filter((p) => contaPorId.get(p.conta_id)?.tipo === nova?.tipo) ?? [];
+      if (!l || cats.length !== 1) {
+        if (l) pulados.push(l.descricao);
+        continue;
+      }
+      try {
+        await gestaoLancamentos.trocarConta(l.id, cats[0].conta_id, loteCategoria);
+        feitos++;
+      } catch {
+        pulados.push(l.descricao);
+      }
+    }
+    toast.success(`${feitos} lançamento(s) movido(s) para ${nova?.nome}.${pulados.length ? ` Pulados: ${pulados.slice(0, 3).join(", ")}${pulados.length > 3 ? "…" : ""}` : ""}`);
+    setLoteCategoria("");
+    setSelecionados(new Set());
+    onAlterado();
+  }
+
+  async function adicionarTagLote() {
+    const tag = loteTag.trim().replace(/^#/, "").toLowerCase();
+    if (!tag) return;
+    try {
+      for (const id of selecionados) await lancExtras.definirTags(id, [...new Set([...(tagsPor.get(id) ?? []), tag])]);
+      toast.success(`#${tag} adicionada a ${selecionados.size} lançamento(s).`);
+      setLoteTag("");
+      await carregarExtras();
+    } catch (e) {
+      toast.error(String(e));
     }
   }
 
@@ -398,6 +478,19 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
                 </span>
               ) : (
                 <>
+                  <span className="text-texto-secundario">Seleção: <strong className="text-texto-primario">{formatarCentavos(somaSelecionados)}</strong> em {selecionados.size} (média {formatarCentavos(Math.round(somaSelecionados / selecionados.size))})</span>
+                  <Select aria-label="Mover selecionados para a categoria" value={loteCategoria} onValueChange={setLoteCategoria} options={[{ value: "", label: "Mudar categoria…" }, ...contas.filter((c) => (c.tipo === "DESPESA" || c.tipo === "RECEITA") && c.ativa && c.subtipo !== "CATEGORIA").map((c) => ({ value: c.id, label: `${c.tipo === "RECEITA" ? "Receita: " : ""}${c.nome}` }))]} className="w-44" />
+                  {loteCategoria && <Button tamanho="pequeno" onClick={trocarCategoriaLote}>Aplicar</Button>}
+                  <input value={loteTag} onChange={(e) => setLoteTag(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") adicionarTagLote(); }} placeholder="+ tag" aria-label="Adicionar tag aos selecionados" className={`${CLASSE_INPUT} w-24 py-1`} />
+                  {confirmarExcluirLote ? (
+                    <>
+                      <span className="text-erro">Excluir de vez {selecionados.size}?</span>
+                      <Button tamanho="pequeno" variante="perigo" onClick={() => excluirDeVez([...selecionados])}>Sim, excluir</Button>
+                      <Button tamanho="pequeno" variante="fantasma" onClick={() => setConfirmarExcluirLote(false)}>Não</Button>
+                    </>
+                  ) : (
+                    <Button tamanho="pequeno" variante="fantasma" onClick={() => setConfirmarExcluirLote(true)}>Excluir</Button>
+                  )}
                   <Button tamanho="pequeno" variante="secundaria" onClick={() => setConfirmarLote(true)}>
                     Estornar selecionados ({selecionados.size})
                   </Button>
@@ -508,6 +601,11 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
                           <Copy size={14} />
                         </button>
                       )}
+                      {!a.estorno && (a.tipo === "DESPESA" || a.tipo === "RECEITA") && (
+                        <button onClick={() => salvarComoModelo(l)} title="Salvar como modelo (lançar de novo com 1 clique)" aria-label="Salvar como modelo" className="rounded-md p-1.5 text-texto-secundario transition-colors hover:bg-borda/50 hover:text-primaria">
+                          <Bookmark size={14} />
+                        </button>
+                      )}
                       <button onClick={() => (emEdicao ? setEditando(null) : iniciarEdicao(l))} title="Editar descrição, observação e etiqueta" aria-label="Editar" className="rounded-md p-1.5 text-texto-secundario transition-colors hover:bg-borda/50 hover:text-primaria">
                         <Pencil size={14} />
                       </button>
@@ -522,6 +620,16 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
                       {!a.estorno && !jaEstornado && (
                         <button onClick={() => estornar(l.id)} className="ml-1 text-xs text-texto-secundario transition-colors hover:text-erro hover:underline" title="Estornar este lançamento">
                           Estornar
+                        </button>
+                      )}
+                      {confirmarExcluir === l.id ? (
+                        <span className="ml-1 flex items-center gap-1 text-xs">
+                          <button onClick={() => excluirDeVez([l.id])} className="font-semibold text-erro hover:underline">Excluir de vez?</button>
+                          <button onClick={() => setConfirmarExcluir(null)} className="text-texto-secundario hover:underline">não</button>
+                        </span>
+                      ) : (
+                        <button onClick={() => setConfirmarExcluir(l.id)} title="Apagar este lançamento (sem deixar estorno no histórico)" aria-label={`Excluir ${l.descricao}`} className="ml-1 rounded-md p-1 text-texto-secundario transition-colors hover:text-erro">
+                          <Trash2 size={13} />
                         </button>
                       )}
                     </div>
@@ -575,9 +683,22 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
                         </label>
                       </div>
                       {l.partidas.map((p) => (
-                        <div key={p.id} className={`flex justify-between ${p.tipo === "CREDITO" ? "pl-6" : ""}`}>
-                          <span className="text-texto-secundario">
-                            {p.tipo === "DEBITO" ? "Débito" : "Crédito"} · {contaPorId.get(p.conta_id)?.nome ?? p.conta_id}
+                        <div key={p.id} className={`flex items-center justify-between gap-2 ${p.tipo === "CREDITO" ? "pl-6" : ""}`}>
+                          <span className="flex items-center gap-2 text-texto-secundario">
+                            {p.tipo === "DEBITO" ? "Débito" : "Crédito"} ·
+                            {!a.estorno && !jaEstornado && contaPorId.get(p.conta_id) ? (
+                              <Select
+                                aria-label={`Trocar ${contaPorId.get(p.conta_id)?.nome}`}
+                                value={p.conta_id}
+                                onValueChange={(v) => trocarConta(l, p.conta_id, v)}
+                                options={contas
+                                  .filter((c) => c.tipo === contaPorId.get(p.conta_id)?.tipo && (c.ativa || c.id === p.conta_id) && c.subtipo !== "CATEGORIA")
+                                  .map((c) => ({ value: c.id, label: c.nome }))}
+                                className="w-44"
+                              />
+                            ) : (
+                              contaPorId.get(p.conta_id)?.nome ?? p.conta_id
+                            )}
                           </span>
                           <span className="tabular-nums text-texto-primario">{formatarCentavos(p.valor_centavos)}</span>
                         </div>

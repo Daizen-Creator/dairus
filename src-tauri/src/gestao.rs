@@ -199,6 +199,74 @@ pub fn mesclar_contas(state: State<AppState>, origem_id: String, destino_id: Str
     mesclar_contas_db(&mut conn, &origem_id, &destino_id)
 }
 
+/// Troca a conta (ou categoria) de um lançamento por outra do mesmo tipo,
+/// ex.: "Mercado" lançado em Lazer → Alimentação, ou pago no Nubank → no Itaú.
+pub fn trocar_conta_lancamento_db(conn: &mut Connection, lancamento_id: &str, conta_atual: &str, conta_nova: &str) -> Res<()> {
+    if conta_atual == conta_nova {
+        return Ok(());
+    }
+    let (a, b) = (info(conn, conta_atual)?, info(conn, conta_nova)?);
+    if a.tipo != b.tipo {
+        return Err("Escolha uma conta do mesmo tipo (categoria por categoria, conta por conta).".into());
+    }
+    let (origem, estornado): (String, bool) = conn
+        .query_row(
+            "SELECT origem, EXISTS(SELECT 1 FROM lancamentos x WHERE x.estornado_de = l.id OR x.corrige = l.id) FROM lancamentos l WHERE id = ?1",
+            [lancamento_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .map_err(e)?
+        .ok_or("Lançamento não encontrado.")?;
+    if origem == "ESTORNO" || estornado {
+        return Err("Este lançamento foi estornado ou corrigido; troque no lançamento que vale.".into());
+    }
+    let tx = conn.transaction().map_err(e)?;
+    let n = tx
+        .execute("UPDATE partidas SET conta_id = ?3 WHERE lancamento_id = ?1 AND conta_id = ?2", params![lancamento_id, conta_atual, conta_nova])
+        .map_err(e)?;
+    if n == 0 {
+        return Err("Essa conta não faz parte do lançamento.".into());
+    }
+    tx.execute(
+        "INSERT INTO auditoria (id, acao, entidade, entidade_id) VALUES (?1, 'TROCAR_CONTA', 'lancamento', ?2)",
+        params![Uuid::new_v4().to_string(), lancamento_id],
+    )
+    .map_err(e)?;
+    tx.commit().map_err(e)?;
+    Ok(())
+}
+
+/// Apaga lançamentos de vez (com os estornos e correções ligados). Devolve quantos saíram.
+pub fn excluir_lancamentos_db(conn: &mut Connection, ids: &[String]) -> Res<usize> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let tx = conn.transaction().map_err(e)?;
+    let n = apagar_lancamentos(&tx, ids.to_vec())?;
+    for id in ids {
+        tx.execute(
+            "INSERT INTO auditoria (id, acao, entidade, entidade_id) VALUES (?1, 'EXCLUIR_LANCAMENTO', 'lancamento', ?2)",
+            params![Uuid::new_v4().to_string(), id],
+        )
+        .map_err(e)?;
+    }
+    tx.commit().map_err(e)?;
+    Ok(n)
+}
+
+#[tauri::command]
+pub fn trocar_conta_lancamento(state: State<AppState>, lancamento_id: String, conta_atual: String, conta_nova: String) -> Res<()> {
+    let mut conn = state.conn.lock().expect("mutex envenenado");
+    trocar_conta_lancamento_db(&mut conn, &lancamento_id, &conta_atual, &conta_nova)
+}
+
+#[tauri::command]
+pub fn excluir_lancamentos(state: State<AppState>, ids: Vec<String>) -> Res<usize> {
+    let mut conn = state.conn.lock().expect("mutex envenenado");
+    excluir_lancamentos_db(&mut conn, &ids)
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -272,5 +340,20 @@ mod testes {
         assert_eq!(engine::saldo_conta(&conn, &a).unwrap(), 12_000);
         assert!(info(&conn, &b).is_err());
         assert!(mesclar_contas_db(&mut conn, &a, "despesa-outras").unwrap_err().contains("mesmo tipo"));
+    }
+
+    #[test]
+    fn troca_categoria_e_exclui_lancamento() {
+        let mut conn = banco();
+        let c = conta(&mut conn, "1.1.94", "Banco Z", 10_000);
+        let l = gasto(&mut conn, &c, 2_000);
+        trocar_conta_lancamento_db(&mut conn, &l, "despesa-outras", "despesa-alimentacao").unwrap();
+        assert_eq!(engine::saldo_conta(&conn, "despesa-alimentacao").unwrap(), 2_000);
+        assert_eq!(engine::saldo_conta(&conn, "despesa-outras").unwrap(), 0);
+        assert!(trocar_conta_lancamento_db(&mut conn, &l, "despesa-alimentacao", &c).unwrap_err().contains("mesmo tipo"));
+        engine::estornar_lancamento(&mut conn, &l).unwrap();
+        assert!(trocar_conta_lancamento_db(&mut conn, &l, "despesa-alimentacao", "despesa-lazer").unwrap_err().contains("estornado"));
+        assert_eq!(excluir_lancamentos_db(&mut conn, &[l]).unwrap(), 2);
+        assert_eq!(engine::saldo_conta(&conn, &c).unwrap(), 10_000);
     }
 }

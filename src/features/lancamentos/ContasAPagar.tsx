@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { CalendarClock, CalendarPlus, Pencil, Repeat, Trash2 } from "lucide-react";
+import { CalendarClock, CalendarPlus, LayoutList, CalendarDays, Pencil, Repeat, SkipForward, Trash2 } from "lucide-react";
+import { proximoVencimentoTS } from "../../services/recorrencia";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
 import { CLASSE_INPUT } from "../../components/ui/Campos";
@@ -56,9 +57,16 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [mostrarPagas, setMostrarPagas] = useState(false);
   const [ed, setEd] = useState({ descricao: "", valor: "", vencimento: "", etiqueta: "NENHUMA", recorrencia: "NENHUMA", automatico: false });
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
+  const [filtro, setFiltro] = useState<"TODAS" | "PAGAR" | "RECEBER" | "ATRASADAS" | "SEMANA">("TODAS");
+  const [visao, setVisao] = useState<"lista" | "calendario">("lista");
+  const [valorMes, setValorMes] = useState<Record<string, string>>({});
 
   const contaEfetiva = contaPagamentoId || contasPagaveis[0]?.id || "";
-  const abertos = agendamentos.filter((a) => !a.pago_em);
+  const todosAbertos = agendamentos.filter((a) => !a.pago_em);
+  const abertos = todosAbertos.filter((a) =>
+    filtro === "PAGAR" ? a.tipo !== "RECEBER" : filtro === "RECEBER" ? a.tipo === "RECEBER" : filtro === "ATRASADAS" ? a.vencimento < hoje : filtro === "SEMANA" ? a.vencimento <= somarDias(hoje, 7) : true,
+  );
   const pagos = agendamentos.filter((a) => a.pago_em).sort((a, b) => (b.pago_em ?? "").localeCompare(a.pago_em ?? ""));
   const totalAberto = abertos.filter((a) => a.tipo !== "RECEBER").reduce((s, a) => s + a.valor_centavos, 0);
   const totalReceber = abertos.filter((a) => a.tipo === "RECEBER").reduce((s, a) => s + a.valor_centavos, 0);
@@ -81,6 +89,49 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
     } finally {
       setPagandoId(null);
     }
+  }
+
+  /** Valor diferente neste mês (luz, água): ajusta o valor e paga. */
+  async function pagarComValor(a: Agendamento) {
+    const v = valorInputParaCentavos(valorMes[a.id] ?? "");
+    if (v <= 0) return toast.error("Informe o valor deste mês.");
+    try {
+      await extras.atualizarAgendamento(a.id, a.descricao, v, a.vencimento, a.etiqueta, a.recorrencia, extrasDe(a));
+      await pagar({ ...a, valor_centavos: v });
+      setValorMes({ ...valorMes, [a.id]: "" });
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  /** Recorrente: pula esta ocorrência (não paga) e vai para a próxima data. */
+  async function pular(a: Agendamento) {
+    const prox = a.recorrencia ? proximoVencimentoTS(a.vencimento, a.recorrencia) : null;
+    if (!prox) return;
+    try {
+      await extras.atualizarAgendamento(a.id, a.descricao, a.valor_centavos, prox, a.etiqueta, a.recorrencia, extrasDe(a));
+      toast.success(`Pulado. Próximo vencimento: ${formatarDataISOParaBR(prox)}.`);
+      onAlterado();
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  async function pagarSelecionadas() {
+    let ok = 0;
+    for (const a of todosAbertos.filter((x) => selecionadas.has(x.id))) {
+      const conta = contaPara(a);
+      if (!conta) continue;
+      try {
+        await contabilidade.pagarAgendamento(a.id, conta, dataPagamento);
+        ok++;
+      } catch (e) {
+        toast.error(`${a.descricao}: ${String(e)}`);
+      }
+    }
+    toast.success(`${ok} conta(s) baixada(s).`);
+    setSelecionadas(new Set());
+    onAlterado();
   }
 
   async function adiar(a: Agendamento, dias: number) {
@@ -163,7 +214,28 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
         )}
       </div>
 
-      {abertos.length === 0 ? (
+      {todosAbertos.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-borda px-4 py-2 text-xs">
+          {([["TODAS", "Todas"], ["PAGAR", "A pagar"], ["RECEBER", "A receber"], ["ATRASADAS", "Atrasadas"], ["SEMANA", "Próximos 7 dias"]] as const).map(([id, rot]) => (
+            <button key={id} onClick={() => setFiltro(id)} className={`rounded-full px-2.5 py-1 ${filtro === id ? "bg-primaria text-primaria-texto" : "bg-superficie text-texto-secundario hover:text-texto-primario"}`}>{rot}</button>
+          ))}
+          <span className="ml-auto flex items-center gap-1">
+            <button onClick={() => setVisao("lista")} aria-label="Ver em lista" className={`rounded p-1 ${visao === "lista" ? "text-primaria" : "text-texto-secundario"}`}><LayoutList size={15} /></button>
+            <button onClick={() => setVisao("calendario")} aria-label="Ver em calendário" className={`rounded p-1 ${visao === "calendario" ? "text-primaria" : "text-texto-secundario"}`}><CalendarDays size={15} /></button>
+          </span>
+          {selecionadas.size > 0 && (
+            <span className="flex w-full items-center gap-2">
+              <span className="text-texto-secundario">{selecionadas.size} selecionada(s) · {formatarCentavos(todosAbertos.filter((a) => selecionadas.has(a.id)).reduce((s2, a) => s2 + (a.tipo === "RECEBER" ? -a.valor_centavos : a.valor_centavos), 0))}</span>
+              <Button tamanho="pequeno" onClick={pagarSelecionadas}>Baixar selecionadas</Button>
+              <Button tamanho="pequeno" variante="fantasma" onClick={() => setSelecionadas(new Set())}>Limpar</Button>
+            </span>
+          )}
+        </div>
+      )}
+
+      {visao === "calendario" && abertos.length > 0 ? (
+        <CalendarioAgenda agendamentos={abertos} hoje={hoje} />
+      ) : abertos.length === 0 ? (
         <div className="p-4">
           <EmptyState
             titulo="Nada agendado"
@@ -196,6 +268,7 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3">
+                    <input type="checkbox" checked={selecionadas.has(a.id)} onChange={() => setSelecionadas((s2) => { const n = new Set(s2); if (n.has(a.id)) n.delete(a.id); else n.add(a.id); return n; })} aria-label={`Selecionar ${a.descricao}`} className="h-4 w-4 shrink-0 accent-[var(--cor-primaria)]" />
                     <IconeCoisa nome={a.descricao} tamanho={38} redondo />
                     <div className="min-w-0">
                       <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-texto-primario">
@@ -222,6 +295,12 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
                     <Button tamanho="pequeno" disabled={pagandoId === a.id} onClick={() => pagar(a)}>
                       {pagandoId === a.id ? "Salvando…" : receber ? "Confirmar recebimento" : "Marcar como pago"}
                     </Button>
+                    <input value={valorMes[a.id] ?? ""} onChange={(e) => setValorMes({ ...valorMes, [a.id]: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") pagarComValor(a); }} placeholder="outro valor" inputMode="decimal" aria-label={`Valor deste mês de ${a.descricao}`} title="Valor diferente neste mês (Enter paga com ele)" className={`${CLASSE_INPUT} w-24 py-1 text-xs`} />
+                    {a.recorrencia && (
+                      <button onClick={() => pular(a)} title="Pular esta vez (vai para a próxima data sem pagar)" aria-label={`Pular ${a.descricao}`} className="rounded-md p-1.5 text-texto-secundario transition-colors hover:bg-borda/50 hover:text-primaria">
+                        <SkipForward size={15} />
+                      </button>
+                    )}
                     <button onClick={() => adiar(a, 7)} title="Adiar vencimento em 7 dias" aria-label="Adiar 7 dias" className="rounded-md p-1.5 text-texto-secundario transition-colors hover:bg-borda/50 hover:text-primaria">
                       <CalendarPlus size={15} />
                     </button>
@@ -277,5 +356,43 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
         </div>
       )}
     </section>
+  );
+}
+
+/** Calendário do mês com as contas de cada dia. */
+function CalendarioAgenda({ agendamentos, hoje }: { agendamentos: Agendamento[]; hoje: string }) {
+  const [mes, setMes] = useState(hoje.slice(0, 7));
+  const [a, m] = mes.split("-").map(Number);
+  const primeiro = new Date(Date.UTC(a, m - 1, 1)).getUTCDay();
+  const dias = new Date(Date.UTC(a, m, 0)).getUTCDate();
+  const porDia = new Map<number, Agendamento[]>();
+  for (const x of agendamentos) if (x.vencimento.startsWith(mes)) porDia.set(Number(x.vencimento.slice(8, 10)), [...(porDia.get(Number(x.vencimento.slice(8, 10))) ?? []), x]);
+  const mudar = (d: number) => setMes(new Date(Date.UTC(a, m - 1 + d, 1)).toISOString().slice(0, 7));
+  const celulas = [...Array(primeiro).fill(null), ...Array.from({ length: dias }, (_, i) => i + 1)];
+  return (
+    <div className="p-3">
+      <div className="mb-2 flex items-center justify-between text-sm">
+        <button onClick={() => mudar(-1)} className="px-2 text-texto-secundario hover:text-primaria" aria-label="Mês anterior">‹</button>
+        <span className="font-semibold capitalize text-texto-primario">{new Date(Date.UTC(a, m - 1, 15)).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</span>
+        <button onClick={() => mudar(1)} className="px-2 text-texto-secundario hover:text-primaria" aria-label="Próximo mês">›</button>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-[11px]">
+        {["D", "S", "T", "Q", "Q", "S", "S"].map((d, i) => <div key={i} className="text-center text-texto-secundario">{d}</div>)}
+        {celulas.map((d, i) => {
+          const itens = d ? porDia.get(d) ?? [] : [];
+          const dataDia = d ? `${mes}-${String(d).padStart(2, "0")}` : "";
+          return (
+            <div key={i} className={`min-h-16 rounded-md border p-1 ${d ? "border-borda" : "border-transparent"} ${dataDia === hoje ? "ring-1 ring-primaria" : ""}`}>
+              {d && <div className="text-texto-secundario">{d}</div>}
+              {itens.map((x) => (
+                <div key={x.id} title={`${x.descricao} ${formatarCentavos(x.valor_centavos)}`} className={`truncate rounded px-1 ${x.tipo === "RECEBER" ? "bg-sucesso/15 text-sucesso" : x.vencimento < hoje ? "bg-erro/15 text-erro" : "bg-alerta/15 text-texto-primario"}`}>
+                  {x.descricao}
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
