@@ -7,6 +7,7 @@ import { Select } from "../../components/ui/Select";
 import { contabilidade } from "../../services/contabilidade";
 import { opcoesCategoria, sugerirCategoria, marcaDaDescricao, type Sugestao } from "../../services/categorias";
 import { centavosParaValorInput, dataAtualISO, formatarCentavos, formatarDataISOParaBR, valorInputParaCentavos } from "../../services/formato";
+import { tagsComViagem } from "../../services/modoViagem";
 import { lancExtras, lerTags, type RegraCategoria } from "../../services/lancamentosExtras";
 import type { Conta, Etiqueta, Lancamento } from "../../types/accounting";
 import { foraDoPadrao, lerNotificacaoBanco, possivelDuplicata } from "./detectores";
@@ -174,7 +175,7 @@ export function DespesaForm({ contasOrigem, categoriasDespesa, onRegistrada, ini
             parcelas: nParcelas > 1 ? nParcelas : null,
           });
       const extrasFalhos: string[] = [];
-      const listaTags = lerTags(tags);
+      const listaTags = await tagsComViagem(lerTags(tags), data);
       if (listaTags.length) await lancExtras.definirTags(lanc.id, listaTags).catch((e) => extrasFalhos.push(`tags (${String(e)})`));
       if (comprovante) await lancExtras.anexar(lanc.id, comprovante).catch((e) => extrasFalhos.push(`comprovante (${String(e)})`));
       if (lembrarRegra && !dividir) {

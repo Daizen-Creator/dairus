@@ -4,6 +4,8 @@ import {
   BookOpen,
   Download,
   Flag,
+  Trophy,
+  Wand2,
   Home,
   Pencil,
   Plane,
@@ -28,6 +30,9 @@ import { Select } from "../../components/ui/Select";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { StatCard } from "../../components/ui/StatCard";
 import { contabilidade } from "../../services/contabilidade";
+import { planejamento } from "../../services/planejamento";
+import { AbaAutomacaoMetas, AbaDesafios } from "./AbaAutomacaoMetas";
+import type { Conta, Lancamento } from "../../types/accounting";
 import { exportarCsv, reais } from "../../services/exportacao";
 import { extras } from "../../services/extras";
 import {
@@ -98,8 +103,12 @@ export function MetasPage() {
   const [ordem, setOrdem] = useState<Ordem>("PRIORIDADE");
   const [visao, setVisao] = useState<Visao>("ATIVAS");
   const [confirmarExcluir, setConfirmarExcluir] = useState<string | null>(null);
-  const [secao, setSecao] = useAbaDaPagina<"lista" | "nova" | "evolucao">("metas", "lista");
+  const [secao, setSecao] = useAbaDaPagina<"lista" | "nova" | "evolucao" | "automacao" | "desafios">("metas", "lista");
+  const [contas, setContas] = useState<Conta[]>([]);
+  const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
+  const [origens, setOrigens] = useState<Record<string, string>>({});
   const hoje = dataAtualISO();
+  const contasDeOrigem = contas.filter((c) => c.tipo === "ATIVO" && c.subtipo !== "CATEGORIA" && c.ativa);
 
   async function carregar() {
     try {
@@ -111,6 +120,9 @@ export function MetasPage() {
       setMetas(m);
       setSaldoDisponivel(resumo.saldo_disponivel_centavos);
       setAportesTodos(ap);
+      const [c, l] = await Promise.all([contabilidade.listarContas(), contabilidade.listarLancamentos(5000)]);
+      setContas(c);
+      setLancamentos(l);
     } catch (e) {
       toast.error(String(e));
     } finally {
@@ -202,13 +214,29 @@ export function MetasPage() {
     if (valor <= 0) return toast.error("Informe um valor maior que zero.");
     try {
       const antes = meta.guardado_centavos;
-      await extras.aportarMeta(meta.id, sinal * valor, datas[meta.id] || hoje);
+      const origem = origens[meta.id] ?? contasDeOrigem.find((c) => c.id !== meta.conta_id)?.id ?? "";
+      if (meta.conta_id) {
+        if (!origem) return toast.error("Escolha a conta de onde sai (ou para onde volta) o dinheiro.");
+        await planejamento.aportarMetaComConta(meta.id, sinal * valor, datas[meta.id] || hoje, origem);
+      } else {
+        await extras.aportarMeta(meta.id, sinal * valor, datas[meta.id] || hoje);
+      }
       setValores((a) => ({ ...a, [meta.id]: "" }));
       if (sinal > 0 && antes < meta.valor_alvo_centavos && antes + valor >= meta.valor_alvo_centavos) {
         toast.success(`Meta "${meta.nome}" atingida! Parabéns.`, { duration: 7000 });
       } else toast.success(sinal > 0 ? "Valor guardado." : "Valor retirado da meta.");
       await carregar();
       if (historicoAberto === meta.id) setAportesMeta(await extras.listarAportesMeta(meta.id));
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  async function ligarConta(meta: Meta, contaId: string) {
+    try {
+      await planejamento.vincularMetaConta(meta.id, contaId || null);
+      toast.success(contaId ? "Meta ligada à conta: o guardado agora é o saldo dela." : "Meta desligada da conta.");
+      await carregar();
     } catch (e) {
       toast.error(String(e));
     }
@@ -361,14 +389,21 @@ export function MetasPage() {
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input value={valores[m.id] ?? ""} onChange={(e) => setValores((a) => ({ ...a, [m.id]: e.target.value }))} inputMode="decimal" placeholder="Valor (R$)" aria-label={`Valor para ${m.nome}`} className={`${CLASSE_INPUT} w-28`} />
           <input type="date" value={datas[m.id] ?? hoje} onChange={(e) => setDatas((a) => ({ ...a, [m.id]: e.target.value }))} aria-label="Data do aporte" className={`${CLASSE_INPUT} w-36 py-2`} />
+          {m.conta_id && (
+            <Select aria-label={`Conta de origem para ${m.nome}`} value={origens[m.id] ?? contasDeOrigem.find((c) => c.id !== m.conta_id)?.id ?? ""} onValueChange={(v) => setOrigens((o) => ({ ...o, [m.id]: v }))} options={contasDeOrigem.filter((c) => c.id !== m.conta_id).map((c) => ({ value: c.id, label: `de/para ${c.nome}` }))} className="w-44" />
+          )}
           <Button tamanho="pequeno" onClick={() => aportar(m, 1)}>Guardar</Button>
           <Button tamanho="pequeno" variante="secundaria" onClick={() => aportar(m, -1)} disabled={m.guardado_centavos === 0}>Retirar</Button>
           {sugestao && !feita && <Button tamanho="pequeno" variante="fantasma" onClick={() => aportar(m, 1, sugestao)} title="Guardar o valor mensal sugerido">Guardar {formatarCentavos(sugestao)}</Button>}
         </div>
 
+        <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-texto-secundario">
+          Dinheiro da meta fica em
+          <Select aria-label={`Conta da meta ${m.nome}`} value={m.conta_id ?? ""} onValueChange={(v) => ligarConta(m, v)} options={[{ value: "", label: "Nenhuma conta (só controle)" }, ...contasDeOrigem.map((c) => ({ value: c.id, label: c.nome }))]} className="w-52" />
+        </label>
         <div className="mt-2 flex items-center gap-4 text-xs">
           <button onClick={() => alternarHistorico(m)} className="flex items-center gap-1 text-primaria hover:underline">{historicoAberto === m.id ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Histórico</button>
-          <button onClick={() => { setMovendo(movendo === m.id ? null : m.id); setMv({ destino: metas.find((x) => x.id !== m.id)?.id ?? "", valor: "" }); }} disabled={m.guardado_centavos === 0 || metas.length < 2} className="flex items-center gap-1 text-primaria hover:underline disabled:opacity-40"><ArrowRightLeft size={13} /> Mover para outra meta</button>
+          <button onClick={() => { setMovendo(movendo === m.id ? null : m.id); setMv({ destino: metas.find((x) => x.id !== m.id)?.id ?? "", valor: "" }); }} disabled={m.guardado_centavos === 0 || metas.length < 2 || !!m.conta_id} className="flex items-center gap-1 text-primaria hover:underline disabled:opacity-40"><ArrowRightLeft size={13} /> Mover para outra meta</button>
         </div>
 
         {movendo === m.id && (
@@ -410,7 +445,9 @@ export function MetasPage() {
         <StatCard titulo="Saldo livre" valor={formatarCentavos(saldoLivre)} corValor={saldoLivre < 0 ? "erro" : "normal"} icone={Flag} corIcone="secundaria" subtitulo={saldoLivre < 0 ? "Reservas maiores que o saldo das contas" : sugestaoMensalTotal > 0 ? `Para cumprir os prazos: ${formatarCentavos(sugestaoMensalTotal)}/mês` : "Saldo menos o que está reservado"} />
       </div>
 
-      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "lista", rotulo: "Minhas metas", icone: Target }, { id: "nova", rotulo: "Nova meta", icone: PiggyBank }, { id: "evolucao", rotulo: "Evolução", icone: Flag }]} />
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "lista", rotulo: "Minhas metas", icone: Target }, { id: "nova", rotulo: "Nova meta", icone: PiggyBank }, { id: "evolucao", rotulo: "Evolução", icone: Flag }, { id: "automacao", rotulo: "Automação", icone: Wand2 }, { id: "desafios", rotulo: "Desafios e conquistas", icone: Trophy }]} />
+      {secao === "automacao" && <AbaAutomacaoMetas metas={metas} contas={contas} lancamentos={lancamentos} />}
+      {secao === "desafios" && <AbaDesafios metas={metas} contas={contas} lancamentos={lancamentos} />}
 
       {secao === "evolucao" && (aportesTodos.length === 0 ? <p className="text-sm text-texto-secundario">Guarde valores em alguma meta para ver a evolução.</p> : (
         <Secao titulo="Evolução do total guardado (12 meses)">

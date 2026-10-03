@@ -91,7 +91,10 @@ export function LancamentoRapido() {
     try {
       setSalvando(true);
       if (tipo === "DESPESA") {
-        await contabilidade.registrarDespesa({ conta_origem_id: contaValida, categoria_despesa_id: categoriaValida, valor_centavos: centavos, data, descricao: descricao.trim() });
+        const l = await contabilidade.registrarDespesa({ conta_origem_id: contaValida, categoria_despesa_id: categoriaValida, valor_centavos: centavos, data, descricao: descricao.trim() });
+        const { tagsComViagem } = await import("../../services/modoViagem");
+        const tags = await tagsComViagem([], data);
+        if (tags.length) await import("../../services/lancamentosExtras").then((m) => m.lancExtras.definirTags(l.id, tags)).catch(() => {});
       } else {
         await contabilidade.registrarRecebimento({ conta_destino_id: contaValida, conta_receita_id: categoriaValida, valor_centavos: centavos, data, descricao: descricao.trim() });
       }

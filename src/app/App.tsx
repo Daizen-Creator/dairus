@@ -4,12 +4,14 @@ import { AppShell } from "../components/layout/AppShell";
 import { BloqueioTela } from "../components/layout/BloqueioTela";
 import { executarBackupAutomatico } from "../services/backupAutomatico";
 import { lerPreferencia } from "../services/armazenamento";
+import { definirMarcasUsuario, type MarcaUsuario } from "../features/dashboard/marcas";
 import { useSegurancaStore } from "../state/seguranca-store";
 import { aplicarTemaPadrao, useThemeStore } from "../state/theme-store";
 import { useAuthStore } from "../state/auth-store";
 import { PreparandoConta, TelaLogin } from "../components/auth/PortaoDeConta";
 
 // Cada página é carregada só quando aberta (app abre mais rápido).
+const AjudaPage = lazy(() => import("../features/ajuda/AjudaPage").then((m) => ({ default: m.AjudaPage })));
 const DashboardPage = lazy(() => import("../features/dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const ContasBancariasPage = lazy(() => import("../features/contas/ContasBancariasPage").then((m) => ({ default: m.ContasBancariasPage })));
 const CartoesPage = lazy(() => import("../features/contas/CartoesPage").then((m) => ({ default: m.CartoesPage })));
@@ -22,6 +24,7 @@ const ContabilidadePage = lazy(() => import("../features/contabilidade/Contabili
 const RelatoriosPage = lazy(() => import("../features/relatorios/RelatoriosPage").then((m) => ({ default: m.RelatoriosPage })));
 const IaPage = lazy(() => import("../features/ia/IaPage").then((m) => ({ default: m.IaPage })));
 const InvestimentosPage = lazy(() => import("../features/investimentos/InvestimentosPage").then((m) => ({ default: m.InvestimentosPage })));
+const PessoasPage = lazy(() => import("../features/pessoas/PessoasPage").then((m) => ({ default: m.PessoasPage })));
 const RadarPage = lazy(() => import("../features/radar/RadarPage").then((m) => ({ default: m.RadarPage })));
 const BackupPage = lazy(() => import("../features/backup/BackupPage").then((m) => ({ default: m.BackupPage })));
 const TemasPage = lazy(() => import("../features/temas/TemasPage").then((m) => ({ default: m.TemasPage })));
@@ -61,6 +64,7 @@ export function App() {
   useEffect(() => {
     if (!contaAberta) return;
     inicializar().catch((e) => setErroFatal(String(e)));
+    lerPreferencia<MarcaUsuario[]>("marcas_usuario").then((m) => definirMarcasUsuario(m ?? [])).catch(() => {});
     inicializarSeguranca().catch((e) => setErroFatal(String(e)));
     executarBackupAutomatico().catch(() => {
       // Backup automático é conveniência: falha silenciosa; o status real aparece em Backup e Segurança.
@@ -108,6 +112,7 @@ export function App() {
             <Route path="metas" element={<MetasPage />} />
             <Route path="patrimonio" element={<PatrimonioPage />} />
             <Route path="investimentos" element={<InvestimentosPage />} />
+            <Route path="pessoas" element={<PessoasPage />} />
             <Route path="salario" element={<SalarioPage />} />
             <Route path="contabilidade" element={<ContabilidadePage />} />
             <Route path="relatorios" element={<RelatoriosPage />} />
@@ -116,6 +121,7 @@ export function App() {
             <Route path="backup" element={<BackupPage />} />
             <Route path="temas" element={<TemasPage />} />
             <Route path="configuracoes" element={<ConfiguracoesPage />} />
+            <Route path="ajuda" element={<AjudaPage />} />
           </Route>
         </Routes>
       </HashRouter>

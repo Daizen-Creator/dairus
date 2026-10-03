@@ -93,6 +93,10 @@ export function TemasPage() {
     alternarFavorito,
     removerTemaPersonalizado,
     salvarTemaPersonalizado,
+    configurarAutomatico,
+    autoHorario,
+    temaPreferidoClaroId,
+    temaPreferidoEscuroId,
   } = useThemeStore();
 
   const [filtroCategoria, setFiltroCategoria] = useState<(typeof CATEGORIAS)[number]>("Todos");
@@ -157,13 +161,43 @@ export function TemasPage() {
               checked={modoAutomatico}
               onChange={(e) => alternarModoAutomatico(e.target.checked)}
             />
-            Automático (segue o sistema)
+            Automático
           </label>
           <Button variante="secundaria" tamanho="pequeno" onClick={() => setCriandoTema((v) => !v)}>
             {criandoTema ? "Cancelar" : "+ Criar tema"}
           </Button>
         </div>
       </div>
+
+      {modoAutomatico && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-borda bg-cartao p-3 text-sm text-texto-secundario">
+          <label className="flex items-center gap-2">
+            <input type="radio" name="origem-auto" checked={!autoHorario.ativo} onChange={() => configurarAutomatico({ autoHorario: { ...autoHorario, ativo: false } })} /> Seguir o Windows
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="radio" name="origem-auto" checked={autoHorario.ativo} onChange={() => configurarAutomatico({ autoHorario: { ...autoHorario, ativo: true } })} /> Por horário
+          </label>
+          {autoHorario.ativo && (
+            <span className="flex items-center gap-1.5">
+              claro das
+              <input type="number" min={0} max={23} value={autoHorario.horaClaro} onChange={(e) => configurarAutomatico({ autoHorario: { ...autoHorario, horaClaro: Math.min(23, Math.max(0, Number(e.target.value))) } })} aria-label="Hora do tema claro" className="w-14 rounded-lg border border-borda bg-fundo px-2 py-1 text-texto-primario" />
+              h às
+              <input type="number" min={0} max={23} value={autoHorario.horaEscuro} onChange={(e) => configurarAutomatico({ autoHorario: { ...autoHorario, horaEscuro: Math.min(23, Math.max(0, Number(e.target.value))) } })} aria-label="Hora do tema escuro" className="w-14 rounded-lg border border-borda bg-fundo px-2 py-1 text-texto-primario" />
+              h
+            </span>
+          )}
+          <label className="flex items-center gap-2">Claro
+            <select value={temaPreferidoClaroId} onChange={(e) => configurarAutomatico({ claroId: e.target.value })} aria-label="Tema claro" className="rounded-lg border border-borda bg-fundo px-2 py-1 text-texto-primario">
+              {temas.filter((t) => t.modoBase === "claro").map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+            </select>
+          </label>
+          <label className="flex items-center gap-2">Escuro
+            <select value={temaPreferidoEscuroId} onChange={(e) => configurarAutomatico({ escuroId: e.target.value })} aria-label="Tema escuro" className="rounded-lg border border-borda bg-fundo px-2 py-1 text-texto-primario">
+              {temas.filter((t) => t.modoBase !== "claro").map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+            </select>
+          </label>
+        </div>
+      )}
 
       {criandoTema && (
         <CriarTemaForm

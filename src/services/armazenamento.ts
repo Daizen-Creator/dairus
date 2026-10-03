@@ -76,3 +76,17 @@ export async function salvarPreferencia(chave: string, valor: unknown): Promise<
   }
   localStorage.setItem(prefixoLocal + chave, JSON.stringify(valor));
 }
+
+/** Esvazia as preferências da conta atual (usado ao excluir a conta). */
+export async function limparPreferenciasDaConta(): Promise<void> {
+  if (estaNoTauri()) {
+    try {
+      const loja = (await obterLoja()) as LojaTauri & { clear?: () => Promise<void> };
+      await loja.clear?.();
+      await loja.save();
+    } catch {
+      // o arquivo é apagado pelo Rust de qualquer forma
+    }
+  }
+  for (const chave of Object.keys(localStorage)) if (prefixoLocal && chave.startsWith(prefixoLocal)) localStorage.removeItem(chave);
+}

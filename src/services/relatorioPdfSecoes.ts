@@ -1,6 +1,6 @@
 // Seções opcionais do relatório em PDF (arquivo leve, sem a biblioteca de PDF).
 
-export type SecaoPdf = "categorias" | "receitas" | "maiores" | "orcamento" | "contas" | "pagar" | "metas" | "lancamentos" | "balancete";
+export type SecaoPdf = "categorias" | "receitas" | "maiores" | "orcamento" | "contas" | "pagar" | "metas" | "lancamentos" | "balancete" | "ia";
 
 export const SECOES_PDF: Array<{ id: SecaoPdf; rotulo: string; padrao: boolean }> = [
   { id: "categorias", rotulo: "Despesas por categoria (tabela)", padrao: true },
@@ -12,4 +12,5 @@ export const SECOES_PDF: Array<{ id: SecaoPdf; rotulo: string; padrao: boolean }
   { id: "metas", rotulo: "Metas", padrao: true },
   { id: "lancamentos", rotulo: "Lista completa de lançamentos", padrao: false },
   { id: "balancete", rotulo: "Balancete contábil", padrao: false },
+  { id: "ia", rotulo: "Comentário da IA sobre o período (precisa da chave do Gemini)", padrao: false },
 ];

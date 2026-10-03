@@ -38,6 +38,9 @@ import { iconeDaCategoria } from "../dashboard/categoriaIcone";
 import { calcularCiclo } from "./ciclo";
 import { NovaContaForm } from "./NovaContaForm";
 import { dividirEmParcelas, parcelamentoDe } from "./parcelas";
+import { DetalhesCartao } from "./DetalhesCartao";
+import { ciclosFechados } from "./faturas";
+import { cartoes as servicoCartoes, type Adicional, type Fatura } from "../../services/cartoes";
 import type { Conta, Lancamento } from "../../types/accounting";
 import { useAoAlterarDados } from "../../state/useAoAlterarDados";
 
@@ -89,20 +92,73 @@ export function CartoesPage() {
   const [valor, setValor] = useState("");
   const [origemId, setOrigemId] = useState("");
   const [editando, setEditando] = useState<string | null>(null);
-  const [ed, setEd] = useState({ nome: "", limite: "", fecha: "1", vence: "10" });
+  const [ed, setEd] = useState({ nome: "", limite: "", fecha: "1", vence: "10", juros: "" });
   const [comprando, setComprando] = useState<string | null>(null);
-  const [cp, setCp] = useState({ descricao: "", valor: "", categoriaId: "despesa-outras", parcelas: "1" });
+  const [cp, setCp] = useState({ descricao: "", valor: "", categoriaId: "despesa-outras", parcelas: "1", portador: "" });
   const [detalhe, setDetalhe] = useState<string | null>(null);
 
   useAoAlterarDados(() => {
     carregar().catch(() => {});
   });
 
+  const [faturas, setFaturas] = useState<Fatura[]>([]);
+  const [adicionais, setAdicionais] = useState<Adicional[]>([]);
+  const [portadores, setPortadores] = useState<Map<string, string>>(new Map());
+  const [reembolsados, setReembolsados] = useState<Set<string>>(new Set());
+  const [juros, setJuros] = useState<Map<string, number | null>>(new Map());
+  const [reembolsando, setReembolsando] = useState<string | null>(null);
+  const [rb, setRb] = useState({ valor: "", motivo: "" });
+
   async function carregar() {
-    const [c, l] = await Promise.all([contabilidade.listarContas(), contabilidade.listarLancamentos(3000)]);
+    const [c, l] = await Promise.all([contabilidade.listarContas(), contabilidade.listarLancamentos(5000)]);
     setContas(c);
     setLancamentos(l);
     setCarregando(false);
+    try {
+      const [f, ad, por, re, cfg] = await Promise.all([servicoCartoes.listarFaturas(), servicoCartoes.listarAdicionais(), servicoCartoes.listarPortadores(), servicoCartoes.listarReembolsos(), servicoCartoes.listarConfig()]);
+      if (!Array.isArray(f)) return;
+      setAdicionais(ad);
+      setPortadores(new Map(por.map((p) => [p.lancamento_id, p.outro_id])));
+      setReembolsados(new Set(re.map((r) => r.lancamento_id)));
+      setJuros(new Map(cfg.map((x) => [x.cartao_id, x.juros_rotativo])));
+      setFaturas(await congelarFaturasFechadas(c, l, f));
+    } catch {
+      // sem histórico de faturas (ex.: fora do app): a tela segue com o resto
+    }
+  }
+
+  /** No fechamento, a fatura fica guardada com o valor daquele dia (congelada). */
+  async function congelarFaturasFechadas(contasAtuais: Conta[], lancs: Lancamento[], existentes: Fatura[]): Promise<Fatura[]> {
+    const hojeISO = dataAtualISO();
+    const porId = new Map(contasAtuais.map((x) => [x.id, x]));
+    const chaves = new Set(existentes.map((f) => `${f.cartao_id}|${f.fechamento}`));
+    let criou = false;
+    for (const cartao of contasAtuais.filter((x) => x.tipo === "PASSIVO" && x.subtipo === "CARTAO_CREDITO" && x.dia_fechamento_fatura && x.dia_vencimento_fatura)) {
+      const compras = comprasDoCartao(cartao, lancs, porId);
+      const primeira = compras.map((x) => x.data).sort()[0];
+      if (!primeira) continue;
+      for (const ciclo of ciclosFechados(cartao.dia_fechamento_fatura!, cartao.dia_vencimento_fatura!, hojeISO, 12)) {
+        if (ciclo.fechamento < primeira) break;
+        if (chaves.has(`${cartao.id}|${ciclo.fechamento}`)) continue;
+        const valor = compras.filter((x) => x.data >= ciclo.inicio && x.data <= ciclo.fechamento).reduce((acc, x) => acc + x.valor, 0);
+        if (await servicoCartoes.congelarFatura(cartao.id, ciclo.inicio, ciclo.fechamento, ciclo.vencimento, Math.max(0, valor))) criou = true;
+      }
+    }
+    return criou ? servicoCartoes.listarFaturas() : existentes;
+  }
+
+  async function reembolsar(compra: Lancamento) {
+    const centavos = valorInputParaCentavos(rb.valor);
+    if (centavos <= 0) return toast.error("Informe o valor do reembolso.");
+    try {
+      await servicoCartoes.registrarReembolso(compra.id, centavos, dataAtualISO(), rb.motivo.trim() || null);
+      toast.success("Reembolso registrado: aparece como crédito na fatura.");
+      setReembolsando(null);
+      setRb({ valor: "", motivo: "" });
+      await carregar();
+    } catch (e) {
+      toast.error(String(e));
+    }
   }
 
   useEffect(() => {
@@ -215,7 +271,7 @@ export function CartoesPage() {
       toast.warning("Essa compra ultrapassa o limite do cartão — registrada mesmo assim.");
     }
     try {
-      await contabilidade.registrarDespesa({
+      const compra = await contabilidade.registrarDespesa({
         conta_origem_id: cartao.id,
         categoria_despesa_id: cp.categoriaId,
         valor_centavos: centavos,
@@ -223,6 +279,7 @@ export function CartoesPage() {
         descricao: cp.descricao.trim(),
         parcelas: parcelas > 1 ? parcelas : null,
       });
+      if (cp.portador) await servicoCartoes.definirPortador(compra.id, cp.portador).catch(() => {});
       toast.success(parcelas > 1 ? `Compra registrada em ${parcelas}x de ${formatarCentavos(Math.trunc(centavos / parcelas))}.` : "Compra registrada no cartão.");
       setCp({ ...cp, descricao: "", valor: "", parcelas: "1" });
       await carregar();
@@ -234,6 +291,8 @@ export function CartoesPage() {
   async function salvarEdicao(cartao: Conta) {
     try {
       await extras.atualizarConta(cartao.id, ed.nome, cartao.instituicao, valorInputParaCentavos(ed.limite), Number(ed.fecha), Number(ed.vence));
+      const j = ed.juros.trim() ? Number(ed.juros.replace(",", ".")) / 100 : null;
+      await servicoCartoes.definirJuros(cartao.id, j !== null && Number.isFinite(j) ? j : null);
       toast.success("Cartão atualizado.");
       setEditando(null);
       await carregar();
@@ -287,6 +346,13 @@ export function CartoesPage() {
       const nome = x.categoria?.nome ?? "Outros";
       porCategoria.set(nome, (porCategoria.get(nome) ?? 0) + x.valor);
     }
+    // Gasto da fatura atual por quem usou (titular = "").
+    const gastoPorPortador = new Map<string, number>();
+    for (const x of d.compras) {
+      if (x.data < d.ciclo.inicioAtual || x.data > d.ciclo.proximoFechamento) continue;
+      const quem = portadores.get(x.l.id) ?? "";
+      gastoPorPortador.set(quem, (gastoPorPortador.get(quem) ?? 0) + x.valor);
+    }
     const cats = [...porCategoria.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 4);
 
     // Compras dos últimos 6 meses.
@@ -328,7 +394,7 @@ export function CartoesPage() {
               <button
                 onClick={() => {
                   setEditando(cartao.id);
-                  setEd({ nome: cartao.nome, limite: centavosParaValorInput(limite), fecha: String(cartao.dia_fechamento_fatura ?? 1), vence: String(cartao.dia_vencimento_fatura ?? 10) });
+                  setEd({ nome: cartao.nome, limite: centavosParaValorInput(limite), fecha: String(cartao.dia_fechamento_fatura ?? 1), vence: String(cartao.dia_vencimento_fatura ?? 10), juros: juros.get(cartao.id) ? String(((juros.get(cartao.id) ?? 0) * 100).toFixed(2)).replace(".", ",") : "" });
                 }}
                 title="Editar cartão"
                 aria-label={`Editar ${cartao.nome}`}
@@ -348,6 +414,7 @@ export function CartoesPage() {
             <label className="text-[11px] text-texto-secundario">Limite<input value={ed.limite} onChange={(e) => setEd({ ...ed, limite: e.target.value })} inputMode="decimal" className={`${CLASSE_INPUT} mt-1 w-full py-1`} /></label>
             <label className="text-[11px] text-texto-secundario">Fecha dia<input type="number" min={1} max={31} value={ed.fecha} onChange={(e) => setEd({ ...ed, fecha: e.target.value })} className={`${CLASSE_INPUT} mt-1 w-full py-1`} /></label>
             <label className="text-[11px] text-texto-secundario">Vence dia<input type="number" min={1} max={31} value={ed.vence} onChange={(e) => setEd({ ...ed, vence: e.target.value })} className={`${CLASSE_INPUT} mt-1 w-full py-1`} /></label>
+            <label className="col-span-3 text-[11px] text-texto-secundario">Juros do rotativo (% ao mês, veja na fatura do banco)<input value={ed.juros} onChange={(e) => setEd({ ...ed, juros: e.target.value })} inputMode="decimal" placeholder="12" className={`${CLASSE_INPUT} mt-1 w-full py-1`} /></label>
             <div className="col-span-3 flex gap-2">
               <Button tamanho="pequeno" onClick={() => salvarEdicao(cartao)}>Salvar</Button>
               <Button tamanho="pequeno" variante="fantasma" onClick={() => setEditando(null)}>Cancelar</Button>
@@ -429,6 +496,9 @@ export function CartoesPage() {
                 <input value={cp.valor} onChange={(e) => setCp({ ...cp, valor: e.target.value })} inputMode="decimal" placeholder="Valor (R$)" aria-label="Valor da compra" className={`${CLASSE_INPUT} w-28`} />
                 <Select aria-label="Categoria" value={cp.categoriaId} onValueChange={(v) => setCp({ ...cp, categoriaId: v })} options={categoriasDespesa.map((c) => ({ value: c.id, label: c.nome }))} className="flex-1" />
               </div>
+              {adicionais.some((a) => a.cartao_id === cartao.id) && (
+                <Select aria-label="Quem usou" value={cp.portador} onValueChange={(v) => setCp({ ...cp, portador: v })} options={[{ value: "", label: "Titular" }, ...adicionais.filter((a) => a.cartao_id === cartao.id).map((a) => ({ value: a.id, label: `Adicional: ${a.nome}` }))]} className="w-full" />
+              )}
               <label className="flex items-center gap-2 text-xs text-texto-secundario">
                 Parcelas
                 <input type="number" min={1} max={72} value={cp.parcelas} onChange={(e) => setCp({ ...cp, parcelas: e.target.value })} aria-label="Número de parcelas" className={`${CLASSE_INPUT} w-20 py-1`} />
@@ -469,6 +539,16 @@ export function CartoesPage() {
               ))}
             </div>
             <p className="mb-2 text-[11px] text-texto-secundario">Média mensal de compras (6 meses): {dinheiro(Math.round(media))}</p>
+            <DetalhesCartao
+              cartao={cartao}
+              faturas={faturas}
+              lancamentos={lancamentos}
+              adicionais={adicionais}
+              jurosMensal={juros.get(cartao.id) ?? null}
+              gastoPorPortador={gastoPorPortador}
+              dinheiro={dinheiro}
+              onAlterado={carregar}
+            />
             {d.compras.length === 0 ? (
               <p className="text-xs text-texto-secundario">Nenhuma compra neste cartão ainda.</p>
             ) : (
@@ -478,6 +558,18 @@ export function CartoesPage() {
                     <span className="min-w-0 truncate text-texto-secundario">
                       {formatarDataISOParaBR(x.data).slice(0, 5)} · <span className="text-texto-primario">{x.l.descricao}</span>
                       {x.parcela && <span> ({x.parcela.numero}/{x.parcela.total})</span>}
+                      {portadores.has(x.l.id) && <span> · {adicionais.find((a) => a.id === portadores.get(x.l.id))?.nome}</span>}
+                      {reembolsados.has(x.l.id) && <span className="ml-1 rounded bg-sucesso/15 px-1 text-[10px] text-sucesso">reembolso</span>}
+                      {x.valor > 0 && x.l.origem !== "ESTORNO" && !reembolsados.has(x.l.id) && (x.parcela?.numero ?? 1) === 1 && (
+                        <button onClick={() => { setReembolsando(reembolsando === x.l.id ? null : x.l.id); setRb({ valor: "", motivo: "" }); }} className="ml-1 text-[10px] text-primaria hover:underline">reembolso</button>
+                      )}
+                      {reembolsando === x.l.id && (
+                        <span className="mt-1 flex flex-wrap items-center gap-1">
+                          <input value={rb.valor} onChange={(e) => setRb({ ...rb, valor: e.target.value })} placeholder="Valor" inputMode="decimal" aria-label="Valor do reembolso" className={`${CLASSE_INPUT} w-20 py-0.5 text-xs`} />
+                          <input value={rb.motivo} onChange={(e) => setRb({ ...rb, motivo: e.target.value })} placeholder="Motivo (opcional)" aria-label="Motivo do reembolso" className={`${CLASSE_INPUT} w-32 py-0.5 text-xs`} />
+                          <Button tamanho="pequeno" onClick={() => reembolsar(x.l)}>OK</Button>
+                        </span>
+                      )}
                     </span>
                     <span className={`shrink-0 tabular-nums ${x.valor < 0 ? "text-sucesso" : "text-texto-primario"}`}>{dinheiro(x.valor)}</span>
                   </li>

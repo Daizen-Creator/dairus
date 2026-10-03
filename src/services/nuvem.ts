@@ -49,3 +49,32 @@ export async function apagarBackupDaNuvem(nome: string): Promise<void> {
   const { error } = await supabase.storage.from(BUCKET).remove([`${pasta}/${nome}`]);
   if (error) throw new Error(error.message);
 }
+
+/** Envia um arquivo qualquer (ex.: relatório em PDF) para <conta>/<subpasta>/ na nuvem. */
+export async function enviarArquivoParaNuvem(subpasta: string, nome: string, bytes: Uint8Array, tipo: string): Promise<void> {
+  const pasta = await pastaDaConta();
+  const { error } = await supabase.storage.from(BUCKET).upload(`${pasta}/${subpasta}/${nome}`, new Blob([new Uint8Array(bytes)], { type: tipo }), { upsert: true, contentType: tipo });
+  if (error) throw new Error(error.message);
+}
+
+/** Apaga todos os arquivos da conta na nuvem (backups, sincronização e relatórios). Devolve quantos apagou. */
+export async function apagarTudoDaNuvem(): Promise<number> {
+  const raiz = await pastaDaConta();
+  const arquivos: string[] = [];
+  const visitar = async (pasta: string, nivel: number) => {
+    const { data, error } = await supabase.storage.from(BUCKET).list(pasta, { limit: 1000 });
+    if (error) throw new Error(error.message);
+    for (const item of data ?? []) {
+      const caminho = `${pasta}/${item.name}`;
+      // Pastas vêm sem id no Storage.
+      if (item.id === null && nivel < 4) await visitar(caminho, nivel + 1);
+      else if (item.id !== null) arquivos.push(caminho);
+    }
+  };
+  await visitar(raiz, 0);
+  for (let i = 0; i < arquivos.length; i += 100) {
+    const { error } = await supabase.storage.from(BUCKET).remove(arquivos.slice(i, i + 100));
+    if (error) throw new Error(error.message);
+  }
+  return arquivos.length;
+}

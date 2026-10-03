@@ -6,6 +6,8 @@ import {
   Eye,
   EyeOff,
   KeyRound,
+  ListChecks,
+  Mic,
   PlugZap,
   Send,
   ShieldCheck,
@@ -28,6 +30,10 @@ import { usePreferencia } from "../../state/usePreferencia";
 import { chamarGemini, limparChave, tipoDaChave } from "../../services/gemini";
 
 import type { Mensagem } from "../../services/gemini";
+import { TextoIA as Texto } from "./TextoIA";
+import { LancarComIA } from "./LancarComIA";
+import { AnalisesIA } from "./AnalisesIA";
+import { OrganizarIA } from "./OrganizarIA";
 
 type Bloco = "saldos" | "categorias" | "contas_a_pagar" | "metas" | "orcamento" | "patrimonio" | "transacoes";
 
@@ -116,27 +122,6 @@ async function montarContexto(blocos: Set<Bloco>, anonimo: boolean, nTransacoes:
   return linhas.join("\n");
 }
 
-/** Markdown mínimo: **negrito**, listas com "-"/"*" e quebras de linha. Sem HTML injetado. */
-function Texto({ texto }: { texto: string }) {
-  const linhas = texto.split("\n");
-  return (
-    <div className="space-y-1">
-      {linhas.map((l, i) => {
-        const item = /^\s*[-*]\s+/.test(l);
-        const conteudo = l.replace(/^\s*[-*]\s+/, "");
-        const partes = conteudo.split(/(\*\*[^*]+\*\*)/g).map((p, j) => (p.startsWith("**") && p.endsWith("**") ? <strong key={j}>{p.slice(2, -2)}</strong> : <span key={j}>{p}</span>));
-        return item ? (
-          <p key={i} className="flex gap-2 pl-1"><span aria-hidden>•</span><span>{partes}</span></p>
-        ) : l.trim() === "" ? (
-          <div key={i} className="h-1" />
-        ) : (
-          <p key={i}>{partes}</p>
-        );
-      })}
-    </div>
-  );
-}
-
 export function IaPage() {
   const [chave, setChave] = useState("");
   const [modelo, setModelo] = usePreferencia<string>("gemini_modelo", "gemini-2.5-flash");
@@ -145,6 +130,7 @@ export function IaPage() {
   const [temperatura, setTemperatura] = usePreferencia<number>("gemini_temperatura", 0.4);
   const [blocosSel, setBlocosSel] = usePreferencia<Bloco[]>("gemini_blocos", BLOCOS.filter((b) => b.padrao).map((b) => b.id));
   const [anonimo, setAnonimo] = usePreferencia<boolean>("gemini_anonimo", false);
+  const [diagAuto, setDiagAuto] = usePreferencia<boolean>("diagnostico_ia_auto", true);
   const [nTransacoes, setNTransacoes] = usePreferencia<number>("gemini_transacoes", 15);
   const [rascunhoChave, setRascunhoChave] = useState("");
   const [mostrar, setMostrar] = useState(false);
@@ -156,7 +142,7 @@ export function IaPage() {
   const [copiado, setCopiado] = useState<number | null>(null);
   const fimRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const [secao, setSecao] = useAbaDaPagina<"conversa" | "configuracao">("ia", "conversa");
+  const [secao, setSecao] = useAbaDaPagina<"conversa" | "lancar" | "analises" | "organizar" | "configuracao">("ia", "conversa");
 
   const blocos = useMemo(() => new Set(blocosSel), [blocosSel]);
   const modeloEfetivo = modeloLivre.trim() || modelo;
@@ -254,7 +240,11 @@ export function IaPage() {
         <p className="text-sm text-texto-secundario">Assistente com Google Gemini, usando a sua própria chave de API.</p>
       </div>
 
-      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "conversa", rotulo: "Conversa", icone: Sparkles }, { id: "configuracao", rotulo: "Conexão e privacidade", icone: KeyRound }]} />
+      <Abas ativa={secao} onChange={setSecao} abas={[{ id: "conversa", rotulo: "Conversa", icone: Sparkles }, { id: "lancar", rotulo: "Lançar", icone: Mic }, { id: "analises", rotulo: "Análises", icone: Wand2 }, { id: "organizar", rotulo: "Organizar", icone: ListChecks }, { id: "configuracao", rotulo: "Conexão e privacidade", icone: KeyRound }]} />
+
+      {secao === "lancar" && <LancarComIA temChave={!!chave} />}
+      {secao === "analises" && <AnalisesIA temChave={!!chave} />}
+      {secao === "organizar" && <OrganizarIA temChave={!!chave} />}
 
       {(secao === "configuracao") && (<>
       <div className="grid gap-4 lg:grid-cols-2">
@@ -305,6 +295,7 @@ export function IaPage() {
               </label>
             )}
           </div>
+          <label className="mt-3 flex items-center gap-2 text-sm text-texto-primario"><input type="checkbox" checked={diagAuto} onChange={() => setDiagAuto(!diagAuto)} className="h-4 w-4 accent-[var(--cor-primaria)]" />Diagnóstico automático do mês (dia 1º, aparece no Início)</label>
           <button onClick={mostrarDados} className="mt-3 text-xs text-primaria hover:underline">{contexto ? "Ocultar dados enviados" : "Ver exatamente o que será enviado"}</button>
           {contexto && <pre className="mt-2 max-h-52 overflow-y-auto whitespace-pre-wrap rounded-lg border border-borda bg-fundo p-3 text-xs text-texto-secundario">{contexto}</pre>}
         </Secao>

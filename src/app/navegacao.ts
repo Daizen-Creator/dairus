@@ -8,12 +8,14 @@ import {
   Target,
   Building2,
   ChartCandlestick,
+  Users,
   BadgeDollarSign,
   Radar,
   ChartNoAxesCombined,
   Sparkles,
   ShieldCheck,
   Settings,
+  CircleHelp,
   type LucideIcon,
 } from "lucide-react";
 
@@ -45,6 +47,7 @@ export const NAVEGACAO: ItemNavegacao[] = [
     icone: Building2,
   },
   { rota: "/investimentos", rotulo: "Investimentos", icone: ChartCandlestick, tag: "IA" },
+  { rota: "/pessoas", rotulo: "Pessoas e Divisões", icone: Users },
   { rota: "/salario", rotulo: "Salário e Renda", icone: BadgeDollarSign },
   {
     rota: "/contabilidade",
@@ -73,4 +76,5 @@ export const NAVEGACAO: ItemNavegacao[] = [
     rotulo: "Backup e Segurança",
     icone: ShieldCheck,
   },
+  { rota: "/ajuda", rotulo: "Ajuda", icone: CircleHelp },
 ];

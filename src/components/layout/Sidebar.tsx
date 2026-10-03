@@ -15,6 +15,21 @@ export function Sidebar() {
   const selecionarTema = useThemeStore((s) => s.selecionarTema);
   const amostras = todosOsTemas().slice(0, 16);
 
+  // Janela estreita (notebook pequeno, tela dividida): recolhe sozinha; o botão abre temporariamente.
+  const [estreita, setEstreita] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.("(max-width: 1023px)").matches);
+  const [abertaNaEstreita, setAbertaNaEstreita] = useState(false);
+  const [versao, setVersao] = useState("");
+  useEffect(() => {
+    import("@tauri-apps/api/app").then(({ getVersion }) => getVersion()).then(setVersao).catch(() => setVersao(""));
+  }, []);
+  useEffect(() => {
+    const mq = window.matchMedia?.("(max-width: 1023px)");
+    if (!mq) return;
+    const f = () => { setEstreita(mq.matches); setAbertaNaEstreita(false); };
+    mq.addEventListener("change", f);
+    return () => mq.removeEventListener("change", f);
+  }, []);
+
   useEffect(() => {
     lerPreferencia<boolean>(CHAVE_RECOLHIDO).then((valor) => {
       if (valor !== null) setRecolhido(valor);
@@ -22,15 +37,18 @@ export function Sidebar() {
   }, []);
 
   function alternar() {
+    if (estreita) return setAbertaNaEstreita((v) => !v);
     const novo = !recolhido;
     setRecolhido(novo);
     salvarPreferencia(CHAVE_RECOLHIDO, novo);
   }
 
+  const fechada = estreita ? !abertaNaEstreita : recolhido;
+
   return (
     <nav
       className="sem-impressao flex shrink-0 flex-col border-r border-borda bg-superficie transition-[width] duration-150 [transition-timing-function:var(--ease-out)]"
-      style={{ width: recolhido ? 64 : 232 }}
+      style={{ width: fechada ? 64 : 232 }}
     >
       <ul className="flex-1 space-y-0.5 overflow-y-auto p-2">
         {NAVEGACAO.map((item) => {
@@ -65,7 +83,7 @@ export function Sidebar() {
                       className="shrink-0"
                       style={{ color: isActive ? "#ffffff" : undefined }}
                     />
-                    {!recolhido && (
+                    {!fechada && (
                       <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
                         <span className="truncate">{item.rotulo}</span>
                         {item.tag && (
@@ -100,7 +118,7 @@ export function Sidebar() {
                 boxShadow: brilhoDeCor(temaAtivo.cores.primaria, 0.8),
               }}
             />
-            {!recolhido && (
+            {!fechada && (
               <>
                 <span className="min-w-0 flex-1 leading-tight">
                   <span className="block text-[11px] text-texto-secundario">Tema Atual</span>
@@ -110,7 +128,7 @@ export function Sidebar() {
               </>
             )}
           </NavLink>
-          {!recolhido && (
+          {!fechada && (
             <div className="mt-2.5 grid grid-cols-8 gap-1.5">
               {amostras.map((tema) => {
                 const ativo = tema.id === temaAtivo.id;
@@ -137,13 +155,13 @@ export function Sidebar() {
           <button
             type="button"
             onClick={alternar}
-            aria-label={recolhido ? "Expandir menu" : "Recolher menu"}
+            aria-label={fechada ? "Expandir menu" : "Recolher menu"}
             className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-texto-secundario hover:bg-borda/50"
           >
-            {recolhido ? <ChevronsRight size={14} /> : <ChevronsLeft size={14} />}
-            {!recolhido && "Recolher"}
+            {fechada ? <ChevronsRight size={14} /> : <ChevronsLeft size={14} />}
+            {!fechada && "Recolher"}
           </button>
-          {!recolhido && <span className="px-2 text-[10px] text-texto-secundario">v0.1.0</span>}
+          {!fechada && <span className="px-2 text-[10px] text-texto-secundario">v{versao}</span>}
         </div>
       </div>
     </nav>

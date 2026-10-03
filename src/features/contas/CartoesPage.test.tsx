@@ -53,4 +53,28 @@ describe("Cartões", () => {
       expect(invocar).toHaveBeenCalledWith("registrar_despesa", { input: expect.objectContaining({ conta_origem_id: "cartao-nu", valor_centavos: 120_000, parcelas: 6 }) }),
     );
   });
+
+  it("mostra a fatura fechada atrasada com encargos e registra reembolso", async () => {
+    vi.useRealTimers();
+    const usuario = userEvent.setup();
+    const hoje = new Date().toISOString().slice(0, 10);
+    const compra = lancamento({ id: "c1", data: hoje, descricao: "Tênis" }, 30_000, "cartao-nu", "despesa-alimentacao");
+    invocar.mockImplementation(async (c: string) => {
+      if (c === "listar_contas") return [...CONTAS.filter((x) => x.id !== "cartao-nu"), cartao];
+      if (c === "listar_lancamentos") return [compra];
+      if (c === "listar_faturas") return [{ id: "f1", cartao_id: "cartao-nu", inicio: "2026-01-06", fechamento: "2026-02-05", vencimento: "2026-02-12", valor_centavos: 50_000, encargos_lancamento_id: null }];
+      if (c === "listar_config_cartoes") return [{ cartao_id: "cartao-nu", juros_rotativo: 0.1 }];
+      if (c === "congelar_fatura") return false;
+      if (c === "listar_adicionais" || c === "listar_portadores" || c === "listar_reembolsos") return [];
+      return { id: "novo" };
+    });
+    render(<CartoesPage />);
+    await usuario.click(await screen.findByRole("button", { name: "Ver compras" }));
+    expect(await screen.findByText(/Atrasada/)).toBeInTheDocument();
+    expect(screen.getByText(/Juros, multa e IOF estimados/)).toBeInTheDocument();
+    await usuario.click(screen.getByRole("button", { name: "reembolso" }));
+    await usuario.type(screen.getByLabelText("Valor do reembolso"), "100");
+    await usuario.click(screen.getByRole("button", { name: "OK" }));
+    await waitFor(() => expect(invocar).toHaveBeenCalledWith("registrar_reembolso", expect.objectContaining({ compraId: "c1", valorCentavos: 10_000 })));
+  });
 });

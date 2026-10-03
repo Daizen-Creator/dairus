@@ -3,6 +3,9 @@
 export interface Orcamento {
   categoria_id: string;
   limite_centavos: number;
+  /** A sobra do mês passa para o seguinte. */
+  acumular: boolean;
+  acumular_desde: string | null;
 }
 
 export interface Meta {
@@ -14,6 +17,8 @@ export interface Meta {
   tipo: string | null;
   prioridade: "ALTA" | "MEDIA" | "BAIXA" | null;
   notas: string | null;
+  /** Conta real da meta (o guardado é o saldo dela). */
+  conta_id: string | null;
 }
 
 export interface Avaliacao {
@@ -48,6 +53,7 @@ export interface ItemRadar {
   nome: string;
   preco_alvo_centavos: number | null;
   precos: PrecoObservado[];
+  meta_id: string | null;
 }
 
 export interface InfoBackup {

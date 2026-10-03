@@ -34,6 +34,8 @@ import { BannerMotivacional } from "./BannerMotivacional";
 import { CardAtalho } from "./CardAtalho";
 import { calcularPeriodo, SeletorPeriodo, type Periodo } from "./SeletorPeriodo";
 import { StatusRodape } from "./StatusRodape";
+import { CardDiagnosticoIA, CardResumoSemanal } from "./CardResumoSemanal";
+import { PrimeirosPassos } from "../ajuda/PrimeirosPassos";
 import { StatCard } from "../../components/ui/StatCard";
 import { IconeCoisa } from "../../components/ui/IconeCoisa";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -60,6 +62,7 @@ export function DashboardPage() {
   const [recarga, setRecarga] = useState(0);
   useAoAlterarDados(() => setRecarga((r) => r + 1));
   const [nomeUsuario, setNomeUsuario] = usePreferencia<string>("nome_usuario", "");
+  const [colunaRecolhida, setColunaRecolhida] = usePreferencia<boolean>("dashboard_coluna_recolhida", false);
   const [editandoNome, setEditandoNome] = useState(false);
   const [rascunhoNome, setRascunhoNome] = useState("");
   const [ocultar, setOcultar] = usePreferencia<boolean>("ocultar_saldos", false);
@@ -240,9 +243,12 @@ export function DashboardPage() {
         ]}
       />
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
+      <div className={`grid grid-cols-1 gap-6 ${colunaRecolhida ? "" : "xl:grid-cols-[1fr_320px]"}`}>
         <div className="min-w-0 space-y-6">
           {secao === "resumo" && (<>
+          <PrimeirosPassos compacto />
+          <CardDiagnosticoIA oculto={ocultar} />
+          <CardResumoSemanal dinheiro={dinheiro} />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               titulo="Saldo em Conta"
@@ -405,6 +411,8 @@ export function DashboardPage() {
         </div>
 
         <div className="space-y-4">
+          <button onClick={() => setColunaRecolhida(!colunaRecolhida)} className="hidden w-full items-center justify-end gap-1 text-xs text-texto-secundario hover:text-primaria xl:flex" aria-label={colunaRecolhida ? "Mostrar coluna lateral" : "Recolher coluna lateral"}>{colunaRecolhida ? "Mostrar painel lateral" : "Recolher painel lateral →"}</button>
+          <div className={`space-y-4 ${colunaRecolhida ? "xl:hidden" : ""}`}>
           <div className="rounded-xl border border-borda bg-cartao p-4">
             <div className="flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-texto-primario">
@@ -490,6 +498,7 @@ export function DashboardPage() {
               },
             ]}
           />
+          </div>
         </div>
       </div>
     </div>

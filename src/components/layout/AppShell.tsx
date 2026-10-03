@@ -7,6 +7,9 @@ import { IntegracaoSistema } from "./IntegracaoSistema";
 import { LancamentoRapido } from "./LancamentoRapido";
 import { AvisoSincronizacao } from "./AvisoSincronizacao";
 import { AvisoAtualizacao } from "./AvisoAtualizacao";
+import { FaixaViagem } from "./FaixaViagem";
+import { FaixaOffline } from "./FaixaOffline";
+import { Tutorial } from "../../features/ajuda/Tutorial";
 
 export function AppShell({ carregando }: { carregando?: ReactNode }) {
   return (
@@ -14,10 +17,12 @@ export function AppShell({ carregando }: { carregando?: ReactNode }) {
       <TitleBar />
       <AvisoSincronizacao />
       <AvisoAtualizacao />
+      <FaixaOffline />
+      <FaixaViagem />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main className="min-w-0 flex-1 overflow-y-auto bg-fundo">
-          <div className="mx-auto max-w-[1600px] p-6">
+          <div className="mx-auto max-w-[1600px] p-3 sm:p-4 lg:p-6">
             <Suspense fallback={carregando}>
               <Outlet />
             </Suspense>
@@ -26,6 +31,7 @@ export function AppShell({ carregando }: { carregando?: ReactNode }) {
       </div>
       <IntegracaoSistema />
       <LancamentoRapido />
+      <Tutorial />
       <Toaster
         position="bottom-right"
         toastOptions={{

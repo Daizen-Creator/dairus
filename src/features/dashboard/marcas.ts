@@ -42,8 +42,26 @@ const MARCAS: Array<{ arquivo: string; palavras: string[] }> = [
   { arquivo: "claro", palavras: ["claro"] },
 ];
 
+/** Marcas ensinadas pelo usuário: palavras → logo embutido ou imagem enviada (data URL). */
+export interface MarcaUsuario {
+  palavras: string[];
+  imagem: string;
+}
+
+let marcasUsuario: MarcaUsuario[] = [];
+
+/** Troca as marcas ensinadas em memória (lidas das preferências ao abrir a conta). */
+export function definirMarcasUsuario(lista: MarcaUsuario[]): void {
+  marcasUsuario = Array.isArray(lista) ? lista.filter((m) => m.palavras?.length && m.imagem) : [];
+}
+
+export const MARCAS_EMBUTIDAS = MARCAS.map((m) => ({ arquivo: m.arquivo, caminho: `/marcas/${m.arquivo}.png` }));
+
 export function marcaDaDescricao(descricao: string): string | null {
   const texto = normalizar(descricao);
+  // As que você ensinou vêm primeiro (podem corrigir uma marca embutida).
+  const sua = marcasUsuario.find((m) => bateAlguma(texto, m.palavras));
+  if (sua) return sua.imagem;
   const achou = MARCAS.find((m) => bateAlguma(texto, m.palavras));
   return achou ? `/marcas/${achou.arquivo}.png` : null;
 }
@@ -53,6 +71,7 @@ export function marcaDaDescricao(descricao: string): string | null {
 const LOGOS_TRANSPARENTES = new Set(["bradesco", "claro", "gemini", "netflix", "santander", "shopee"]);
 
 export function logoTransparente(caminho: string): boolean {
+  if (caminho.startsWith("data:")) return false;
   const arquivo = caminho.split("/").pop()?.replace(".png", "") ?? "";
   return LOGOS_TRANSPARENTES.has(arquivo);
 }
