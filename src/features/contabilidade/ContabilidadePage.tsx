@@ -9,6 +9,7 @@ import { Skeleton } from "../../components/ui/Skeleton";
 import { contabilidade } from "../../services/contabilidade";
 import { exportarCsv, reais } from "../../services/exportacao";
 import { extras } from "../../services/extras";
+import { opcoesCategoria } from "../../services/categorias";
 import { dataAtualISO, formatarCentavos, formatarDataISOParaBR, valorInputParaCentavos } from "../../services/formato";
 import { balancete, razaoDaConta, resultadoPorTipo } from "../../services/relatorios";
 import { calcularPeriodo, SeletorPeriodo, type Periodo } from "../dashboard/SeletorPeriodo";
@@ -59,7 +60,7 @@ export function ContabilidadePage() {
   const [buscaPlano, setBuscaPlano] = useState("");
   const [posicao, setPosicao] = useState(hoje);
   const [verArquivadas, setVerArquivadas] = useState(false);
-  const [novaCategoria, setNovaCategoria] = useState({ nome: "", tipo: "DESPESA" as "DESPESA" | "RECEITA" });
+  const [novaCategoria, setNovaCategoria] = useState({ nome: "", tipo: "DESPESA" as "DESPESA" | "RECEITA", pai: "" });
   const [manual, setManual] = useState({ data: hoje, descricao: "", observacao: "" });
   const [partidas, setPartidas] = useState<PartidaManual[]>([
     { conta: "", tipo: "DEBITO", valor: "" },
@@ -184,7 +185,7 @@ export function ContabilidadePage() {
   async function criarCategoria(ev: React.FormEvent) {
     ev.preventDefault();
     try {
-      await extras.criarCategoria(novaCategoria.nome, novaCategoria.tipo);
+      await extras.criarCategoria(novaCategoria.nome, novaCategoria.tipo, novaCategoria.pai || null);
       setNovaCategoria({ ...novaCategoria, nome: "" });
       toast.success("Categoria criada.");
       await carregar();
@@ -386,7 +387,8 @@ export function ContabilidadePage() {
           <Secao titulo="Nova categoria">
             <form onSubmit={criarCategoria} className="sem-impressao flex flex-wrap items-center gap-2">
               <input value={novaCategoria.nome} onChange={(e) => setNovaCategoria({ ...novaCategoria, nome: e.target.value })} placeholder="Nome da categoria" aria-label="Nome da categoria" className={`${CLASSE_INPUT} w-56`} />
-              <Select aria-label="Tipo" value={novaCategoria.tipo} onValueChange={(v) => setNovaCategoria({ ...novaCategoria, tipo: v as "DESPESA" | "RECEITA" })} options={[{ value: "DESPESA", label: "Despesa" }, { value: "RECEITA", label: "Receita" }]} className="w-36" />
+              <Select aria-label="Tipo" value={novaCategoria.tipo} onValueChange={(v) => setNovaCategoria({ ...novaCategoria, tipo: v as "DESPESA" | "RECEITA", pai: "" })} options={[{ value: "DESPESA", label: "Despesa" }, { value: "RECEITA", label: "Receita" }]} className="w-36" />
+              <Select aria-label="Dentro de" value={novaCategoria.pai} onValueChange={(v) => setNovaCategoria({ ...novaCategoria, pai: v })} options={[{ value: "", label: "Categoria principal" }, ...opcoesCategoria(contas.filter((c) => c.tipo === novaCategoria.tipo && c.subtipo !== "CATEGORIA" && c.ativa), contas).map((o) => ({ ...o, label: `Subcategoria de ${o.label}` }))]} className="w-64" />
               <Button type="submit" disabled={!novaCategoria.nome.trim()}><Plus size={14} /> Criar</Button>
             </form>
           </Secao>

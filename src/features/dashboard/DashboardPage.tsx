@@ -48,6 +48,7 @@ import type { Orcamento } from "../../types/extras";
 import { BarraProgresso } from "../../components/ui/Campos";
 import type { InfoBackup, Meta } from "../../types/extras";
 import type { Agendamento, Conta, Lancamento, ResumoDashboard } from "../../types/accounting";
+import { useAoAlterarDados } from "../../state/useAoAlterarDados";
 
 export function DashboardPage() {
   const [resumo, setResumo] = useState<ResumoDashboard | null>(null);
@@ -57,6 +58,7 @@ export function DashboardPage() {
   const [metas, setMetas] = useState<Meta[]>([]);
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [recarga, setRecarga] = useState(0);
+  useAoAlterarDados(() => setRecarga((r) => r + 1));
   const [nomeUsuario, setNomeUsuario] = usePreferencia<string>("nome_usuario", "");
   const [editandoNome, setEditandoNome] = useState(false);
   const [rascunhoNome, setRascunhoNome] = useState("");
@@ -145,7 +147,7 @@ export function DashboardPage() {
     0,
   );
 
-  const contasAPagar = agendamentos.filter((a) => !a.pago_em);
+  const contasAPagar = agendamentos.filter((a) => !a.pago_em && a.tipo !== "RECEBER");
   const totalAPagar = contasAPagar.reduce((soma, a) => soma + a.valor_centavos, 0);
   const atrasadas = contasAPagar.filter((a) => a.vencimento < hoje).length;
 

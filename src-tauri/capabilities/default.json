@@ -19,9 +19,26 @@
       "allow": [
         {
           "path": "$DOCUMENT/Dairus/**"
+        },
+        {
+          "path": "$APPLOG/**"
+        },
+        {
+          "path": "$APPLOG"
         }
       ]
     },
-    "opener:allow-reveal-item-in-dir"
+    "opener:allow-reveal-item-in-dir",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-unminimize",
+    "core:window:allow-is-minimized",
+    "core:window:allow-is-visible",
+    "core:event:default",
+    "notification:default",
+    "log:default",
+    "autostart:default",
+    "global-shortcut:default"
   ]
 }

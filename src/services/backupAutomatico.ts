@@ -16,9 +16,14 @@ export async function executarBackupAutomatico(): Promise<void> {
     await extras.aplicarRetencao(manter);
     if (await lerPreferencia<boolean>("backup_nuvem_auto")) {
       const { enviarBackupParaNuvem } = await import("./nuvem");
-      await enviarBackupParaNuvem(info.nome).catch(() => {
+      try {
+        await enviarBackupParaNuvem(info.nome);
+        // Limpa também os backups antigos da nuvem, com a mesma retenção dos locais.
+        const { aplicarRetencaoNaNuvem } = await import("./sincronizacao");
+        await aplicarRetencaoNaNuvem(manter);
+      } catch {
         // sem internet: o backup local já foi feito; a nuvem fica para a próxima
-      });
+      }
     }
   }
 }

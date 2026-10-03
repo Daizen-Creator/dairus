@@ -7,6 +7,7 @@ import {
   WalletCards,
   Target,
   Building2,
+  ChartCandlestick,
   BadgeDollarSign,
   Radar,
   ChartNoAxesCombined,
@@ -43,6 +44,7 @@ export const NAVEGACAO: ItemNavegacao[] = [
     rotulo: "Patrimônio",
     icone: Building2,
   },
+  { rota: "/investimentos", rotulo: "Investimentos", icone: ChartCandlestick, tag: "IA" },
   { rota: "/salario", rotulo: "Salário e Renda", icone: BadgeDollarSign },
   {
     rota: "/contabilidade",

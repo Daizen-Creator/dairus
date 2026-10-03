@@ -37,7 +37,9 @@ import { usePreferencia } from "../../state/usePreferencia";
 import { iconeDaCategoria } from "../dashboard/categoriaIcone";
 import { calcularCiclo } from "./ciclo";
 import { NovaContaForm } from "./NovaContaForm";
+import { dividirEmParcelas, parcelamentoDe } from "./parcelas";
 import type { Conta, Lancamento } from "../../types/accounting";
+import { useAoAlterarDados } from "../../state/useAoAlterarDados";
 
 const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -45,20 +47,33 @@ type Ordem = "NOME" | "FATURA" | "USO";
 
 interface CompraCartao {
   l: Lancamento;
+  /** Data em que o valor entra na fatura (para parcelas, o mês de cada uma). */
+  data: string;
   valor: number; // positivo = compra, negativo = estorno/reembolso
   categoria: Conta | null;
+  parcela: { numero: number; total: number } | null;
 }
 
-function comprasDoCartao(cartao: Conta, lancamentos: Lancamento[], contaPorId: Map<string, Conta>): CompraCartao[] {
+export function comprasDoCartao(cartao: Conta, lancamentos: Lancamento[], contaPorId: Map<string, Conta>): CompraCartao[] {
   const saida: CompraCartao[] = [];
+  const porId = new Map(lancamentos.map((l) => [l.id, l]));
   for (const l of lancamentos) {
     if (l.origem === "FATURA" || l.origem === "SALDO_INICIAL") continue;
     const p = l.partidas.find((x) => x.conta_id === cartao.id);
     if (!p) continue;
     const categoria = l.partidas.map((x) => contaPorId.get(x.conta_id)).find((c) => c?.tipo === "DESPESA") ?? null;
-    saida.push({ l, valor: p.tipo === "CREDITO" ? p.valor_centavos : -p.valor_centavos, categoria });
+    const valor = p.tipo === "CREDITO" ? p.valor_centavos : -p.valor_centavos;
+    const parc = parcelamentoDe(l, porId);
+    if (parc) {
+      const sinal = valor < 0 ? -1 : 1;
+      for (const x of dividirEmParcelas(Math.abs(valor), parc.dataBase, parc.parcelas)) {
+        saida.push({ l, data: x.data, valor: sinal * x.valor, categoria, parcela: { numero: x.numero, total: x.total } });
+      }
+    } else {
+      saida.push({ l, data: l.data, valor, categoria, parcela: null });
+    }
   }
-  return saida.sort((a, b) => b.l.data.localeCompare(a.l.data));
+  return saida.sort((a, b) => b.data.localeCompare(a.data));
 }
 
 export function CartoesPage() {
@@ -76,8 +91,12 @@ export function CartoesPage() {
   const [editando, setEditando] = useState<string | null>(null);
   const [ed, setEd] = useState({ nome: "", limite: "", fecha: "1", vence: "10" });
   const [comprando, setComprando] = useState<string | null>(null);
-  const [cp, setCp] = useState({ descricao: "", valor: "", categoriaId: "despesa-outras" });
+  const [cp, setCp] = useState({ descricao: "", valor: "", categoriaId: "despesa-outras", parcelas: "1" });
   const [detalhe, setDetalhe] = useState<string | null>(null);
+
+  useAoAlterarDados(() => {
+    carregar().catch(() => {});
+  });
 
   async function carregar() {
     const [c, l] = await Promise.all([contabilidade.listarContas(), contabilidade.listarLancamentos(3000)]);
@@ -122,15 +141,17 @@ export function CartoesPage() {
     todos.map((c) => {
       const ciclo = calcularCiclo(c.dia_fechamento_fatura ?? 1, c.dia_vencimento_fatura ?? 10, hoje);
       const compras = comprasDoCartao(c, lancamentos, contaPorId);
-      const soma = (de: string, ate: string) => compras.filter((x) => x.l.data >= de && x.l.data <= ate).reduce((s, x) => s + x.valor, 0);
+      const soma = (de: string, ate: string) => compras.filter((x) => x.data >= de && x.data <= ate).reduce((s, x) => s + x.valor, 0);
       const diaAnt = (() => {
         const [a, m, d] = ciclo.fechamentoAnterior.split("-").map(Number);
         const dt = new Date(a, m - 1, d + 1);
         return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
       })();
-      const atual = soma(ciclo.inicioAtual, "9999-12-31");
+      const atual = soma(ciclo.inicioAtual, ciclo.proximoFechamento);
       const anterior = soma(diaAnt, ciclo.ultimoFechamento);
-      return [c.id, { ciclo, compras, atual, anterior }] as const;
+      // Parcelas que ainda vão cair nas próximas faturas (já ocupam o limite).
+      const futuras = compras.filter((x) => x.data > ciclo.proximoFechamento).reduce((s, x) => s + x.valor, 0);
+      return [c.id, { ciclo, compras, atual, anterior, futuras }] as const;
     }),
   );
 
@@ -187,6 +208,8 @@ export function CartoesPage() {
   async function registrarCompra(cartao: Conta) {
     const centavos = valorInputParaCentavos(cp.valor);
     if (!cp.descricao.trim() || centavos <= 0) return toast.error("Informe a descrição e o valor da compra.");
+    const parcelas = Math.floor(Number(cp.parcelas) || 1);
+    if (parcelas < 1 || parcelas > 72) return toast.error("O parcelamento vai de 1 a 72 vezes.");
     const limite = cartao.limite_centavos ?? 0;
     if (limite > 0 && cartao.saldo_atual_centavos + centavos > limite) {
       toast.warning("Essa compra ultrapassa o limite do cartão — registrada mesmo assim.");
@@ -198,9 +221,10 @@ export function CartoesPage() {
         valor_centavos: centavos,
         data: dataAtualISO(),
         descricao: cp.descricao.trim(),
+        parcelas: parcelas > 1 ? parcelas : null,
       });
-      toast.success("Compra registrada no cartão.");
-      setCp({ ...cp, descricao: "", valor: "" });
+      toast.success(parcelas > 1 ? `Compra registrada em ${parcelas}x de ${formatarCentavos(Math.trunc(centavos / parcelas))}.` : "Compra registrada no cartão.");
+      setCp({ ...cp, descricao: "", valor: "", parcelas: "1" });
       await carregar();
     } catch (e) {
       toast.error(String(e));
@@ -259,7 +283,7 @@ export function CartoesPage() {
     // Gastos por categoria na fatura atual.
     const porCategoria = new Map<string, number>();
     for (const x of d.compras) {
-      if (x.l.data < d.ciclo.inicioAtual) continue;
+      if (x.data < d.ciclo.inicioAtual || x.data > d.ciclo.proximoFechamento) continue;
       const nome = x.categoria?.nome ?? "Outros";
       porCategoria.set(nome, (porCategoria.get(nome) ?? 0) + x.valor);
     }
@@ -270,7 +294,7 @@ export function CartoesPage() {
     const meses = Array.from({ length: 6 }, (_, i) => {
       const dt = new Date(ah, mh - 1 - (5 - i), 1);
       const chave = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
-      return { chave, rotulo: MESES[dt.getMonth()], total: d.compras.filter((x) => x.l.data.startsWith(chave)).reduce((s, x) => s + x.valor, 0) };
+      return { chave, rotulo: MESES[dt.getMonth()], total: d.compras.filter((x) => x.data.startsWith(chave)).reduce((s, x) => s + x.valor, 0) };
     });
     const maxMes = Math.max(1, ...meses.map((m) => m.total));
     const media = meses.reduce((s, m) => s + Math.max(0, m.total), 0) / 6;
@@ -362,6 +386,11 @@ export function CartoesPage() {
             </p>
           </div>
         </div>
+        {d.futuras > 0 && (
+          <p className="mt-2 text-[11px] text-texto-secundario">
+            Parcelas das próximas faturas: <strong className="text-texto-primario">{dinheiro(d.futuras)}</strong> (já ocupam o limite)
+          </p>
+        )}
         <p className="mt-2 text-[11px] text-texto-secundario">
           Melhor dia de compra: <strong className="text-texto-primario">{formatarDataISOParaBR(d.ciclo.inicioAtual).slice(0, 5)}</strong> (logo após o fechamento)
         </p>
@@ -400,6 +429,13 @@ export function CartoesPage() {
                 <input value={cp.valor} onChange={(e) => setCp({ ...cp, valor: e.target.value })} inputMode="decimal" placeholder="Valor (R$)" aria-label="Valor da compra" className={`${CLASSE_INPUT} w-28`} />
                 <Select aria-label="Categoria" value={cp.categoriaId} onValueChange={(v) => setCp({ ...cp, categoriaId: v })} options={categoriasDespesa.map((c) => ({ value: c.id, label: c.nome }))} className="flex-1" />
               </div>
+              <label className="flex items-center gap-2 text-xs text-texto-secundario">
+                Parcelas
+                <input type="number" min={1} max={72} value={cp.parcelas} onChange={(e) => setCp({ ...cp, parcelas: e.target.value })} aria-label="Número de parcelas" className={`${CLASSE_INPUT} w-20 py-1`} />
+                {Number(cp.parcelas) > 1 && valorInputParaCentavos(cp.valor) > 0 && (
+                  <span>{cp.parcelas}x de {formatarCentavos(Math.trunc(valorInputParaCentavos(cp.valor) / Number(cp.parcelas)))} · ocupa o limite inteiro</span>
+                )}
+              </label>
               <div className="flex gap-2">
                 <Button tamanho="pequeno" onClick={() => registrarCompra(cartao)}>Registrar compra</Button>
                 <Button tamanho="pequeno" variante="fantasma" onClick={() => setComprando(null)}>Fechar</Button>
@@ -437,10 +473,11 @@ export function CartoesPage() {
               <p className="text-xs text-texto-secundario">Nenhuma compra neste cartão ainda.</p>
             ) : (
               <ul className="space-y-1 text-xs">
-                {d.compras.slice(0, 12).map((x) => (
-                  <li key={x.l.id} className="flex items-center justify-between gap-2">
+                {d.compras.filter((x) => x.data <= d.ciclo.proximoFechamento).slice(0, 12).map((x) => (
+                  <li key={`${x.l.id}-${x.parcela?.numero ?? 0}`} className="flex items-center justify-between gap-2">
                     <span className="min-w-0 truncate text-texto-secundario">
-                      {formatarDataISOParaBR(x.l.data).slice(0, 5)} · <span className="text-texto-primario">{x.l.descricao}</span>
+                      {formatarDataISOParaBR(x.data).slice(0, 5)} · <span className="text-texto-primario">{x.l.descricao}</span>
+                      {x.parcela && <span> ({x.parcela.numero}/{x.parcela.total})</span>}
                     </span>
                     <span className={`shrink-0 tabular-nums ${x.valor < 0 ? "text-sucesso" : "text-texto-primario"}`}>{dinheiro(x.valor)}</span>
                   </li>
@@ -520,6 +557,7 @@ export function CartoesPage() {
       )}
       <p className="text-xs text-texto-secundario">
         Compras no cartão também aparecem em “Despesas e Receitas” (conta de origem = o cartão). O estorno de uma compra reduz a fatura.
+        Compra parcelada ocupa o limite inteiro na hora; cada parcela entra na fatura do seu mês e o limite volta conforme você paga as faturas.
       </p>
     </div>
   );

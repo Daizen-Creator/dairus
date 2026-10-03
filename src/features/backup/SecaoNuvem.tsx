@@ -6,6 +6,8 @@ import { Secao } from "../../components/ui/Campos";
 import { extras } from "../../services/extras";
 import { apagarBackupDaNuvem, baixarBackupDaNuvem, enviarBackupParaNuvem, listarBackupsNaNuvem, type ArquivoNuvem } from "../../services/nuvem";
 import { usePreferencia } from "../../state/usePreferencia";
+import { lerEstadoLocal, pendenteDeEnvio, type EstadoLocal } from "../../services/sincronizacao";
+import { sincronizarEmSegundoPlano } from "../../components/layout/IntegracaoSistema";
 
 const tamanho = (b: number) => (b > 1_048_576 ? `${(b / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const quando = (iso: string | null) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "");
@@ -18,6 +20,18 @@ export function SecaoNuvem({ onBaixado }: { onBaixado: () => void }) {
   const [erro, setErro] = useState<string | null>(null);
   const [confirmarApagar, setConfirmarApagar] = useState<string | null>(null);
   const [enviarAuto, setEnviarAuto] = usePreferencia<boolean>("backup_nuvem_auto", false);
+  const [syncAuto, setSyncAuto] = usePreferencia<boolean>("sync_auto", true);
+  const [estadoSync, setEstadoSync] = useState<EstadoLocal | null>(null);
+  const [pendente, setPendente] = useState(false);
+
+  async function atualizarStatusSync() {
+    setEstadoSync(await lerEstadoLocal());
+    setPendente(await pendenteDeEnvio().catch(() => false));
+  }
+
+  useEffect(() => {
+    atualizarStatusSync();
+  }, []);
 
   async function carregar() {
     try {
@@ -73,12 +87,34 @@ export function SecaoNuvem({ onBaixado }: { onBaixado: () => void }) {
         </div>
       }
     >
+      <div className="mb-4 rounded-lg border border-borda bg-fundo/50 p-3">
+        <label className="flex items-center gap-2 text-sm font-medium text-texto-primario">
+          <input type="checkbox" checked={syncAuto} onChange={() => setSyncAuto(!syncAuto)} className="h-4 w-4 accent-[var(--cor-primaria)]" />
+          Sincronizar automaticamente entre computadores
+        </label>
+        <p className="mt-1 text-xs text-texto-secundario">
+          A cada 5 minutos (e ao abrir o app) as alterações deste computador vão para a nuvem e as feitas em outro computador entram aqui. Se os dois mudarem ao mesmo tempo, o Dairus pergunta qual vale e guarda a outra como backup.
+        </p>
+        <p className="mt-2 text-xs text-texto-secundario">
+          {estadoSync ? `Última sincronização: ${quando(estadoSync.sincronizado_em)} (versão ${estadoSync.versao_vista}).` : "Ainda não sincronizado neste computador."}{" "}
+          {pendente ? <strong className="text-alerta">Há alterações deste computador ainda não enviadas.</strong> : estadoSync ? <span className="text-sucesso">Nuvem em dia.</span> : null}
+        </p>
+        <Button
+          tamanho="pequeno"
+          variante="secundaria"
+          className="mt-2"
+          disabled={!!ocupado}
+          onClick={() => executar("sync", async () => { await sincronizarEmSegundoPlano(true); await atualizarStatusSync(); }, "Sincronização concluída.")}
+        >
+          {ocupado === "sync" ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Sincronizar agora
+        </Button>
+      </div>
       <p className="text-sm text-texto-secundario">
         Cópias guardadas no Supabase, numa pasta só da sua conta Google — ninguém mais (nem a outra conta) consegue ver. Servem para levar seus dados para outro computador ou se este der problema.
       </p>
       <label className="mt-3 flex items-center gap-2 text-sm text-texto-primario">
         <input type="checkbox" checked={enviarAuto} onChange={() => setEnviarAuto(!enviarAuto)} className="h-4 w-4 accent-[var(--cor-primaria)]" />
-        Enviar para a nuvem também os backups automáticos
+        Enviar para a nuvem também os backups automáticos (e apagar da nuvem os antigos, com a mesma retenção)
       </label>
 
       {erro && <p className="mt-3 rounded-lg border border-erro/50 bg-erro/10 px-3 py-2 text-xs text-erro">{erro}</p>}
@@ -121,7 +157,7 @@ export function SecaoNuvem({ onBaixado }: { onBaixado: () => void }) {
           </ul>
         </>
       )}
-      <p className="mt-3 text-xs text-texto-secundario">Para restaurar: baixe o arquivo aqui e depois use “Restaurar” na aba Backups. Os arquivos não são criptografados antes do envio; o acesso é protegido pelo login.</p>
+      <p className="mt-3 text-xs text-texto-secundario">Para restaurar: baixe o arquivo aqui e depois use “Restaurar” na aba Backups. Com a criptografia ligada, os arquivos já vão cifrados para a nuvem; sem ela, o acesso é protegido só pelo login.</p>
     </Secao>
   );
 }

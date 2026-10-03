@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { lerPreferencia } from "../../services/armazenamento";
+import { fecharJanela } from "../../services/sistema";
+
+async function fecharConformePreferencia() {
+  await fecharJanela((await lerPreferencia<boolean>("fechar_para_bandeja")) ?? false);
+}
 import { Minus, Moon, Square, Sun, Settings, X } from "lucide-react";
 import { GlobalSearch } from "./GlobalSearch";
 import { Notificacoes } from "./Notificacoes";
@@ -127,7 +133,7 @@ export function TitleBar() {
         <button
           type="button"
           aria-label="Fechar"
-          onClick={() => janela.close()}
+          onClick={() => fecharConformePreferencia()}
           className="flex h-full w-11 items-center justify-center text-texto-secundario transition-colors hover:bg-erro hover:text-white"
         >
           <X size={14} />

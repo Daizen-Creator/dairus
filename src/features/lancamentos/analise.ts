@@ -56,6 +56,8 @@ export interface Filtros {
   fim: string | null;
   ordem: Ordem;
   mostrarEstornados: boolean;
+  /** Tag livre ("TODAS" = sem filtro). */
+  tag: string;
 }
 
 export const FILTROS_PADRAO: Filtros = {
@@ -68,6 +70,7 @@ export const FILTROS_PADRAO: Filtros = {
   fim: null,
   ordem: "RECENTES",
   mostrarEstornados: true,
+  tag: "TODAS",
 };
 
 const norm = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -81,6 +84,7 @@ export function filtrosAtivos(f: Filtros): number {
     f.etiqueta !== "TODAS",
     f.inicio !== null,
     !f.mostrarEstornados,
+    (f.tag ?? "TODAS") !== "TODAS",
   ].filter(Boolean).length;
 }
 
@@ -89,20 +93,29 @@ export function aplicarFiltros(
   contaPorId: Map<string, Conta>,
   f: Filtros,
   idsEstornados: Set<string>,
+  tagsPorLancamento: Map<string, string[]> = new Map(),
 ): Array<{ l: Lancamento; a: AnaliseLancamento }> {
+  // Filtrar por uma categoria inclui as subcategorias dela.
+  const dentroDe = (c: Conta | null, alvo: string): boolean => {
+    for (let atual = c; atual; atual = atual.categoria_pai_id ? contaPorId.get(atual.categoria_pai_id) ?? null : null) {
+      if (atual.id === alvo) return true;
+    }
+    return false;
+  };
   const busca = norm(f.texto.trim());
   const itens = lancamentos
     .map((l) => ({ l, a: analisar(l, contaPorId) }))
     .filter(({ l, a }) => {
       if (!f.mostrarEstornados && (a.estorno || idsEstornados.has(l.id))) return false;
       if (f.tipo !== "TODOS" && a.tipo !== f.tipo) return false;
-      if (f.categoriaId !== "TODAS" && a.categoria?.id !== f.categoriaId) return false;
+      if (f.categoriaId !== "TODAS" && !l.partidas.some((p) => dentroDe(contaPorId.get(p.conta_id) ?? null, f.categoriaId))) return false;
+      if ((f.tag ?? "TODAS") !== "TODAS" && !(tagsPorLancamento.get(l.id) ?? []).includes(f.tag)) return false;
       if (f.contaId !== "TODAS" && !l.partidas.some((p) => p.conta_id === f.contaId)) return false;
       if (f.etiqueta === "NENHUMA" && l.etiqueta) return false;
       if (f.etiqueta !== "TODAS" && f.etiqueta !== "NENHUMA" && l.etiqueta !== f.etiqueta) return false;
       if (f.inicio && l.data < f.inicio) return false;
       if (f.fim && l.data > f.fim) return false;
-      if (busca && !norm(`${l.descricao} ${l.observacao ?? ""} ${a.categoria?.nome ?? ""}`).includes(busca)) return false;
+      if (busca && !norm(`${l.descricao} ${l.observacao ?? ""} ${a.categoria?.nome ?? ""} ${(tagsPorLancamento.get(l.id) ?? []).join(" ")}`).includes(busca)) return false;
       return true;
     });
 

@@ -112,6 +112,9 @@ pub struct NovoLancamentoInput {
     pub origem: String,
     #[serde(default)]
     pub etiqueta: Option<String>,
+    /// Número de parcelas de uma compra no cartão (2 a 72). `None` = à vista.
+    #[serde(default)]
+    pub parcelas: Option<i32>,
     pub partidas: Vec<PartidaInput>,
 }
 
@@ -128,6 +131,8 @@ pub struct Lancamento {
     pub origem: String,
     pub etiqueta: Option<String>,
     pub estornado_de: Option<String>,
+    pub parcelas: Option<i32>,
+    pub corrige: Option<String>,
     pub partidas: Vec<Partida>,
 }
 
@@ -142,6 +147,15 @@ pub struct Agendamento {
     pub lancamento_id: Option<String>,
     pub pago_em: Option<String>,
     pub recorrencia: Option<String>,
+    /// "PAGAR" (conta a pagar) ou "RECEBER" (receita agendada: salário, freela…).
+    pub tipo: String,
+    /// No vencimento, o app lança sozinho na `conta_id`.
+    pub automatico: bool,
+    pub conta_id: Option<String>,
+    /// Reajuste anual (fração, ex.: 0.08) aplicado quando a recorrência chega a `mes_reajuste`.
+    pub reajuste_anual: Option<f64>,
+    pub mes_reajuste: Option<i32>,
+    pub pessoa: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -154,4 +168,20 @@ pub struct NovoAgendamentoInput {
     pub etiqueta: Option<String>,
     #[serde(default)]
     pub recorrencia: Option<String>,
+    #[serde(default = "tipo_pagar")]
+    pub tipo: String,
+    #[serde(default)]
+    pub automatico: bool,
+    #[serde(default)]
+    pub conta_id: Option<String>,
+    #[serde(default)]
+    pub reajuste_anual: Option<f64>,
+    #[serde(default)]
+    pub mes_reajuste: Option<i32>,
+    #[serde(default)]
+    pub pessoa: Option<String>,
+}
+
+fn tipo_pagar() -> String {
+    "PAGAR".to_string()
 }

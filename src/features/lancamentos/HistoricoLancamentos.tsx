@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
-import { ChevronDown, ChevronRight, Copy, Download, FilterX, Pencil, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Download, FileText, FilterX, Paperclip, Pencil, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
 import { CLASSE_INPUT } from "../../components/ui/Campos";
@@ -8,9 +8,11 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { IconeCoisa } from "../../components/ui/IconeCoisa";
 import { Select } from "../../components/ui/Select";
 import { contabilidade } from "../../services/contabilidade";
-import { exportarCsv, reais } from "../../services/exportacao";
+import { col, exportarCsv, exportarXlsx, reais } from "../../services/exportacao";
 import { extras } from "../../services/extras";
-import { dataAtualISO, formatarCentavos, formatarDataISOParaBR } from "../../services/formato";
+import { lancExtras, lerTags, type InfoAnexo } from "../../services/lancamentosExtras";
+import { nomeCategoria, opcoesCategoria } from "../../services/categorias";
+import { centavosParaValorInput, dataAtualISO, formatarCentavos, formatarDataISOParaBR, valorInputParaCentavos } from "../../services/formato";
 import type { Conta, Lancamento } from "../../types/accounting";
 import { iconeDaCategoria } from "../dashboard/categoriaIcone";
 import { calcularPeriodo, SeletorPeriodo, type Periodo } from "../dashboard/SeletorPeriodo";
@@ -75,6 +77,47 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
   const [edDescricao, setEdDescricao] = useState("");
   const [edObs, setEdObs] = useState("");
   const [edEtiqueta, setEdEtiqueta] = useState("NENHUMA");
+  const [corrigindo, setCorrigindo] = useState<string | null>(null);
+  const [crValor, setCrValor] = useState("");
+  const [crData, setCrData] = useState("");
+  const [edTags, setEdTags] = useState("");
+  const [tagsPor, setTagsPor] = useState<Map<string, string[]>>(new Map());
+  const [anexos, setAnexos] = useState<InfoAnexo[]>([]);
+
+  async function carregarExtras() {
+    try {
+      const [tags, ax] = await Promise.all([lancExtras.listarTags(), lancExtras.listarAnexos()]);
+      const mapa = new Map<string, string[]>();
+      for (const t of tags) mapa.set(t.lancamento_id, [...(mapa.get(t.lancamento_id) ?? []), t.tag]);
+      setTagsPor(mapa);
+      setAnexos(ax);
+    } catch {
+      // sem tags/anexos (ex.: fora do app): segue sem eles
+    }
+  }
+
+  useEffect(() => {
+    carregarExtras();
+  }, [lancamentos]);
+
+  async function anexar(l: Lancamento, arquivo: File) {
+    try {
+      await lancExtras.anexar(l.id, arquivo);
+      toast.success("Comprovante anexado.");
+      carregarExtras();
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  async function removerAnexo(id: string) {
+    try {
+      await lancExtras.excluirAnexo(id);
+      carregarExtras();
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [confirmarLote, setConfirmarLote] = useState(false);
   const buscaRef = useRef<HTMLInputElement>(null);
@@ -87,9 +130,9 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
 
   const f = { ...filtros, inicio: periodo?.inicio ?? null, fim: periodo?.fim ?? null };
   const itens = useMemo(
-    () => aplicarFiltros(lancamentos, contaPorId, f, idsEstornados),
+    () => aplicarFiltros(lancamentos, contaPorId, f, idsEstornados, tagsPor),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lancamentos, contaPorId, idsEstornados, filtros, periodo],
+    [lancamentos, contaPorId, idsEstornados, filtros, periodo, tagsPor],
   );
   const totais = totalizar(itens);
   const nFiltros = filtrosAtivos(f);
@@ -147,13 +190,37 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
     setEdDescricao(l.descricao);
     setEdObs(l.observacao ?? "");
     setEdEtiqueta(l.etiqueta ?? "NENHUMA");
+    setEdTags((tagsPor.get(l.id) ?? []).join(", "));
   }
 
   async function salvarEdicao(l: Lancamento) {
     try {
       await extras.atualizarLancamentoInfo(l.id, edDescricao, edObs || null, edEtiqueta === "NENHUMA" ? null : edEtiqueta);
+      await lancExtras.definirTags(l.id, lerTags(edTags));
+      carregarExtras();
       toast.success("Lançamento atualizado.");
       setEditando(null);
+      onAlterado();
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  function iniciarCorrecao(l: Lancamento) {
+    setCorrigindo(l.id);
+    setEditando(null);
+    const total = l.partidas.filter((p) => p.tipo === "DEBITO").reduce((s, p) => s + p.valor_centavos, 0);
+    setCrValor(centavosParaValorInput(total));
+    setCrData(l.data);
+  }
+
+  async function salvarCorrecao(l: Lancamento) {
+    const centavos = valorInputParaCentavos(crValor);
+    if (centavos <= 0 || !crData) return toast.error("Informe o valor e a data corretos.");
+    try {
+      await contabilidade.corrigirLancamento({ lancamento_id: l.id, nova_data: crData, novo_valor_centavos: centavos });
+      toast.success("Lançamento corrigido (o original foi estornado na data dele).");
+      setCorrigindo(null);
       onAlterado();
     } catch (e) {
       toast.error(String(e));
@@ -209,6 +276,25 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
     }
   }
 
+  async function exportarExcel() {
+    try {
+      const caminho = await exportarXlsx("historico", [
+        {
+          nome: "Histórico",
+          total: true,
+          colunas: [col("Data", "DATA"), col("Descrição", "TEXTO", 36), col("Tipo", "TEXTO", 14), col("Categoria", "TEXTO", 20), col("Contas", "TEXTO", 28), col("Etiqueta", "TEXTO", 14), col("Valor", "MOEDA"), col("Observação", "TEXTO", 30)],
+          linhas: itens.map(({ l, a }) => [l.data, l.descricao, a.tipo, a.categoria?.nome ?? "", a.contasEnvolvidas.map((c) => c.nome).join(" / "), l.etiqueta ?? "", a.saida ? -a.valorCentavos : a.valorCentavos, l.observacao ?? ""]),
+        },
+      ]);
+      toast.success(`Arquivo salvo em ${caminho}`, { duration: 8000 });
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  const tagsUsadas = [...new Set([...tagsPor.values()].flat())].sort();
+  const anexosPor = new Map<string, InfoAnexo[]>();
+  for (const a of anexos) if (a.lancamento_id) anexosPor.set(a.lancamento_id, [...(anexosPor.get(a.lancamento_id) ?? []), a]);
   const categorias = contas.filter((c) => (c.tipo === "DESPESA" || c.tipo === "RECEITA") && c.subtipo !== "CATEGORIA");
   const contasMov = contas.filter((c) => (c.tipo === "ATIVO" || c.tipo === "PASSIVO") && c.subtipo !== "CATEGORIA");
 
@@ -234,6 +320,9 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
             <Button tamanho="pequeno" variante="secundaria" onClick={exportar} disabled={itens.length === 0}>
               <Download size={13} /> CSV
             </Button>
+            <Button tamanho="pequeno" variante="secundaria" onClick={exportarExcel} disabled={itens.length === 0}>
+              <Download size={13} /> Excel
+            </Button>
           </div>
         </div>
 
@@ -256,7 +345,7 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
             aria-label="Categoria"
             value={filtros.categoriaId}
             onValueChange={(v) => mudar("categoriaId", v)}
-            options={[{ value: "TODAS", label: "Todas as categorias" }, ...categorias.map((c) => ({ value: c.id, label: c.nome }))]}
+            options={[{ value: "TODAS", label: "Todas as categorias" }, ...opcoesCategoria(categorias, contas)]}
           />
           <Select
             aria-label="Conta"
@@ -274,6 +363,14 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
               { value: "NENHUMA", label: "Sem etiqueta" },
             ]}
           />
+          {tagsUsadas.length > 0 && (
+            <Select
+              aria-label="Tag"
+              value={filtros.tag}
+              onValueChange={(v) => mudar("tag", v)}
+              options={[{ value: "TODAS", label: "Todas as tags" }, ...tagsUsadas.map((t) => ({ value: t, label: `#${t}` }))]}
+            />
+          )}
           <div className="flex items-center gap-2">
             {periodo ? (
               <SeletorPeriodo periodo={periodo} hoje={dataAtualISO()} onChange={setPeriodo} />
@@ -385,12 +482,18 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
                       <div className="min-w-0">
                         <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-texto-primario">
                           <span className="truncate">{l.descricao}</span>
+                          {l.parcelas && <span className="rounded bg-borda/60 px-1.5 text-[10px] text-texto-secundario">{l.parcelas}x</span>}
+                          {l.corrige && <span className="rounded bg-borda/60 px-1.5 text-[10px] text-texto-secundario">corrigido</span>}
+                          {(tagsPor.get(l.id) ?? []).map((t) => (
+                            <button key={t} type="button" onClick={() => mudar("tag", t)} className="rounded-full bg-primaria/15 px-1.5 text-[10px] text-primaria hover:bg-primaria/25">#{t}</button>
+                          ))}
+                          {(anexosPor.get(l.id)?.length ?? 0) > 0 && <Paperclip size={12} className="text-texto-secundario" aria-label="Tem comprovante" />}
                           <SeloEtiqueta etiqueta={l.etiqueta} />
                           {status && <SeloStatus status={status} />}
                         </p>
                         <p className="mt-0.5 truncate text-xs text-texto-secundario">
                           {formatarDataISOParaBR(l.data)} · {ORIGENS_LEGIVEIS[l.origem] ?? l.origem}
-                          {a.categoria && ` · ${a.categoria.nome}`}
+                          {a.categoria && ` · ${nomeCategoria(a.categoria, contaPorId)}`}
                           {a.contasEnvolvidas.length > 0 && ` · ${a.contasEnvolvidas.map((c) => c.nome).join(" → ")}`}
                         </p>
                       </div>
@@ -411,6 +514,11 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
                       <button onClick={() => setAbertos((s) => alternar(s, l.id))} title="Ver partidas contábeis" aria-label="Detalhes" className="rounded-md p-1.5 text-texto-secundario transition-colors hover:bg-borda/50 hover:text-primaria">
                         {aberto ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                       </button>
+                      {!a.estorno && !jaEstornado && l.origem !== "SALDO_INICIAL" && (
+                        <button onClick={() => (corrigindo === l.id ? setCorrigindo(null) : iniciarCorrecao(l))} className="ml-1 text-xs text-texto-secundario transition-colors hover:text-primaria hover:underline" title="Corrigir valor ou data">
+                          Corrigir
+                        </button>
+                      )}
                       {!a.estorno && !jaEstornado && (
                         <button onClick={() => estornar(l.id)} className="ml-1 text-xs text-texto-secundario transition-colors hover:text-erro hover:underline" title="Estornar este lançamento">
                           Estornar
@@ -424,19 +532,48 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
                       <input value={edDescricao} onChange={(e) => setEdDescricao(e.target.value)} aria-label="Descrição" className={CLASSE_INPUT} />
                       <input value={edObs} onChange={(e) => setEdObs(e.target.value)} placeholder="Observação" aria-label="Observação" className={CLASSE_INPUT} />
                       <Select aria-label="Etiqueta" value={edEtiqueta} onValueChange={setEdEtiqueta} options={OPCOES_ETIQUETA} />
+                      <input value={edTags} onChange={(e) => setEdTags(e.target.value)} placeholder="Tags (viagem, presente)" aria-label="Tags" className={`${CLASSE_INPUT} sm:col-span-3`} />
                       <div className="flex gap-2">
                         <Button tamanho="pequeno" onClick={() => salvarEdicao(l)}>Salvar</Button>
                         <Button tamanho="pequeno" variante="fantasma" onClick={() => setEditando(null)}>Cancelar</Button>
                       </div>
                       <p className="text-[11px] text-texto-secundario sm:col-span-4">
-                        Valor, data e contas não podem ser editados (o razão contábil é imutável). Para corrigi-los, estorne e lance de novo.
+                        Para mudar valor ou data, use “Corrigir”: o app estorna o original e lança o certo sozinho.
                       </p>
+                    </div>
+                  )}
+
+                  {corrigindo === l.id && (
+                    <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-borda pt-3">
+                      <label className="text-[11px] text-texto-secundario">
+                        Valor correto
+                        <input value={crValor} onChange={(e) => setCrValor(e.target.value)} inputMode="decimal" aria-label="Valor correto" className={`${CLASSE_INPUT} mt-1 block w-32`} />
+                      </label>
+                      <label className="text-[11px] text-texto-secundario">
+                        Data correta
+                        <input type="date" value={crData} onChange={(e) => setCrData(e.target.value)} aria-label="Data correta" className={`${CLASSE_INPUT} mt-1 block`} />
+                      </label>
+                      <Button tamanho="pequeno" onClick={() => salvarCorrecao(l)}>Salvar correção</Button>
+                      <Button tamanho="pequeno" variante="fantasma" onClick={() => setCorrigindo(null)}>Cancelar</Button>
+                      {l.parcelas && <p className="w-full text-[11px] text-texto-secundario">Compra em {l.parcelas}x: o novo valor é o total, dividido nas mesmas parcelas.</p>}
                     </div>
                   )}
 
                   {aberto && (
                     <div className="mt-3 space-y-1 border-t border-borda pt-3 text-xs">
                       {l.observacao && <p className="mb-2 text-texto-secundario">Obs.: {l.observacao}</p>}
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        {(anexosPor.get(l.id) ?? []).map((ax) => (
+                          <span key={ax.id} className="inline-flex items-center gap-1 rounded-md border border-borda px-2 py-0.5">
+                            <button type="button" onClick={() => lancExtras.abrirAnexo(ax.id).catch((e) => toast.error(String(e)))} className="inline-flex items-center gap-1 text-primaria hover:underline"><FileText size={12} /> {ax.nome}</button>
+                            <button type="button" onClick={() => removerAnexo(ax.id)} aria-label={`Remover ${ax.nome}`} className="text-texto-secundario hover:text-erro"><Trash2 size={11} /></button>
+                          </span>
+                        ))}
+                        <label className="inline-flex cursor-pointer items-center gap-1 text-texto-secundario hover:text-primaria">
+                          <Paperclip size={12} /> Anexar comprovante
+                          <input type="file" accept="image/*,application/pdf" aria-label="Anexar comprovante" onChange={(e) => { const f = e.target.files?.[0]; if (f) anexar(l, f); e.target.value = ""; }} className="sr-only" />
+                        </label>
+                      </div>
                       {l.partidas.map((p) => (
                         <div key={p.id} className={`flex justify-between ${p.tipo === "CREDITO" ? "pl-6" : ""}`}>
                           <span className="text-texto-secundario">

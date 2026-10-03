@@ -13,7 +13,7 @@ import { Skeleton } from "../../components/ui/Skeleton";
 import { StatCard } from "../../components/ui/StatCard";
 import { contabilidade } from "../../services/contabilidade";
 import { despesasPorCategoriaNoMes, fluxoCaixaPorAno } from "../../services/agregacoes";
-import { exportarCsv, reais } from "../../services/exportacao";
+import { col, exportarCsv, exportarXlsx, reais } from "../../services/exportacao";
 import { extras } from "../../services/extras";
 import { dataAtualISO, formatarCentavos, formatarDataISOParaBR } from "../../services/formato";
 import { balancete, resultadoPorTipo } from "../../services/relatorios";
@@ -195,6 +195,56 @@ export function RelatoriosPage() {
     exportarCsv("receitas-por-fonte", ["Fonte", "Total (R$)"], dados.fontes.map((f) => [f.conta.nome, reais(f.valor)]));
   const exportarMensal = () =>
     exportarCsv("resumo-mensal-12-meses", ["Mês", "Receitas (R$)", "Despesas (R$)", "Resultado (R$)", "Poupança (%)"], doze.map((m) => [`${m.ini.slice(5, 7)}/${m.ini.slice(0, 4)}`, reais(m.receitas), reais(m.despesas), reais(m.receitas - m.despesas), m.poupanca ?? ""]));
+  const exportarExcelCompleto = () =>
+    exportarXlsx(`dairus-${periodo.inicio}-a-${periodo.fim}`, [
+      {
+        nome: "Resumo",
+        colunas: [col("Indicador", "TEXTO", 32), col("Valor", "MOEDA", 18)],
+        linhas: [
+          ["Receitas do período", dados.receitas],
+          ["Despesas do período", dados.despesas],
+          ["Resultado", dados.receitas - dados.despesas],
+          ["Receitas do período anterior", dados.receitasAnt],
+          ["Despesas do período anterior", dados.despesasAnt],
+        ],
+      },
+      {
+        nome: "Lançamentos",
+        total: false,
+        colunas: [col("Data", "DATA"), col("Descrição", "TEXTO", 36), col("Origem", "TEXTO", 14), col("Etiqueta", "TEXTO", 14), col("Conta", "TEXTO", 28), col("Tipo", "TEXTO", 10), col("Valor", "MOEDA")],
+        linhas: dados.noPeriodo.flatMap((l) => l.partidas.map((p) => [l.data, l.descricao, l.origem, l.etiqueta ?? "", nomeConta.get(p.conta_id) ?? p.conta_id, p.tipo === "DEBITO" ? "Débito" : "Crédito", p.valor_centavos])),
+      },
+      {
+        nome: "Despesas por categoria",
+        total: true,
+        colunas: [col("Categoria", "TEXTO", 28), col("Gasto", "MOEDA"), col("Período anterior", "MOEDA"), col("Limite", "MOEDA")],
+        linhas: dados.categorias.map((d) => [d.nome, d.valorCentavos, dados.categoriasAnt.get(d.contaId) ?? 0, limites.get(d.contaId) ?? null]),
+      },
+      {
+        nome: "Receitas por fonte",
+        total: true,
+        colunas: [col("Fonte", "TEXTO", 28), col("Total", "MOEDA")],
+        linhas: dados.fontes.map((f) => [f.conta.nome, f.valor]),
+      },
+      {
+        nome: "12 meses",
+        total: true,
+        colunas: [col("Mês", "TEXTO", 10), col("Receitas", "MOEDA"), col("Despesas", "MOEDA"), col("Resultado", "MOEDA"), col("Poupança", "PERCENTUAL")],
+        linhas: doze.map((m) => [`${m.ini.slice(5, 7)}/${m.ini.slice(0, 4)}`, m.receitas, m.despesas, m.receitas - m.despesas, m.poupanca === null ? null : m.poupanca / 100]),
+      },
+      {
+        nome: "Contas e cartões",
+        colunas: [col("Conta", "TEXTO", 28), col("Tipo", "TEXTO", 12), col("Saldo", "MOEDA"), col("Limite", "MOEDA")],
+        linhas: contas
+          .filter((c) => (c.tipo === "ATIVO" || c.tipo === "PASSIVO") && c.subtipo !== "CATEGORIA" && c.ativa)
+          .map((c) => [c.nome, c.subtipo === "CARTAO_CREDITO" ? "Cartão" : c.tipo === "ATIVO" ? "Conta" : "Dívida", c.saldo_atual_centavos, c.limite_centavos]),
+      },
+      {
+        nome: "Balancete",
+        colunas: [col("Código", "TEXTO", 10), col("Conta", "TEXTO", 32), col("Débitos", "MOEDA"), col("Créditos", "MOEDA"), col("Saldo", "MOEDA")],
+        linhas: balancete(lancamentos, contas, periodo.fim).map((l) => [l.conta.codigo, l.conta.nome, l.debitos, l.creditos, l.saldo]),
+      },
+    ]);
   const exportarAssinaturas = () =>
     exportarCsv("assinaturas", ["Assinatura", "Valor mensal (R$)", "Estimativa anual (R$)"], [...assinaturasPorNome.entries()].map(([n, v]) => [n, reais(v), reais(v * 12)]));
 
@@ -391,13 +441,17 @@ export function RelatoriosPage() {
 
       {(secao === "exportar") && (<>
       <div className="sem-impressao">
-        <Secao titulo="Exportar (CSV para Excel)">
+        <Secao titulo="Exportar">
+          <div className="mb-3">
+            <Button tamanho="pequeno" onClick={() => exportar(exportarExcelCompleto)}><Download size={13} /> Excel completo (.xlsx, 7 abas)</Button>
+          </div>
+          <p className="mb-2 text-xs text-texto-secundario">Ou, em CSV, uma tabela por arquivo:</p>
           <div className="flex flex-wrap gap-2">
             {[["Lançamentos do período", exportarLancamentos], ["Despesas por categoria", exportarCategorias], ["Receitas por fonte", exportarReceitas], ["Resumo mensal (12 meses)", exportarMensal], ["Assinaturas", exportarAssinaturas], ["Balancete", exportarBalancete]].map(([rotulo, fn]) => (
               <Button key={rotulo as string} variante="secundaria" tamanho="pequeno" onClick={() => exportar(fn as () => Promise<string>)}><Download size={13} /> {rotulo as string}</Button>
             ))}
           </div>
-          <p className="mt-3 text-xs text-texto-secundario">Os arquivos são salvos em Documentos\Dairus\Exportacoes. O relatório completo em PDF fica no botão “Relatório em PDF”. Excel nativo (.xlsx) ainda não está disponível; o CSV abre direto no Excel.</p>
+          <p className="mt-3 text-xs text-texto-secundario">Os arquivos são salvos em Documentos\Dairus\Exportacoes. O relatório completo em PDF fica no botão “Relatório em PDF”. O Excel completo traz resumo, lançamentos, categorias, receitas, 12 meses, contas e balancete, com valores somáveis.</p>
         </Secao>
       </div>
       </>)}

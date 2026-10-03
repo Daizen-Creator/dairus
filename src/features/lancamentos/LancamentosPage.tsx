@@ -14,11 +14,13 @@ import { ContasAPagar } from "./ContasAPagar";
 import { DespesaForm, type DespesaInicial } from "./DespesaForm";
 import { HistoricoLancamentos } from "./HistoricoLancamentos";
 import { ImportarExtratoForm } from "./ImportarExtratoForm";
+import { AbaAutomacao } from "./AbaAutomacao";
 import { NovaReceitaForm } from "./NovaReceitaForm";
 import { TransferenciaForm } from "./TransferenciaForm";
 import type { AnaliseLancamento } from "./analise";
+import { useAoAlterarDados } from "../../state/useAoAlterarDados";
 
-type Aba = "despesa" | "receita" | "agendar" | "transferencia" | "importar";
+type Aba = "despesa" | "receita" | "agendar" | "transferencia" | "importar" | "automacao";
 
 export function LancamentosPage() {
   const [aba, setAba] = useState<Aba>("despesa");
@@ -32,6 +34,10 @@ export function LancamentosPage() {
   const [secao, setSecao] = useAbaDaPagina<"lancar" | "pagar" | "historico">("lancamentos", "lancar");
   const [contaPadrao] = usePreferencia<string>("conta_padrao", "");
   const [categoriaPadrao] = usePreferencia<string>("categoria_padrao", "");
+
+  useAoAlterarDados(() => {
+    carregar().catch(() => {});
+  });
 
   async function carregar() {
     const hoje = dataAtualISO();
@@ -78,7 +84,7 @@ export function LancamentosPage() {
   const contasAtivas = ativas.filter((c) => c.tipo === "ATIVO" && c.subtipo !== "CATEGORIA");
 
   const hoje = dataAtualISO();
-  const abertos = agendamentos.filter((a) => !a.pago_em);
+  const abertos = agendamentos.filter((a) => !a.pago_em && a.tipo !== "RECEBER");
   const atrasados = abertos.filter((a) => a.vencimento < hoje);
   const totalAberto = abertos.reduce((s, a) => s + a.valor_centavos, 0);
   const totalAtrasado = atrasados.reduce((s, a) => s + a.valor_centavos, 0);
@@ -105,9 +111,10 @@ export function LancamentosPage() {
   const abas: Array<{ id: Aba; rotulo: string }> = [
     { id: "despesa", rotulo: "Nova despesa" },
     { id: "receita", rotulo: "Nova receita" },
-    { id: "agendar", rotulo: "Agendar conta" },
+    { id: "agendar", rotulo: "Agendar (pagar ou receber)" },
     { id: "transferencia", rotulo: "Transferência entre contas" },
     { id: "importar", rotulo: "Importar extrato" },
+    { id: "automacao", rotulo: "Automação" },
   ];
 
   return (
@@ -126,7 +133,7 @@ export function LancamentosPage() {
         onChange={setSecao}
         abas={[
           { id: "lancar", rotulo: "Lançar", icone: PenLine },
-          { id: "pagar", rotulo: "Contas a pagar", icone: CalendarClock, contador: abertos.length },
+          { id: "pagar", rotulo: "Agenda (pagar e receber)", icone: CalendarClock, contador: abertos.length },
           { id: "historico", rotulo: "Histórico", icone: History },
         ]}
       />
@@ -162,13 +169,15 @@ export function LancamentosPage() {
               inicial={duplicando?.dados}
               contaPadraoId={contaPadrao}
               categoriaPadraoId={categoriaPadrao}
+              lancamentos={lancamentos}
             />
           )}
           {aba === "receita" && <NovaReceitaForm contasDestino={contasAtivas} categoriasReceita={categoriasReceita} onRegistrada={carregar} />}
-          {aba === "agendar" && <AgendamentoForm categoriasDespesa={categoriasDespesa} onCriado={carregar} />}
+          {aba === "agendar" && <AgendamentoForm categoriasDespesa={categoriasDespesa} categoriasReceita={categoriasReceita} contas={contasPagaveis} onCriado={carregar} />}
           {aba === "transferencia" && <TransferenciaForm contas={contasAtivas} onRegistrada={carregar} />}
+          {aba === "automacao" && <AbaAutomacao contas={contas} lancamentos={lancamentos} onAlterado={carregar} />}
           {aba === "importar" && (
-            <ImportarExtratoForm contasAtivas={contasAtivas} categoriasDespesa={categoriasDespesa} lancamentos={lancamentos} onImportado={carregar} />
+            <ImportarExtratoForm contasAtivas={contasAtivas} categoriasDespesa={categoriasDespesa} categoriasReceita={categoriasReceita} lancamentos={lancamentos} onImportado={carregar} />
           )}
         </div>
       ))}

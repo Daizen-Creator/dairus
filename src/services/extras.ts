@@ -53,7 +53,12 @@ export const extras = {
     vencimento: string,
     etiqueta: string | null,
     recorrencia: string | null,
-  ) => invoke<void>("atualizar_agendamento", { agendamentoId, descricao, valorCentavos, vencimento, etiqueta, recorrencia }),
+    extra: { automatico?: boolean | null; contaId?: string | null; reajusteAnual?: number | null; mesReajuste?: number | null } = {},
+  ) =>
+    invoke<void>("atualizar_agendamento", {
+      agendamentoId, descricao, valorCentavos, vencimento, etiqueta, recorrencia,
+      automatico: extra.automatico ?? null, contaId: extra.contaId ?? null, reajusteAnual: extra.reajusteAnual ?? null, mesReajuste: extra.mesReajuste ?? null,
+    }),
   atualizarConta: (
     contaId: string,
     nome: string,
@@ -64,7 +69,7 @@ export const extras = {
   ) =>
     invoke<void>("atualizar_conta", { contaId, nome, instituicao, limiteCentavos, diaFechamentoFatura, diaVencimentoFatura }),
   arquivarConta: (contaId: string, arquivar: boolean) => invoke<void>("arquivar_conta", { contaId, arquivar }),
-  criarCategoria: (nome: string, tipo: "DESPESA" | "RECEITA") => invoke<string>("criar_categoria", { nome, tipo }),
+  criarCategoria: (nome: string, tipo: "DESPESA" | "RECEITA", paiId: string | null = null) => invoke<string>("criar_categoria", { nome, tipo, paiId }),
   atualizarMeta: (metaId: string, nome: string, valorAlvoCentavos: number, prazo: string | null, tipo: string | null, prioridade: string | null, notas: string | null) =>
     invoke<void>("atualizar_meta", { metaId, nome, valorAlvoCentavos, prazo, tipo, prioridade, notas }),
   listarTodosAportes: () => invoke<AporteComMeta[]>("listar_todos_aportes"),

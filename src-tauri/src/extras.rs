@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDate;
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
@@ -519,8 +519,15 @@ pub fn atualizar_agendamento(
     vencimento: String,
     etiqueta: Option<String>,
     recorrencia: Option<String>,
+    automatico: Option<bool>,
+    conta_id: Option<String>,
+    reajuste_anual: Option<f64>,
+    mes_reajuste: Option<i32>,
 ) -> Res<()> {
     let descricao = nome_valido(&descricao)?;
+    if automatico == Some(true) && conta_id.is_none() {
+        return Err("Para lançar sozinho, escolha a conta.".into());
+    }
     if valor_centavos <= 0 {
         return Err("O valor precisa ser maior que zero.".into());
     }
@@ -532,9 +539,11 @@ pub fn atualizar_agendamento(
     let conn = state.conn.lock().expect("mutex envenenado");
     let alteradas = conn
         .execute(
-            "UPDATE agendamentos SET descricao = ?1, valor_centavos = ?2, vencimento = ?3, etiqueta = ?4, recorrencia = ?5
+            "UPDATE agendamentos SET descricao = ?1, valor_centavos = ?2, vencimento = ?3, etiqueta = ?4, recorrencia = ?5,
+                    automatico = COALESCE(?7, automatico), conta_id = COALESCE(?8, conta_id),
+                    reajuste_anual = ?9, mes_reajuste = ?10
              WHERE id = ?6 AND pago_em IS NULL",
-            params![descricao, valor_centavos, vencimento, etiqueta, recorrencia, agendamento_id],
+            params![descricao, valor_centavos, vencimento, etiqueta, recorrencia, agendamento_id, automatico.map(|a| a as i64), conta_id, reajuste_anual, mes_reajuste],
         )
         .map_err(e)?;
     if alteradas == 0 {
@@ -603,7 +612,7 @@ pub fn arquivar_conta(state: State<AppState>, conta_id: String, arquivar: bool) 
 
 /// Categoria personalizada de despesa ou receita.
 #[tauri::command]
-pub fn criar_categoria(state: State<AppState>, nome: String, tipo: String) -> Res<String> {
+pub fn criar_categoria(state: State<AppState>, nome: String, tipo: String, pai_id: Option<String>) -> Res<String> {
     let nome = nome_valido(&nome)?;
     let prefixo = match tipo.as_str() {
         "DESPESA" => "5",
@@ -621,12 +630,22 @@ pub fn criar_categoria(state: State<AppState>, nome: String, tipo: String) -> Re
     if existe {
         return Err("Já existe uma categoria com esse nome.".into());
     }
+    // Subcategoria: o pai precisa ser uma categoria do mesmo tipo (ex.: Alimentação → Mercado).
+    if let Some(pai) = &pai_id {
+        let tipo_pai: Option<String> = conn
+            .query_row("SELECT tipo FROM contas_contabeis WHERE id = ?1 AND subtipo IS NOT 'CATEGORIA'", [pai], |r| r.get(0))
+            .optional()
+            .map_err(e)?;
+        if tipo_pai.as_deref() != Some(tipo.as_str()) {
+            return Err("A categoria principal precisa ser do mesmo tipo.".into());
+        }
+    }
     let sufixo = Uuid::new_v4().simple().to_string()[..8].to_string();
     let id = format!("cat-{sufixo}");
     conn.execute(
         "INSERT INTO contas_contabeis (id, codigo, nome, tipo, subtipo, categoria_pai_id, sistema)
-         VALUES (?1, ?2, ?3, ?4, NULL, NULL, 0)",
-        params![id, format!("{prefixo}.c-{sufixo}"), nome, tipo],
+         VALUES (?1, ?2, ?3, ?4, NULL, ?5, 0)",
+        params![id, format!("{prefixo}.c-{sufixo}"), nome, tipo, pai_id],
     )
     .map_err(e)?;
     Ok(id)
@@ -817,7 +836,9 @@ pub fn info_banco(state: State<AppState>) -> Res<InfoBanco> {
     let contar = |tabela: &str| -> Res<i64> {
         conn.query_row(&format!("SELECT COUNT(*) FROM {tabela}"), [], |r| r.get(0)).map_err(e)
     };
-    let caminho = conn.path().unwrap_or("").to_string();
+    let caminho = crate::cripto::arquivo_da_sessao()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| conn.path().unwrap_or("").to_string());
     let tamanho_bytes = std::fs::metadata(&caminho).map(|m| m.len()).unwrap_or(0);
     Ok(InfoBanco {
         tamanho_bytes,
@@ -902,14 +923,18 @@ pub fn verificar_backup(app: AppHandle, nome: String) -> Res<()> {
 /// "antes-de-restaurar" nunca são apagados automaticamente). Devolve quantos removeu.
 #[tauri::command]
 pub fn aplicar_retencao(app: AppHandle, manter: usize) -> Res<usize> {
-    let manter = manter.max(1);
     let pasta = pasta_dairus(&app, "Backups")?;
-    let mut lista: Vec<(String, PathBuf)> = std::fs::read_dir(&pasta)
+    // Cópias de segurança automáticas (antes de restaurar/sincronizar) ficam nas 5 mais recentes.
+    Ok(podar_backups(&pasta, "dairus-", manter.max(1))? + podar_backups(&pasta, "antes-de-restaurar-", 5)?)
+}
+
+fn podar_backups(pasta: &Path, prefixo: &str, manter: usize) -> Res<usize> {
+    let mut lista: Vec<(String, PathBuf)> = std::fs::read_dir(pasta)
         .map_err(e)?
         .filter_map(|ent| ent.ok())
         .map(|ent| ent.path())
         .filter(|p| p.extension().is_some_and(|x| x == "db"))
-        .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("dairus-")))
+        .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(prefixo)))
         .filter_map(|p| info_do_arquivo(&p).map(|i| (i.criado_em, p)))
         .collect();
     lista.sort_by(|a, b| b.0.cmp(&a.0));
@@ -1002,7 +1027,7 @@ pub struct InfoBackup {
 }
 
 /// DocumentosDairus<id da conta><sub>: cada conta tem as suas próprias pastas.
-fn pasta_dairus(app: &AppHandle, sub: &str) -> Res<PathBuf> {
+pub(crate) fn pasta_dairus(app: &AppHandle, sub: &str) -> Res<PathBuf> {
     let usuario = crate::conta::USUARIO_ATUAL
         .lock()
         .expect("mutex envenenado")
@@ -1013,7 +1038,7 @@ fn pasta_dairus(app: &AppHandle, sub: &str) -> Res<PathBuf> {
     Ok(base)
 }
 
-fn nome_seguro(nome: &str) -> Res<&str> {
+pub(crate) fn nome_seguro(nome: &str) -> Res<&str> {
     let ok = !nome.is_empty()
         && nome.len() <= 120
         && nome.chars().all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | ' '))
@@ -1039,7 +1064,11 @@ fn info_do_arquivo(caminho: &Path) -> Option<InfoBackup> {
 fn gravar_backup(conn: &Connection, pasta: &Path, prefixo: &str) -> Res<InfoBackup> {
     let nome = format!("{prefixo}-{}.db", chrono::Local::now().format("%Y%m%d-%H%M%S"));
     let destino = pasta.join(nome);
-    conn.backup(rusqlite::MAIN_DB, &destino, None).map_err(e)?;
+    // Com a criptografia ligada, o backup também sai cifrado.
+    match crate::cripto::bytes_de_backup(conn)? {
+        Some(bytes) => std::fs::write(&destino, bytes).map_err(e)?,
+        None => conn.backup(rusqlite::MAIN_DB, &destino, None).map_err(e)?,
+    }
     info_do_arquivo(&destino).ok_or_else(|| "Backup criado, mas não foi possível ler o arquivo.".to_string())
 }
 
@@ -1092,7 +1121,7 @@ pub fn listar_backups(app: AppHandle) -> Res<Vec<InfoBackup>> {
 }
 
 fn validar_arquivo_backup(caminho: &Path) -> Res<()> {
-    let origem = Connection::open_with_flags(caminho, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(e)?;
+    let origem = crate::cripto::abrir_arquivo(caminho)?;
     let integridade: String = origem
         .query_row("PRAGMA integrity_check", [], |r| r.get(0))
         .map_err(|_| "O arquivo não é um banco SQLite válido.".to_string())?;
@@ -1126,10 +1155,16 @@ pub fn restaurar_backup(app: AppHandle, state: State<AppState>, nome: String) ->
 
     let mut conn = state.conn.lock().expect("mutex envenenado");
     let seguranca = gravar_backup(&conn, &pasta, "antes-de-restaurar")?;
-    conn.restore(rusqlite::MAIN_DB, &origem, None::<fn(rusqlite::backup::Progress)>).map_err(e)?;
+    {
+        // Funciona com backup cifrado ou não: abre a origem (na memória, se cifrada) e copia tudo.
+        let fonte = crate::cripto::abrir_arquivo(&origem)?;
+        let copia = rusqlite::backup::Backup::new(&fonte, &mut conn).map_err(e)?;
+        copia.run_to_completion(256, std::time::Duration::ZERO, None).map_err(e)?;
+    }
     // Um backup antigo pode não ter tabelas criadas em migrações posteriores.
     crate::db::executar_migracoes(&conn).map_err(e)?;
     conn.pragma_update(None, "foreign_keys", "ON").map_err(e)?;
+    crate::cripto::persistir(&conn, true)?;
     Ok(seguranca)
 }
 
@@ -1181,6 +1216,7 @@ mod testes_backup {
                 observacao: None,
                 origem: "MANUAL".into(),
                 etiqueta: None,
+                parcelas: None,
                 partidas: vec![
                     PartidaInput { conta_id: "despesa-outras".into(), tipo: TipoPartida::Debito, valor_centavos: valor },
                     PartidaInput { conta_id: "ativo-dinheiro".into(), tipo: TipoPartida::Credito, valor_centavos: valor },
@@ -1248,6 +1284,7 @@ mod testes_manutencao {
                 observacao: None,
                 origem: "MANUAL".into(),
                 etiqueta: None,
+                parcelas: None,
                 partidas: vec![
                     PartidaInput { conta_id: "despesa-outras".into(), tipo: TipoPartida::Debito, valor_centavos: 500 },
                     PartidaInput { conta_id: "ativo-dinheiro".into(), tipo: TipoPartida::Credito, valor_centavos: 500 },
