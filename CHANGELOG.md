@@ -14,3 +14,10 @@ mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 - Criptografia do banco e dos backups, com código de recuperação.
 - Aviso de versão nova com a lista do que mudou e atualização com um clique.
 - Arquivo de log para diagnóstico.
+- Nova aba de Investimentos: carteira, cotações, proventos, simuladores, imposto de renda e análises com IA (informativas).
+- Lançamentos: subcategorias, etiquetas (#tags), anexos, regras de categoria, receitas e contas automáticas, reajuste anual, divisão de despesas.
+- Cartões: faturas fechadas guardadas, juros/multa/IOF, cartões adicionais e reembolsos.
+- Planejamento: orçamento por mês com sobra acumulada, metas ligadas a contas, empréstimos (Price/SAC), contas a receber e cobrança por Pix.
+- Relatórios: previsão de saldo 30/60/90 dias, ano a ano, pacote do Imposto de Renda, calendário .ics, PDF automático todo dia 1º e resumo da semana.
+- IA: lançar escrevendo, por foto/print/nota fiscal ou por voz; 24 análises prontas; organizar o histórico; diagnóstico do mês automático.
+- Ajuda com tutorial e primeiros passos, tema automático por horário, modo viagem, entrar sem internet, verificação semanal do banco e excluir conta e dados.
