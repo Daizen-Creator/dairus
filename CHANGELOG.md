@@ -3,7 +3,7 @@
 Cada versão publicada no GitHub usa a seção correspondente daqui como lista de
 mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 
-## Próxima versão
+## 0.2.1
 
 - IA: chaves do Google que começam com AQ. voltaram a funcionar (vão primeiro ao Google AI Studio; o Vertex fica de reserva).
 - IA: modelos atualizados (Gemini Flash-Lite como padrão); se o modelo estiver lotado ou indisponível, o app troca sozinho para outro.
