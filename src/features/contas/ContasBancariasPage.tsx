@@ -4,6 +4,8 @@ import {
   Archive,
   ArchiveRestore,
   ArrowLeftRight,
+  ArrowDown,
+  ArrowUp,
   ChevronDown,
   ChevronRight,
   Download,
@@ -35,14 +37,14 @@ import {
   centavosParaValorInput,
   dataAtualISO,
   formatarCentavos,
-  formatarDataISOParaBR,
   primeiroDiaDoMesISO,
   ultimoDiaDoMesISO,
   valorInputParaCentavos,
 } from "../../services/formato";
-import { razaoDaConta } from "../../services/relatorios";
 import { usePreferencia } from "../../state/usePreferencia";
 import { NovaContaForm } from "./NovaContaForm";
+import { PainelConta } from "./PainelConta";
+import { abaixoDoMinimo, moverNaOrdem, ordenarManual } from "./ferramentasContas";
 import type { Agendamento, Conta, Lancamento } from "../../types/accounting";
 import { useAoAlterarDados } from "../../state/useAoAlterarDados";
 
@@ -56,7 +58,7 @@ const ROTULO_SUBTIPO: Record<string, string> = {
 };
 const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
-type Ordem = "NOME" | "MAIOR" | "MENOR";
+type Ordem = "NOME" | "MAIOR" | "MENOR" | "MANUAL";
 
 function somaMes(base: string, delta: number): { chave: string; rotulo: string; fim: string } {
   const [a, m] = base.split("-").map(Number);
@@ -78,7 +80,10 @@ export function ContasBancariasPage() {
   const [carregando, setCarregando] = useState(true);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [busca, setBusca] = useState("");
-  const [ordem, setOrdem] = useState<Ordem>("NOME");
+  const [ordem, setOrdem] = usePreferencia<Ordem>("contas_ordenacao", "NOME");
+  const [ordemManual, setOrdemManual] = usePreferencia<string[]>("ordem_contas", []);
+  const [cores] = usePreferencia<Record<string, string>>("cores_contas", {});
+  const [minimos] = usePreferencia<Record<string, number>>("saldo_minimo_contas", {});
   const [agrupar, setAgrupar] = useState(true);
   const [verArquivadas, setVerArquivadas] = useState(false);
   const [ocultar, setOcultar] = usePreferencia<boolean>("ocultar_saldos", false);
@@ -90,6 +95,7 @@ export function ContasBancariasPage() {
   const [saldoReal, setSaldoReal] = useState("");
   const [transferindo, setTransferindo] = useState<string | null>(null);
   const [tf, setTf] = useState({ destino: "", valor: "" });
+  const [contaEvolucao, setContaEvolucao] = useState("");
   const [secao, setSecao] = useAbaDaPagina<"contas" | "evolucao">("contas-bancarias", "contas");
 
   useAoAlterarDados(() => {
@@ -147,13 +153,13 @@ export function ContasBancariasPage() {
       for (const l of lancamentos) {
         if (l.data > m.fim) continue;
         for (const p of l.partidas) {
-          if (idsAtivas.has(p.conta_id)) saldo += p.tipo === "DEBITO" ? p.valor_centavos : -p.valor_centavos;
+          if (contaEvolucao ? p.conta_id === contaEvolucao : idsAtivas.has(p.conta_id)) saldo += p.tipo === "DEBITO" ? p.valor_centavos : -p.valor_centavos;
         }
       }
       return { nome: m.rotulo, Saldo: saldo / 100 };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lancamentos, contas]);
+  }, [lancamentos, contas, contaEvolucao]);
 
   if (carregando) {
     return (
@@ -181,8 +187,8 @@ export function ContasBancariasPage() {
 
   const termo = busca.trim().toLowerCase();
   const base = verArquivadas ? arquivadas : ativas;
-  const filtradas = base
-    .filter((c) => !termo || `${c.nome} ${c.instituicao ?? ""}`.toLowerCase().includes(termo))
+  const filtradasBase = base.filter((c) => !termo || `${c.nome} ${c.instituicao ?? ""}`.toLowerCase().includes(termo));
+  const filtradas = ordem === "MANUAL" ? ordenarManual(filtradasBase, ordemManual) : filtradasBase
     .sort((a, b) => {
       if (a.id === principal) return -1;
       if (b.id === principal) return 1;
@@ -300,9 +306,10 @@ export function ContasBancariasPage() {
     const mov = movimentoMes.get(conta.id) ?? { entradas: 0, saidas: 0 };
     const pct = saldoTotal > 0 ? Math.max(0, (conta.saldo_atual_centavos / saldoTotal) * 100) : 0;
     const negativa = conta.saldo_atual_centavos < 0;
-    const cor = negativa ? "#ff2d55" : "var(--cor-primaria)";
+    const cor = negativa ? "#ff2d55" : (cores[conta.id] ?? "var(--cor-primaria)");
+    const minimo = minimos[conta.id];
+    const abaixo = minimo !== undefined && conta.saldo_atual_centavos < minimo;
     const aberta = expandida === conta.id;
-    const extrato = aberta ? razaoDaConta(lancamentos, conta, "0000-01-01", "9999-12-31").linhas.slice(-12).reverse() : [];
     const protegida = conta.sistema;
     return (
       <li
@@ -332,6 +339,12 @@ export function ContasBancariasPage() {
             </div>
           </div>
           <div className="flex shrink-0 items-center">
+            {ordem === "MANUAL" && (
+              <>
+                <button onClick={() => setOrdemManual(moverNaOrdem(filtradas.map((x) => x.id), conta.id, -1))} title="Subir" aria-label={`Subir ${conta.nome}`} className="rounded-md p-1.5 text-texto-secundario hover:bg-borda/50 hover:text-primaria"><ArrowUp size={13} /></button>
+                <button onClick={() => setOrdemManual(moverNaOrdem(filtradas.map((x) => x.id), conta.id, 1))} title="Descer" aria-label={`Descer ${conta.nome}`} className="rounded-md p-1.5 text-texto-secundario hover:bg-borda/50 hover:text-primaria"><ArrowDown size={13} /></button>
+              </>
+            )}
             <button onClick={() => setPrincipal(principal === conta.id ? "" : conta.id)} title={principal === conta.id ? "Remover como principal" : "Marcar como conta principal"} aria-label="Conta principal" className="rounded-md p-1.5 hover:bg-borda/50">
               <Star size={14} className={principal === conta.id ? "fill-alerta text-alerta" : "text-texto-secundario"} />
             </button>
@@ -361,6 +374,11 @@ export function ContasBancariasPage() {
             <TriangleAlert size={12} /> Saldo negativo
           </p>
         )}
+        {!negativa && abaixo && (
+          <p className="mt-0.5 flex items-center gap-1 text-xs text-alerta">
+            <TriangleAlert size={12} /> Abaixo do mínimo de {dinheiro(minimo!)}
+          </p>
+        )}
         <div className="mt-2 flex gap-4 text-xs tabular-nums">
           <span className="text-sucesso">▲ {dinheiro(mov.entradas)}</span>
           <span className="text-erro">▼ {dinheiro(mov.saidas)}</span>
@@ -373,6 +391,11 @@ export function ContasBancariasPage() {
           </div>
         )}
 
+        {!conta.ativa && (
+          <button onClick={() => setExpandida(aberta ? null : conta.id)} className="mt-3 flex items-center gap-1 text-xs text-primaria hover:underline">
+            Extrato e ações {aberta ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          </button>
+        )}
         {conta.ativa && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             <Button tamanho="pequeno" variante="secundaria" onClick={() => { setTransferindo(transferindo === conta.id ? null : conta.id); setAjustando(null); setTf({ destino: ativas.find((x) => x.id !== conta.id)?.id ?? "", valor: "" }); }}>
@@ -382,7 +405,7 @@ export function ContasBancariasPage() {
               <Scale size={13} /> Ajustar saldo
             </Button>
             <button onClick={() => setExpandida(aberta ? null : conta.id)} className="ml-auto flex items-center gap-1 text-xs text-primaria hover:underline">
-              Extrato {aberta ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              Extrato e mais {aberta ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
             </button>
           </div>
         )}
@@ -405,33 +428,7 @@ export function ContasBancariasPage() {
           </div>
         )}
 
-        {aberta && (
-          <div className="mt-3 border-t border-borda pt-3">
-            {extrato.length === 0 ? (
-              <p className="text-xs text-texto-secundario">Sem movimentações.</p>
-            ) : (
-              <ul className="space-y-1 text-xs">
-                {extrato.map((l) => {
-                  const sinal = l.debito > 0 ? 1 : -1;
-                  const v = l.debito > 0 ? l.debito : l.credito;
-                  return (
-                    <li key={l.lancamento.id} className="flex items-center justify-between gap-2">
-                      <span className="min-w-0 truncate text-texto-secundario">
-                        {formatarDataISOParaBR(l.lancamento.data).slice(0, 5)} · <span className="text-texto-primario">{l.lancamento.descricao}</span>
-                      </span>
-                      <span className="shrink-0 tabular-nums">
-                        <span className={sinal > 0 ? "text-sucesso" : "text-erro"}>
-                          {sinal > 0 ? "+" : "−"} {dinheiro(v)}
-                        </span>
-                        <span className="ml-2 text-texto-secundario">{dinheiro(l.saldo)}</span>
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        )}
+        {aberta && <PainelConta conta={conta} outras={todasContas.filter((x) => x.id !== conta.id)} lancamentos={lancamentos} dinheiro={dinheiro} onAlterado={() => { setExpandida(null); carregar(); }} />}
       </li>
     );
   }
@@ -479,7 +476,10 @@ export function ContasBancariasPage() {
 
           {secao === "evolucao" && (
           <section className="rounded-xl border border-borda bg-cartao p-4">
-            <h2 className="text-sm font-semibold text-texto-primario">Evolução do saldo total (12 meses)</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-texto-primario">Evolução do saldo (12 meses)</h2>
+              <Select aria-label="Conta da evolução" value={contaEvolucao} onValueChange={setContaEvolucao} options={[{ value: "", label: "Todas as contas" }, ...ativas.map((c) => ({ value: c.id, label: c.nome }))]} className="w-48" />
+            </div>
             <div className="mt-2 h-40">
               {ocultar ? (
                 <p className="pt-12 text-center text-sm text-texto-secundario">Saldos ocultos.</p>
@@ -505,6 +505,12 @@ export function ContasBancariasPage() {
         </>
       )}
 
+      {abaixoDoMinimo(ativas, minimos).length > 0 && (
+        <p className="flex items-center gap-2 rounded-lg border border-alerta/40 bg-alerta/10 px-3 py-2 text-xs text-texto-primario">
+          <TriangleAlert size={13} className="text-alerta" /> Abaixo do saldo mínimo: {abaixoDoMinimo(ativas, minimos).map((x) => x.conta.nome).join(", ")}.
+        </p>
+      )}
+
       <Abas ativa={secao} onChange={setSecao} abas={[{ id: "contas", rotulo: "Contas", icone: Landmark, contador: undefined }, { id: "evolucao", rotulo: "Evolução do saldo", icone: TrendingUp }]} />
 
       {secao === "contas" && (<>
@@ -513,7 +519,7 @@ export function ContasBancariasPage() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-texto-secundario" />
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar conta…" aria-label="Buscar conta" className={`${CLASSE_INPUT} w-56 pl-8`} />
         </div>
-        <Select aria-label="Ordenar" value={ordem} onValueChange={(v) => setOrdem(v as Ordem)} options={[{ value: "NOME", label: "Ordem alfabética" }, { value: "MAIOR", label: "Maior saldo" }, { value: "MENOR", label: "Menor saldo" }]} className="w-44" />
+        <Select aria-label="Ordenar" value={ordem} onValueChange={(v) => setOrdem(v as Ordem)} options={[{ value: "NOME", label: "Ordem alfabética" }, { value: "MAIOR", label: "Maior saldo" }, { value: "MENOR", label: "Menor saldo" }, { value: "MANUAL", label: "Minha ordem (setas)" }]} className="w-44" />
         <label className="flex items-center gap-1.5 text-xs text-texto-secundario">
           <input type="checkbox" checked={agrupar} onChange={(e) => setAgrupar(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--cor-primaria)]" />
           Agrupar por tipo

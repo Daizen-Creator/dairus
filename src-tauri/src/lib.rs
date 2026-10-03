@@ -6,6 +6,7 @@ mod conta;
 mod cripto;
 mod db;
 mod extras;
+mod gestao;
 mod investimentos;
 mod lancamentos_extras;
 mod mercado;
@@ -192,6 +193,9 @@ pub fn run() {
             conta::abrir_conta,
             conta::fechar_conta,
             conta::excluir_dados_conta,
+            gestao::uso_da_conta,
+            gestao::excluir_conta,
+            gestao::mesclar_contas,
             conta::abrir_conta_com_senha,
             conta::recuperar_conta_com_codigo,
             conta::ativar_criptografia,

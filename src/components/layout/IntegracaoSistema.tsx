@@ -138,6 +138,13 @@ export async function verificarAvisosAgora(): Promise<number> {
     ...(await avisosDeInvestimentos(hoje)),
     ...(await avisosDePlanejamento(hoje).catch(() => [])),
     ...(await rel.avisosDeRelatorios(hoje).catch(() => [])),
+    ...(await import("../../features/contas/ferramentasContas").then(async (m) =>
+      m.abaixoDoMinimo(contas, (await lerPreferencia<Record<string, number>>("saldo_minimo_contas")) ?? {}).map((x) => ({
+        id: `minimo-${x.conta.id}`,
+        titulo: `${x.conta.nome} abaixo do mínimo`,
+        corpo: `Saldo ${(x.conta.saldo_atual_centavos / 100).toFixed(2).replace(".", ",")} (mínimo ${(x.minimo / 100).toFixed(2).replace(".", ",")}).`,
+      })),
+    )),
   ];
   const { novos, registro } = filtrarNovos(avisos, enviados, hoje);
   // Muitos de uma vez viram um resumo, para não encher a tela de notificações.
