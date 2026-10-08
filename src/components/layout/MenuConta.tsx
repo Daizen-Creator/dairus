@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { LogOut, User } from "lucide-react";
+import { LogOut } from "lucide-react";
+import { AvatarUsuario } from "../ui/AvatarUsuario";
 import { dadosDoUsuario, useAuthStore } from "../../state/auth-store";
 import { usePreferencia } from "../../state/usePreferencia";
 
@@ -9,9 +10,8 @@ export function MenuConta() {
   const sair = useAuthStore((s) => s.sair);
   const [apelido] = usePreferencia<string>("nome_usuario", "");
   const [aberto, setAberto] = useState(false);
-  const [fotoFalhou, setFotoFalhou] = useState(false);
   const raiz = useRef<HTMLDivElement>(null);
-  const { nome, email, foto } = dadosDoUsuario(sessao);
+  const { nome, email } = dadosDoUsuario(sessao);
   const exibido = apelido || nome.split(" ")[0] || "Usuário";
 
   useEffect(() => {
@@ -24,11 +24,7 @@ export function MenuConta() {
   return (
     <div ref={raiz} className="relative mx-1 border-l border-borda pl-2">
       <button onClick={() => setAberto((v) => !v)} aria-expanded={aberto} aria-label="Conta" className="flex items-center gap-2 rounded-lg px-1 py-0.5 transition-colors hover:bg-borda/40">
-        {foto && !fotoFalhou ? (
-          <img src={foto} alt="" width={28} height={28} referrerPolicy="no-referrer" onError={() => setFotoFalhou(true)} className="h-7 w-7 rounded-full" />
-        ) : (
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-borda text-texto-secundario"><User size={14} /></span>
-        )}
+        <AvatarUsuario tamanho={28} nomeAlternativo={apelido} />
         <span className="hidden text-left text-xs leading-tight text-texto-secundario sm:block">
           <span className="block max-w-28 truncate font-medium text-texto-primario">{exibido}</span>
           Conta Google

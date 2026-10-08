@@ -17,6 +17,7 @@ import { EVENTO_VERIFICAR } from "../../components/layout/AvisoAtualizacao";
 import type { Conta } from "../../types/accounting";
 import { ExcluirConta } from "./ExcluirConta";
 import { MaisOpcoes } from "./MaisOpcoes";
+import { FotoPerfil } from "./FotoPerfil";
 import { ModoViagemConfig } from "./ModoViagemConfig";
 import type { InfoBanco } from "../../types/extras";
 
@@ -183,6 +184,7 @@ export function ConfiguracoesPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Secao titulo={<><UserRound size={16} className="text-primaria" /> Perfil e padrões</>}>
           <div className="space-y-3 text-sm">
+            <FotoPerfil />
             <form onSubmit={(e) => { e.preventDefault(); setNome(rascunhoNome.trim()); toast.success("Nome salvo."); }} className="flex items-center gap-2">
               <input value={rascunhoNome} onChange={(e) => setRascunhoNome(e.target.value)} placeholder="Seu nome (aparece na saudação)" aria-label="Seu nome" className={`${CLASSE_INPUT} flex-1`} />
               <Button type="submit" variante="secundaria" tamanho="pequeno">Salvar</Button>

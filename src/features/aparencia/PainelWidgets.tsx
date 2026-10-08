@@ -1,14 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { ArrowDown, ArrowUp, ExternalLink, GripVertical, LayoutGrid, RotateCcw, X } from "lucide-react";
+import { Check, Copy, ExternalLink, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
-import { useWidgetsStore } from "../../state/widgets-store";
-import { CatalogoWidgets } from "../dashboard/WidgetsInicio";
-import { LAYOUT_PADRAO, MODELOS, colunasDoTamanho, infoDoWidget, type LayoutWidgets, type ModeloLayout, type ModeloPainel, type Tamanho, type WidgetId } from "../dashboard/layoutWidgets";
+import { useWidgetsStore, usePainelAtivo } from "../../state/widgets-store";
+import { CatalogoWidgets, Miniatura } from "../dashboard/painel/BarraPaineis";
+import { MODELOS, montar, type ModeloPainel } from "../dashboard/layoutWidgets";
 
 function Bloco({ titulo, descricao, children, acao }: { titulo: string; descricao?: string; children: React.ReactNode; acao?: React.ReactNode }) {
   return (
@@ -25,121 +22,100 @@ function Bloco({ titulo, descricao, children, acao }: { titulo: string; descrica
   );
 }
 
-function Opcoes<T extends string | number>({ valor, opcoes, onChange, rotulo }: { valor: T; opcoes: Array<{ v: T; r: string }>; onChange: (v: T) => void; rotulo: string }) {
+function CartaoModelo({ m, onUsar, onNovo }: { m: ModeloPainel; onUsar: () => void; onNovo: () => void }) {
+  const widgets = useMemo(() => montar(m.itens), [m]);
   return (
-    <div role="radiogroup" aria-label={rotulo} className="inline-flex rounded-lg border border-borda p-0.5">
-      {opcoes.map((o) => (
-        <button key={String(o.v)} role="radio" aria-checked={valor === o.v} onClick={() => onChange(o.v)} className={`rounded-md px-3 py-1 text-xs ${valor === o.v ? "bg-primaria text-white" : "text-texto-secundario hover:text-texto-primario"}`}>{o.r}</button>
-      ))}
+    <div className="flex flex-col rounded-xl border border-borda bg-fundo p-3">
+      <Miniatura widgets={widgets} />
+      <p className="mt-2 text-sm font-semibold text-texto-primario">{m.nome}</p>
+      <p className="flex-1 text-[11px] text-texto-secundario">{m.descricao}</p>
+      <div className="mt-2 flex gap-2">
+        <Button tamanho="pequeno" variante="secundaria" onClick={onNovo}>Criar layout</Button>
+        <Button tamanho="pequeno" variante="fantasma" onClick={onUsar} title="Troca os widgets do layout em uso por este modelo">Usar no atual</Button>
+      </div>
     </div>
   );
 }
 
-/** Desenho do layout: cada widget vira um bloco com a largura que ocupa. */
-function Previa({ widgets, tamanho, layout, mini = false }: { widgets: WidgetId[]; tamanho: (id: WidgetId) => Tamanho; layout: LayoutWidgets; mini?: boolean }) {
-  const gap = { compacto: 3, normal: 5, amplo: 9 }[layout.espaco] * (mini ? 0.6 : 1);
-  return (
-    <div className="grid" style={{ gridTemplateColumns: `repeat(${layout.colunas}, minmax(0, 1fr))`, gap }} aria-hidden>
-      {widgets.map((id) => (
-        <div key={id} title={infoDoWidget(id).rotulo} className={`truncate rounded border border-primaria/40 bg-primaria/15 text-texto-secundario ${mini ? "h-4 px-1 text-[8px] leading-4" : "h-11 px-1.5 py-1 text-[10px]"}`} style={{ gridColumn: `span ${colunasDoTamanho(tamanho(id), layout.colunas)}` }}>
-          {mini ? "" : infoDoWidget(id).rotulo}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function LinhaOrdenavel({ id, indice, total }: { id: WidgetId; indice: number; total: number }) {
-  const { tamanhoDe, definirTamanho, reordenar, remover, layout } = useWidgetsStore();
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const tamanho = tamanhoDe(id);
-  const info = infoDoWidget(id);
-  return (
-    <li ref={setNodeRef} style={{ transform: CSS.Translate.toString(transform), transition }} className={`flex items-center gap-2 rounded-lg border bg-fundo px-2 py-1.5 text-sm ${isDragging ? "z-10 border-primaria shadow-lg" : "border-borda"}`}>
-      <button ref={setActivatorNodeRef} {...attributes} {...listeners} aria-label={`Arrastar ${info.rotulo}`} className="cursor-grab text-texto-secundario hover:text-primaria active:cursor-grabbing"><GripVertical size={14} /></button>
-      <span className="w-5 text-right text-[11px] tabular-nums text-texto-secundario">{indice + 1}</span>
-      <span className="min-w-0 flex-1 truncate text-texto-primario">{info.rotulo}</span>
-      <Opcoes rotulo={`Tamanho de ${info.rotulo}`} valor={tamanho} onChange={(t) => definirTamanho(id, t)} opcoes={([1, 2, 3] as Tamanho[]).filter((t) => t <= layout.colunas).map((t) => ({ v: t, r: ["P", "M", "G"][t - 1] }))} />
-      <button onClick={() => reordenar(indice, indice - 1)} disabled={indice === 0} aria-label={`Subir ${info.rotulo}`} className="rounded p-1 text-texto-secundario hover:text-texto-primario disabled:opacity-30"><ArrowUp size={13} /></button>
-      <button onClick={() => reordenar(indice, indice + 1)} disabled={indice === total - 1} aria-label={`Descer ${info.rotulo}`} className="rounded p-1 text-texto-secundario hover:text-texto-primario disabled:opacity-30"><ArrowDown size={13} /></button>
-      <button onClick={() => remover(id)} aria-label={`Remover ${info.rotulo}`} className="rounded p-1 text-texto-secundario hover:text-erro"><X size={13} /></button>
-    </li>
-  );
-}
-
-/** Aba "Widgets e layout" de Temas e aparência: o Início do seu jeito. */
+/** Aba "Widgets e layout" de Temas e aparência: layouts salvos, modelos, opções e widgets. */
 export function PainelWidgets() {
-  const { ativos, layout, carregar, alterarLayout, reordenar, aplicarModelo, restaurar, tamanhoDe } = useWidgetsStore();
-  const sensores = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  const { paineis, carregado, carregar, ativar, criar, renomear, excluir, aplicarModelo, alterarOpcoes } = useWidgetsStore();
+  const ativo = usePainelAtivo();
+  const [renomeando, setRenomeando] = useState<string | null>(null);
+  const [excluindo, setExcluindo] = useState<string | null>(null);
 
   useEffect(() => {
     carregar();
   }, [carregar]);
 
-  const aoSoltar = (e: DragEndEvent) => {
-    if (!e.over || e.active.id === e.over.id) return;
-    reordenar(ativos.indexOf(e.active.id as WidgetId), ativos.indexOf(e.over.id as WidgetId));
-  };
-
-  const aplicar = (m: ModeloPainel) => {
-    const modelo: ModeloLayout = {
-      ...m,
-      layout: m.layout ?? LAYOUT_PADRAO,
-      tamanhos: m.tamanhos ?? {},
-    };
-    aplicarModelo(modelo);
-    toast.success(`Layout “${m.nome}” aplicado no Início.`);
-  };
+  if (!carregado || !ativo) return null;
 
   return (
     <div className="space-y-4">
       <Bloco
-        titulo="Modelos prontos"
-        descricao="Um clique troca os widgets, a ordem e a grade. Depois dá para ajustar à vontade."
-        acao={<Link to="/" className="inline-flex items-center gap-1 text-xs text-primaria hover:underline"><ExternalLink size={12} /> Ver no Início</Link>}
+        titulo="Meus layouts"
+        descricao="Monte quantos quiser (ex.: “Visão geral”, “Relatório financeiro”, “Produtividade”) e alterne entre eles no Início. Para mover e redimensionar os widgets, use “Editar layout” no Início."
+        acao={<Link to="/" className="inline-flex items-center gap-1 text-xs text-primaria hover:underline"><ExternalLink size={12} /> Arrumar no Início</Link>}
       >
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {paineis.map((p) => (
+            <li key={p.id} className={`rounded-xl border p-3 ${p.id === ativo.id ? "border-primaria bg-primaria/5" : "border-borda bg-fundo"}`}>
+              <Miniatura widgets={p.widgets} />
+              <div className="mt-2 flex items-center justify-between gap-2">
+                {renomeando === p.id ? (
+                  <input defaultValue={p.nome} autoFocus maxLength={60} onBlur={(e) => { renomear(p.id, e.target.value); setRenomeando(null); }} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} aria-label="Nome do layout" className="min-w-0 flex-1 rounded border border-primaria bg-fundo px-2 py-0.5 text-sm text-texto-primario outline-none" />
+                ) : (
+                  <p className="min-w-0 truncate text-sm font-semibold text-texto-primario">{p.nome}</p>
+                )}
+                {p.id === ativo.id ? <span className="flex shrink-0 items-center gap-1 text-[11px] font-semibold text-primaria"><Check size={12} /> em uso</span> : <Button tamanho="pequeno" variante="secundaria" onClick={() => ativar(p.id)}>Usar</Button>}
+              </div>
+              <p className="text-[11px] text-texto-secundario">{p.widgets.length} widget(s)</p>
+              <div className="mt-2 flex gap-1">
+                <button onClick={() => setRenomeando(p.id)} aria-label={`Renomear ${p.nome}`} title="Renomear" className="rounded p-1 text-texto-secundario hover:text-primaria"><Pencil size={13} /></button>
+                <button onClick={() => criar(`${p.nome} (cópia)`, { copiarDe: p })} aria-label={`Duplicar ${p.nome}`} title="Duplicar" className="rounded p-1 text-texto-secundario hover:text-primaria"><Copy size={13} /></button>
+                {paineis.length > 1 && (
+                  excluindo === p.id
+                    ? <button onClick={() => { excluir(p.id); setExcluindo(null); }} className="rounded px-1.5 text-[11px] font-semibold text-erro hover:underline">Confirmar exclusão</button>
+                    : <button onClick={() => setExcluindo(p.id)} aria-label={`Excluir ${p.nome}`} title="Excluir" className="rounded p-1 text-texto-secundario hover:text-erro"><Trash2 size={13} /></button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </Bloco>
+
+      <Bloco titulo={`Opções de “${ativo.nome}”`} descricao="Valem para o layout em uso.">
+        <div className="space-y-3 text-sm">
+          <label className="flex items-center justify-between gap-2 text-texto-primario">
+            <span>Encaixar automaticamente <span className="block text-xs text-texto-secundario">Ligado: os widgets sobem para fechar os buracos. Desligado: cada um fica exatamente onde você soltar.</span></span>
+            <input type="checkbox" checked={ativo.opcoes.compactar} onChange={() => alterarOpcoes({ compactar: !ativo.opcoes.compactar })} className="h-4 w-4 accent-[var(--cor-primaria)]" />
+          </label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-texto-primario">Espaço entre widgets</span>
+            <div role="radiogroup" aria-label="Espaço entre widgets" className="inline-flex rounded-lg border border-borda p-0.5">
+              {(["compacto", "normal", "amplo"] as const).map((v) => (
+                <button key={v} role="radio" aria-checked={ativo.opcoes.espaco === v} onClick={() => alterarOpcoes({ espaco: v })} className={`rounded-md px-3 py-1 text-xs capitalize ${ativo.opcoes.espaco === v ? "bg-primaria text-white" : "text-texto-secundario hover:text-texto-primario"}`}>{v}</button>
+              ))}
+            </div>
+          </div>
+          <label className="flex items-center justify-between gap-2 text-texto-primario">Mostrar a barra dos layouts acima dos widgets<input type="checkbox" checked={ativo.opcoes.titulo} onChange={() => alterarOpcoes({ titulo: !ativo.opcoes.titulo })} className="h-4 w-4 accent-[var(--cor-primaria)]" /></label>
+        </div>
+      </Bloco>
+
+      <Bloco titulo="Modelos prontos" descricao="Crie um layout novo a partir de um modelo, ou troque os widgets do layout em uso.">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {MODELOS.map((m) => (
-            <button key={m.id} onClick={() => aplicar(m)} className="rounded-xl border border-borda bg-fundo p-3 text-left transition-colors hover:border-primaria">
-              <Previa widgets={m.widgets} tamanho={(id) => m.tamanhos?.[id] ?? 1} layout={m.layout ?? LAYOUT_PADRAO} mini />
-              <p className="mt-2 text-sm font-semibold text-texto-primario">{m.nome}</p>
-              <p className="text-[11px] text-texto-secundario">{m.descricao}</p>
-            </button>
+            <CartaoModelo
+              key={m.id}
+              m={m}
+              onNovo={() => { criar(m.nome, { modelo: m }); toast.success(`Layout “${m.nome}” criado e em uso.`); }}
+              onUsar={() => { aplicarModelo(m); toast.success(`“${ativo.nome}” agora usa o modelo ${m.nome}.`); }}
+            />
           ))}
         </div>
       </Bloco>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <Bloco
-          titulo="Ordem e tamanho"
-          descricao="Arraste pela alça (ou use as setas). P = 1 coluna, M = 2, G = a linha inteira."
-          acao={<Button tamanho="pequeno" variante="fantasma" onClick={() => { restaurar(); toast.success("Layout do Início restaurado."); }}><RotateCcw size={13} /> Restaurar padrão</Button>}
-        >
-          {ativos.length === 0 ? (
-            <p className="text-sm text-texto-secundario">Nenhum widget no Início. Escolha alguns abaixo.</p>
-          ) : (
-            <DndContext sensors={sensores} collisionDetection={closestCenter} onDragEnd={aoSoltar}>
-              <SortableContext items={ativos} strategy={verticalListSortingStrategy}>
-                <ul className="space-y-1.5">{ativos.map((id, i) => <LinhaOrdenavel key={id} id={id} indice={i} total={ativos.length} />)}</ul>
-              </SortableContext>
-            </DndContext>
-          )}
-        </Bloco>
-
-        <Bloco titulo="Grade" descricao="Como os widgets se arrumam na tela.">
-          <div className="space-y-3 text-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-texto-primario">Colunas (tela larga)</span><Opcoes rotulo="Colunas" valor={layout.colunas} onChange={(v) => alterarLayout({ colunas: v })} opcoes={[{ v: 2, r: "2" }, { v: 3, r: "3" }, { v: 4, r: "4" }]} /></div>
-            <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-texto-primario">Espaço entre widgets</span><Opcoes rotulo="Espaço entre widgets" valor={layout.espaco} onChange={(v) => alterarLayout({ espaco: v })} opcoes={[{ v: "compacto", r: "Compacto" }, { v: "normal", r: "Normal" }, { v: "amplo", r: "Amplo" }]} /></div>
-            <label className="flex items-center justify-between gap-2 text-texto-primario">Mostrar o título “Meus widgets”<input type="checkbox" checked={layout.titulo} onChange={() => alterarLayout({ titulo: !layout.titulo })} className="h-4 w-4 accent-[var(--cor-primaria)]" /></label>
-            <div>
-              <p className="mb-1.5 flex items-center gap-1 text-xs text-texto-secundario"><LayoutGrid size={12} /> Prévia</p>
-              <div className="rounded-lg border border-borda bg-fundo p-2">{ativos.length ? <Previa widgets={ativos} tamanho={tamanhoDe} layout={layout} /> : <p className="text-xs text-texto-secundario">Vazio</p>}</div>
-            </div>
-          </div>
-        </Bloco>
-      </div>
-
-      <Bloco titulo={`Widgets (${ativos.length} no Início)`} descricao="Clique para mostrar ou esconder. Os novos aparecem no fim da lista.">
+      <Bloco titulo={`Widgets de “${ativo.nome}” (${ativo.widgets.length})`} descricao="Clique para adicionar ou tirar. O gráfico personalizável pode entrar várias vezes, cada um com a sua configuração.">
         <CatalogoWidgets />
       </Bloco>
     </div>

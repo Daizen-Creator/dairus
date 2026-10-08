@@ -1,16 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import {
-  AlertTriangle, CalendarCheck, CalendarDays, Check, CreditCard, Flame, GripVertical, Goal, Landmark, LayoutGrid, LineChart, ListOrdered, NotebookPen, PiggyBank, Plus, Receipt,
+  AlertTriangle, CalendarCheck, CalendarDays, CreditCard, Flame, Goal, Landmark, LineChart, ListOrdered, NotebookPen, PiggyBank, Plus, Receipt,
   Repeat, ShieldCheck, Target, TrendingUp, Wallet, X, Zap,
 } from "lucide-react";
 import { formatarDataISOParaBR } from "../../services/formato";
 import { preverSaldo } from "../../services/previsao";
 import { usePreferencia } from "../../state/usePreferencia";
-import { useWidgetsStore } from "../../state/widgets-store";
+import { usePainelAtivo, useWidgetsStore } from "../../state/widgets-store";
 import { NAVEGACAO } from "../../app/navegacao";
 import type { Agendamento, Conta, Lancamento } from "../../types/accounting";
 import type { Meta, Orcamento } from "../../types/extras";
@@ -19,9 +16,16 @@ import {
   assinaturasDoMes, calendarioDoMes, contasAPagar, gastosRecentes, maioresGastosDoMes, patrimonioLiquido, poupancaDoMes, progressoDoOrcamento, proximosRecebimentos,
   reservaDeEmergencia, saldosDisponiveis,
 } from "./dadosWidgetsInicio";
-import { CATALOGO, GRUPOS, classeDoTamanho, classesDaGrade, infoDoWidget, type Tamanho, type WidgetId } from "./layoutWidgets";
+import type { WidgetNoPainel } from "./layoutWidgets";
 import { WidgetFotos, WidgetRelogio, WidgetVideo } from "./WidgetsMidia";
 import { Cartao, WidgetCalculadora, WidgetContagem, WidgetCotacoes, WidgetDica } from "./WidgetsExtras";
+import { WidgetGrafico } from "./painel/WidgetGrafico";
+import { BarraPaineis, CatalogoWidgets } from "./painel/BarraPaineis";
+import { GradePainel } from "./painel/GradePainel";
+import { ConfigWidgetDialog } from "./painel/ConfigWidgetDialog";
+import { ContextoDados } from "./painel/contexto";
+
+export { CatalogoWidgets };
 
 interface Props {
   contas: Conta[];
@@ -48,8 +52,9 @@ function useConteudo({ contas, lancamentos, agendamentos, metas, orcamentos = []
   useEffect(() => setRascunhoNotas(notas), [notas]);
   const mesAtual = hoje.slice(0, 7);
 
-  return (id: WidgetId): React.ReactNode => {
-    switch (id) {
+  return (w: WidgetNoPainel): React.ReactNode => {
+    switch (w.tipo) {
+      case "grafico": return <WidgetGrafico />;
       case "fimdomes": {
         const fimMes = new Date(Date.UTC(+hoje.slice(0, 4), +hoje.slice(5, 7), 0)).toISOString().slice(0, 10);
         const dias = Math.max(1, Math.round((Date.parse(`${fimMes}T12:00:00Z`) - Date.parse(`${hoje}T12:00:00Z`)) / 86_400_000));
@@ -285,134 +290,55 @@ function useConteudo({ contas, lancamentos, agendamentos, metas, orcamentos = []
   };
 }
 
-const TAMANHOS: Array<{ t: Tamanho; rotulo: string; nome: string }> = [
-  { t: 1, rotulo: "P", nome: "Pequeno (1 coluna)" },
-  { t: 2, rotulo: "M", nome: "Médio (2 colunas)" },
-  { t: 3, rotulo: "G", nome: "Grande (linha inteira)" },
-];
-
-/** Um widget na grade; no modo de edição, ganha alça para arrastar, tamanho e remover. */
-function ItemDaGrade({ id, children }: { id: WidgetId; children: React.ReactNode }) {
-  const editando = useWidgetsStore((s) => s.editando);
-  const layout = useWidgetsStore((s) => s.layout);
-  const tamanho = useWidgetsStore((s) => s.tamanhoDe(id));
-  const definirTamanho = useWidgetsStore((s) => s.definirTamanho);
-  const remover = useWidgetsStore((s) => s.remover);
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: !editando });
-  const info = infoDoWidget(id);
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={`relative min-w-0 ${classeDoTamanho(tamanho, layout)} ${isDragging ? "z-20 opacity-80" : ""} ${editando ? "rounded-xl outline-2 outline-offset-2 outline-dashed outline-primaria/50" : ""}`}
-    >
-      {editando && (
-        <div className="absolute inset-x-0 -top-3 z-10 flex justify-center">
-          <div className="flex items-center gap-0.5 rounded-full border border-borda bg-superficie px-1 py-0.5 text-[10px] shadow-lg">
-            <button ref={setActivatorNodeRef} {...attributes} {...listeners} aria-label={`Arrastar ${info.rotulo}`} className="cursor-grab rounded-full p-1 text-texto-secundario hover:text-primaria active:cursor-grabbing"><GripVertical size={12} /></button>
-            {TAMANHOS.filter((x) => x.t <= layout.colunas).map((x) => (
-              <button key={x.t} onClick={() => definirTamanho(id, x.t)} aria-label={x.nome} title={x.nome} aria-pressed={tamanho === x.t} className={`h-5 w-5 rounded-full font-semibold ${tamanho === x.t ? "bg-primaria text-white" : "text-texto-secundario hover:text-texto-primario"}`}>{x.rotulo}</button>
-            ))}
-            <button onClick={() => remover(id)} aria-label={`Remover ${info.rotulo}`} className="rounded-full p-1 text-texto-secundario hover:text-erro"><X size={12} /></button>
-          </div>
-        </div>
-      )}
-      <div className={`h-full ${editando ? "pointer-events-none select-none" : ""}`}>{children}</div>
-    </div>
-  );
-}
-
-/** Catálogo para adicionar widgets (no modo de edição). */
-export function CatalogoWidgets({ compacto = false }: { compacto?: boolean }) {
-  const ativos = useWidgetsStore((s) => s.ativos);
-  const alternar = useWidgetsStore((s) => s.alternar);
-  return (
-    <div className={`grid gap-3 ${compacto ? "sm:grid-cols-2 lg:grid-cols-3" : "md:grid-cols-2 xl:grid-cols-3"}`}>
-      {GRUPOS.map((g) => (
-        <div key={g}>
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-texto-secundario">{g}</p>
-          <ul className="space-y-1">
-            {CATALOGO.filter((w) => w.grupo === g).map((w) => {
-              const ativo = ativos.includes(w.id);
-              return (
-                <li key={w.id}>
-                  <button onClick={() => alternar(w.id)} aria-pressed={ativo} className={`flex w-full items-start gap-2 rounded-lg border px-2 py-1.5 text-left transition-colors ${ativo ? "border-primaria/60 bg-primaria/10" : "border-borda hover:border-primaria/50"}`}>
-                    <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${ativo ? "border-primaria bg-primaria text-white" : "border-borda"}`}>{ativo ? <Check size={11} /> : <Plus size={10} className="text-texto-secundario" />}</span>
-                    <span className="min-w-0">
-                      <span className="flex items-center gap-1.5 text-sm text-texto-primario">{w.rotulo}{w.novo && <span className="rounded bg-primaria/20 px-1 text-[9px] font-semibold uppercase text-primaria">novo</span>}</span>
-                      {!compacto && <span className="block text-[11px] text-texto-secundario">{w.descricao}</span>}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/** Widgets escolhidos pelo usuário no Início, na ordem e no tamanho escolhidos. */
+/**
+ * Painel do Início, 100% personalizável: vários layouts salvos, widgets em qualquer lugar
+ * de uma grade de 12 colunas (arrastar e redimensionar), cada um com a sua configuração.
+ */
 export function WidgetsInicio(props: Props) {
-  const { ativos, layout, editando, carregar, setEditando, reordenar } = useWidgetsStore();
-  const [atalhos, setAtalhos] = usePreferencia<string[]>("atalhos_inicio", ["/lancamentos", "/orcamento", "/metas", "/relatorios"]);
+  const { carregado, editando, carregar, setEditando } = useWidgetsStore();
+  const painel = usePainelAtivo();
   const conteudo = useConteudo(props);
-  const sensores = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  const [catalogo, setCatalogo] = useState(false);
+  const [configurando, setConfigurando] = useState<string | null>(null);
+  const dados = { ...props, orcamentos: props.orcamentos ?? [] };
 
   useEffect(() => {
     carregar();
     return () => setEditando(false);
   }, [carregar, setEditando]);
 
-  const aoSoltar = (e: DragEndEvent) => {
-    if (!e.over || e.active.id === e.over.id) return;
-    reordenar(ativos.indexOf(e.active.id as WidgetId), ativos.indexOf(e.over.id as WidgetId));
-  };
+  useEffect(() => {
+    if (!editando) setCatalogo(false);
+  }, [editando]);
+
+  if (!carregado || !painel) return null;
+  const emConfiguracao = painel.widgets.find((w) => w.i === configurando);
 
   return (
-    <section>
-      {(layout.titulo || editando) && (
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wide text-texto-secundario">Meus widgets</p>
-          <div className="flex items-center gap-3">
-            {editando && <Link to="/temas" className="text-xs text-texto-secundario hover:text-primaria">Mais opções de layout</Link>}
-            <button onClick={() => setEditando(!editando)} className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs ${editando ? "bg-primaria text-white" : "text-primaria hover:underline"}`}>
-              {editando ? <><Check size={12} /> Concluir</> : <><LayoutGrid size={12} /> Editar layout</>}
+    <ContextoDados.Provider value={dados}>
+      <section aria-label="Meus widgets">
+        {(painel.opcoes.titulo || editando) ? (
+          <BarraPaineis ativo={painel} />
+        ) : (
+          <div className="flex justify-end"><button onClick={() => setEditando(true)} className="text-[11px] text-texto-secundario/70 hover:text-primaria">Editar layout</button></div>
+        )}
+        {editando && (
+          <div className="mb-3">
+            <button onClick={() => setCatalogo(!catalogo)} className="flex items-center gap-1 rounded-lg bg-primaria/15 px-2.5 py-1 text-xs font-medium text-primaria hover:bg-primaria/25">
+              {catalogo ? <><X size={12} /> Fechar lista de widgets</> : <><Plus size={12} /> Adicionar widget</>}
             </button>
+            {catalogo && <div className="mt-2 rounded-xl border border-borda bg-superficie p-3"><CatalogoWidgets compacto /></div>}
           </div>
-        </div>
-      )}
-      {editando && (
-        <div className="mb-5 space-y-3 rounded-xl border border-dashed border-primaria/50 bg-superficie/80 p-3">
-          <p className="text-xs text-texto-secundario">Arraste pela alça <GripVertical size={11} className="inline" /> para mudar a ordem (ou use Tab, Espaço e as setas). P, M e G mudam o tamanho. Clique num widget abaixo para mostrar ou esconder.</p>
-          <CatalogoWidgets compacto />
-          {ativos.includes("atalhos") && (
-            <div>
-              <p className="text-xs text-texto-secundario">Atalhos:</p>
-              <div className="flex flex-wrap gap-1.5">{NAVEGACAO.filter((n) => n.rota !== "/").map((n) => <button key={n.rota} onClick={() => setAtalhos(atalhos.includes(n.rota) ? atalhos.filter((x) => x !== n.rota) : [...atalhos, n.rota].slice(-8))} className={`rounded-full border px-2 py-0.5 text-xs ${atalhos.includes(n.rota) ? "border-primaria text-primaria" : "border-borda text-texto-secundario"}`}>{n.rotulo}</button>)}</div>
-            </div>
-          )}
-        </div>
-      )}
-      {ativos.length === 0 ? (
-        <button onClick={() => setEditando(true)} className="w-full rounded-xl border border-dashed border-borda p-6 text-sm text-texto-secundario hover:border-primaria hover:text-primaria"><Plus size={14} className="inline" /> Adicionar widgets ao Início</button>
-      ) : (
-        <DndContext sensors={sensores} collisionDetection={closestCenter} onDragEnd={aoSoltar}>
-          <SortableContext items={ativos} strategy={rectSortingStrategy}>
-            <div className={`${classesDaGrade(layout)} ${editando ? "pt-3" : ""}`}>
-              {ativos.map((id) => {
-                const c = conteudo(id);
-                return c ? <ItemDaGrade key={id} id={id}>{c}</ItemDaGrade> : null;
-              })}
-            </div>
-          </SortableContext>
-        </DndContext>
-      )}
-      {!layout.titulo && !editando && (
-        <div className="mt-1 flex justify-end"><button onClick={() => setEditando(true)} aria-label="Editar layout dos widgets" className="rounded p-1 text-texto-secundario/60 hover:text-primaria"><LayoutGrid size={12} /></button></div>
-      )}
-    </section>
+        )}
+        {painel.widgets.length === 0 ? (
+          <button onClick={() => { setEditando(true); setCatalogo(true); }} className="w-full rounded-xl border border-dashed border-borda p-8 text-sm text-texto-secundario hover:border-primaria hover:text-primaria">
+            <Plus size={14} className="inline" /> Este layout está vazio. Adicione widgets.
+          </button>
+        ) : (
+          <GradePainel painel={painel} editando={editando} conteudo={conteudo} onConfigurar={(w) => setConfigurando(w.i)} />
+        )}
+        {emConfiguracao && <ConfigWidgetDialog widget={emConfiguracao} contas={props.contas} onFechar={() => setConfigurando(null)} />}
+      </section>
+    </ContextoDados.Provider>
   );
 }

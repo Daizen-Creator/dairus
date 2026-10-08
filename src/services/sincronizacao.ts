@@ -24,7 +24,7 @@ export function traduzirErroSync(erro: unknown): string {
   if (/mime type/i.test(msg)) return "A nuvem recusou o tipo de arquivo enviado. Atualize o Dairus para a versão mais nova.";
   if (/payload too large|exceeded the maximum|too large|413/i.test(msg)) return "O banco ficou maior que o limite de 50 MB da nuvem. Apague anexos grandes (em Garantias e documentos) ou use backup local.";
   if (/failed to fetch|network|load failed|ERR_INTERNET|timeout/i.test(msg)) return "Sem conexão com a nuvem agora. O Dairus tenta de novo em 5 minutos.";
-  if (/jwt|not authorized|unauthorized|401|403/i.test(msg)) return "A sessão da conta expirou. Saia e entre de novo para voltar a sincronizar.";
+  if (/jwt|jws|invalid.*token|not authorized|unauthorized|401|403/i.test(msg)) return "A sessão da conta expirou. Saia e entre de novo para voltar a sincronizar.";
   return msg;
 }
 

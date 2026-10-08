@@ -35,6 +35,10 @@
   const espera = (ms) => new Promise((ok) => setTimeout(ok, ms));
   const MB = 1_048_576;
   const novidadeSimulada = { versao: "0.3.0", versao_atual: "0.2.2", titulo: "Dairus v0.3.0", notas: "- Novidade de teste", publicada_em: hoje, pagina: "https://github.com/Daizen-Creator/dairus/releases", instalador: "https://github.com/Daizen-Creator/dairus/releases/download/v0.3.0/Dairus_0.3.0_x64-setup.exe", tamanho_bytes: 12 * MB, sha256: "a".repeat(64), fonte: "GitHub", beta: false };
+  // Layouts do painel (tabela dashboards), guardados no localStorage do navegador.
+  const CHAVE_PAINEIS = "mock-dashboards";
+  const lerPaineis = () => { try { return JSON.parse(localStorage.getItem(CHAVE_PAINEIS) || "[]"); } catch { return []; } };
+  const gravarPaineis = (l) => localStorage.setItem(CHAVE_PAINEIS, JSON.stringify(l));
   async function baixarSimulado() {
     const total = novidadeSimulada.tamanho_bytes;
     for (let b = 0; b <= total; b += total / 25) {
@@ -143,6 +147,21 @@
     criptografia_ativa: () => false,
     verificar_integridade: () => [],
     uso_da_conta: () => ({ lancamentos: 3, saldo_inicial: 1, agendamentos: 0, subcategorias: 0, sistema: false }),
+    listar_dashboards: () => lerPaineis(),
+    salvar_dashboard: ({ dashboard }) => {
+      const lista = lerPaineis();
+      const d = { ...dashboard, id: dashboard.id || id("painel"), atualizado_em: new Date().toISOString() };
+      const i = lista.findIndex((x) => x.id === d.id);
+      if (i >= 0) lista[i] = { ...d, ativo: lista[i].ativo }; else lista.push({ ...d, ativo: lista.length === 0 });
+      gravarPaineis(lista);
+      return lista.find((x) => x.id === d.id);
+    },
+    ativar_dashboard: ({ id: alvo }) => gravarPaineis(lerPaineis().map((x) => ({ ...x, ativo: x.id === alvo }))),
+    excluir_dashboard: ({ id: alvo }) => {
+      const lista = lerPaineis().filter((x) => x.id !== alvo);
+      if (lista.length && !lista.some((x) => x.ativo)) lista[0].ativo = true;
+      gravarPaineis(lista);
+    },
     verificar_atualizacao: async () => (cenarioAtualizacao ? (await espera(600), novidadeSimulada) : null),
     baixar_atualizacao: () => baixarSimulado(),
     instalar_ao_sair: () => null,

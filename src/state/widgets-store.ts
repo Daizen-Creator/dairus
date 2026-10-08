@@ -1,113 +1,214 @@
 import { create } from "zustand";
-import { lerPreferencia, salvarPreferencia } from "../services/armazenamento";
+import { toast } from "sonner";
+import { lerPreferencia } from "../services/armazenamento";
+import { dashboards } from "../services/dashboards";
 import {
-  LAYOUT_PADRAO,
-  TAMANHOS_PADRAO,
-  WIDGETS_PADRAO,
-  mover,
-  normalizarAtivos,
-  normalizarLayout,
-  normalizarTamanhos,
-  type LayoutWidgets,
-  type ModeloLayout,
-  type Tamanho,
+  MODELOS,
+  OPCOES_PADRAO,
+  criarWidget,
+  migrarFormatoAntigo,
+  normalizarOpcoes,
+  normalizarWidgets,
+  widgetsDoModelo,
+  type ConfigWidget,
+  type ModeloPainel,
+  type OpcoesPainel,
+  type Painel,
   type WidgetId,
+  type WidgetNoPainel,
 } from "../features/dashboard/layoutWidgets";
 
 /**
- * Widgets do Início: quais aparecem (na ordem), o tamanho de cada um e o layout da grade.
- * Compartilhado entre o Início, os próprios widgets e a aba "Widgets e layout" de Temas.
- * Preferências: widgets_inicio, widgets_tamanhos, widgets_layout (por conta).
+ * Painéis (layouts) do Início: vários por conta, um ativo. Cada widget tem posição e
+ * tamanho livres (x, y, w, h numa grade de 12 colunas) e a sua configuração.
+ * Fica no banco da conta (comandos *_dashboard); as mudanças são gravadas com um
+ * pequeno atraso para não salvar a cada pixel arrastado.
  */
 interface Estado {
-  ativos: WidgetId[];
-  tamanhos: Partial<Record<WidgetId, Tamanho>>;
-  layout: LayoutWidgets;
+  paineis: Painel[];
+  ativoId: string | null;
+  carregado: boolean;
   /** Modo "Editar layout" do Início (não é salvo). */
   editando: boolean;
   carregar: () => Promise<void>;
   setEditando: (v: boolean) => void;
-  alternar: (id: WidgetId) => void;
-  adicionar: (id: WidgetId) => void;
-  remover: (id: WidgetId) => void;
-  reordenar: (de: number, para: number) => void;
-  tamanhoDe: (id: WidgetId) => Tamanho;
-  definirTamanho: (id: WidgetId, t: Tamanho) => void;
-  alterarLayout: (parte: Partial<LayoutWidgets>) => void;
-  aplicarModelo: (m: ModeloLayout) => void;
-  restaurar: () => void;
+  ativar: (id: string) => Promise<void>;
+  criar: (nome: string, origem?: { modelo?: ModeloPainel; copiarDe?: Painel }) => Promise<void>;
+  renomear: (id: string, nome: string) => void;
+  excluir: (id: string) => Promise<void>;
+  aplicarModelo: (m: ModeloPainel) => void;
+  adicionar: (tipo: WidgetId, config?: ConfigWidget) => void;
+  remover: (i: string) => void;
+  duplicarWidget: (i: string) => void;
+  atualizarPosicoes: (posicoes: ReadonlyArray<{ i: string; x: number; y: number; w: number; h: number }>) => void;
+  configurar: (i: string, config: ConfigWidget) => void;
+  alterarOpcoes: (parte: Partial<OpcoesPainel>) => void;
 }
 
-function salvar(chave: string, valor: unknown) {
-  salvarPreferencia(chave, valor).catch(() => {
-    // fica só na memória até a próxima mudança
-  });
+const ATRASO_SALVAR = 500;
+const timers = new Map<string, number>();
+/** Uma carga por vez: duas telas (ou o modo estrito do React) pedindo juntas não criam dois painéis. */
+let cargaEmAndamento: Promise<void> | null = null;
+const novoId = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `p${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`);
+
+function normalizarPainel(p: Painel): Painel {
+  return { ...p, opcoes: normalizarOpcoes(p.opcoes), widgets: normalizarWidgets(p.widgets) };
 }
 
-export const useWidgetsStore = create<Estado>((set, get) => ({
-  ativos: WIDGETS_PADRAO,
-  tamanhos: {},
-  layout: LAYOUT_PADRAO,
-  editando: false,
+/** Painel inicial de quem ainda não tem nenhum: converte o formato antigo das preferências. */
+async function painelInicial(): Promise<Painel> {
+  const [ativos, tamanhos, largos, layout] = await Promise.all([
+    lerPreferencia<unknown>("widgets_inicio"),
+    lerPreferencia<unknown>("widgets_tamanhos"),
+    lerPreferencia<unknown>("widgets_largos"),
+    lerPreferencia<unknown>("widgets_layout"),
+  ]);
+  const { widgets, opcoes } = migrarFormatoAntigo(ativos ?? undefined, tamanhos, largos, layout);
+  return { id: novoId(), nome: "Visão geral", ordem: 0, ativo: true, opcoes, widgets };
+}
 
-  carregar: async () => {
-    const [ativos, tamanhos, largos, layout] = await Promise.all([
-      lerPreferencia<unknown>("widgets_inicio"),
-      lerPreferencia<unknown>("widgets_tamanhos"),
-      lerPreferencia<unknown>("widgets_largos"),
-      lerPreferencia<unknown>("widgets_layout"),
-    ]);
-    set({
-      ativos: ativos === null ? [...WIDGETS_PADRAO] : normalizarAtivos(ativos),
-      tamanhos: normalizarTamanhos(tamanhos, tamanhos === null ? largos : undefined),
-      layout: normalizarLayout(layout),
-    });
-  },
+export const useWidgetsStore = create<Estado>((set, get) => {
+  const ativo = () => get().paineis.find((p) => p.id === get().ativoId) ?? null;
 
-  setEditando: (v) => set({ editando: v }),
+  async function gravarAgora(id: string) {
+    const p = get().paineis.find((x) => x.id === id);
+    if (!p) return;
+    try {
+      await dashboards.salvar(p);
+    } catch (e) {
+      toast.error(`Não foi possível salvar o layout: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
-  alternar: (id) => (get().ativos.includes(id) ? get().remover(id) : get().adicionar(id)),
-  adicionar: (id) => {
-    if (get().ativos.includes(id)) return;
-    const ativos = [...get().ativos, id];
-    set({ ativos });
-    salvar("widgets_inicio", ativos);
-  },
-  remover: (id) => {
-    const ativos = get().ativos.filter((x) => x !== id);
-    set({ ativos });
-    salvar("widgets_inicio", ativos);
-  },
-  reordenar: (de, para) => {
-    const ativos = mover(get().ativos, de, para);
-    set({ ativos });
-    salvar("widgets_inicio", ativos);
-  },
+  function gravar(id: string) {
+    window.clearTimeout(timers.get(id));
+    timers.set(id, window.setTimeout(() => {
+      timers.delete(id);
+      gravarAgora(id);
+    }, ATRASO_SALVAR));
+  }
 
-  tamanhoDe: (id) => get().tamanhos[id] ?? TAMANHOS_PADRAO[id] ?? 1,
-  definirTamanho: (id, t) => {
-    const tamanhos = { ...get().tamanhos, [id]: t };
-    set({ tamanhos });
-    salvar("widgets_tamanhos", tamanhos);
-  },
+  /** Altera o painel ativo e agenda a gravação. */
+  function alterarAtivo(f: (p: Painel) => Painel) {
+    const atual = ativo();
+    if (!atual) return;
+    const novo = f(atual);
+    if (novo === atual) return;
+    set({ paineis: get().paineis.map((p) => (p.id === atual.id ? novo : p)) });
+    gravar(atual.id);
+  }
 
-  alterarLayout: (parte) => {
-    const layout = normalizarLayout({ ...get().layout, ...parte });
-    set({ layout });
-    salvar("widgets_layout", layout);
-  },
 
-  aplicarModelo: (m) => {
-    set({ ativos: [...m.widgets], tamanhos: { ...m.tamanhos }, layout: { ...m.layout } });
-    salvar("widgets_inicio", m.widgets);
-    salvar("widgets_tamanhos", m.tamanhos);
-    salvar("widgets_layout", m.layout);
-  },
+  async function carregarDoBanco() {
+    let lista: Painel[];
+    try {
+      lista = (await dashboards.listar()).map(normalizarPainel);
+      if (lista.length === 0) {
+        const inicial = await painelInicial();
+        lista = [normalizarPainel(await dashboards.salvar(inicial).catch(() => inicial))];
+      }
+    } catch {
+      // Fora do app (navegador sem o backend): um painel só na memória.
+      lista = [await painelInicial()];
+    }
+    const ativoId = (lista.find((p) => p.ativo) ?? lista[0]).id;
+    set({ paineis: lista, ativoId, carregado: true });
+  }
 
-  restaurar: () => {
-    set({ ativos: [...WIDGETS_PADRAO], tamanhos: {}, layout: { ...LAYOUT_PADRAO } });
-    salvar("widgets_inicio", WIDGETS_PADRAO);
-    salvar("widgets_tamanhos", {});
-    salvar("widgets_layout", LAYOUT_PADRAO);
-  },
-}));
+  return {
+    paineis: [],
+    ativoId: null,
+    carregado: false,
+    editando: false,
+
+    carregar: () => {
+      cargaEmAndamento ??= carregarDoBanco().finally(() => {
+        cargaEmAndamento = null;
+      });
+      return cargaEmAndamento;
+    },
+
+    setEditando: (v) => {
+      set({ editando: v });
+      // Ao concluir, grava na hora o que estiver pendente.
+      if (!v) for (const [id, t] of [...timers]) { window.clearTimeout(t); timers.delete(id); gravarAgora(id); }
+    },
+
+    ativar: async (id) => {
+      if (!get().paineis.some((p) => p.id === id)) return;
+      set({ ativoId: id, paineis: get().paineis.map((p) => ({ ...p, ativo: p.id === id })) });
+      await dashboards.ativar(id).catch(() => {});
+    },
+
+    criar: async (nome, origem) => {
+      const base = origem?.copiarDe;
+      const novo: Painel = {
+        id: novoId(),
+        nome: nome.trim().slice(0, 60) || "Novo layout",
+        ordem: get().paineis.reduce((m, p) => Math.max(m, p.ordem), 0) + 1,
+        ativo: false,
+        opcoes: base ? { ...base.opcoes } : normalizarOpcoes({ ...OPCOES_PADRAO, ...origem?.modelo?.opcoes }),
+        widgets: base ? base.widgets.map((w) => ({ ...w, config: w.config ? structuredClone(w.config) : undefined })) : origem?.modelo ? widgetsDoModelo(origem.modelo) : [],
+      };
+      try {
+        const salvo = normalizarPainel(await dashboards.salvar(novo));
+        set({ paineis: [...get().paineis, salvo] });
+        await get().ativar(salvo.id);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : String(e));
+      }
+    },
+
+    renomear: (id, nome) => {
+      const limpo = nome.trim().slice(0, 60);
+      if (!limpo) return;
+      set({ paineis: get().paineis.map((p) => (p.id === id ? { ...p, nome: limpo } : p)) });
+      gravar(id);
+    },
+
+    excluir: async (id) => {
+      try {
+        await dashboards.excluir(id);
+        const resto = get().paineis.filter((p) => p.id !== id);
+        const ativoId = get().ativoId === id ? resto[0]?.id ?? null : get().ativoId;
+        set({ paineis: resto.map((p) => ({ ...p, ativo: p.id === ativoId })), ativoId });
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : String(e));
+      }
+    },
+
+    aplicarModelo: (m) => alterarAtivo((p) => ({ ...p, widgets: widgetsDoModelo(m), opcoes: normalizarOpcoes({ ...p.opcoes, ...m.opcoes }) })),
+
+    adicionar: (tipo, config) => alterarAtivo((p) => ({ ...p, widgets: [...p.widgets, criarWidget(p.widgets, tipo, config)] })),
+
+    remover: (i) => alterarAtivo((p) => ({ ...p, widgets: p.widgets.filter((w) => w.i !== i) })),
+
+    duplicarWidget: (i) =>
+      alterarAtivo((p) => {
+        const w = p.widgets.find((x) => x.i === i);
+        return w ? { ...p, widgets: [...p.widgets, criarWidget(p.widgets, w.tipo, w.config ? structuredClone(w.config) : undefined, { w: w.w, h: w.h })] } : p;
+      }),
+
+    atualizarPosicoes: (posicoes) =>
+      alterarAtivo((p) => {
+        const mapa = new Map(posicoes.map((x) => [x.i, x]));
+        let mudou = false;
+        const widgets: WidgetNoPainel[] = p.widgets.map((w) => {
+          const n = mapa.get(w.i);
+          if (!n || (n.x === w.x && n.y === w.y && n.w === w.w && n.h === w.h)) return w;
+          mudou = true;
+          return { ...w, x: n.x, y: n.y, w: n.w, h: n.h };
+        });
+        return mudou ? { ...p, widgets } : p;
+      }),
+
+    configurar: (i, config) => alterarAtivo((p) => ({ ...p, widgets: p.widgets.map((w) => (w.i === i ? { ...w, config } : w)) })),
+
+    alterarOpcoes: (parte) => alterarAtivo((p) => ({ ...p, opcoes: normalizarOpcoes({ ...p.opcoes, ...parte }) })),
+  };
+});
+
+/** O painel ativo (ou null enquanto carrega). */
+export const usePainelAtivo = () => useWidgetsStore((s) => s.paineis.find((p) => p.id === s.ativoId) ?? null);
+
+export { MODELOS };

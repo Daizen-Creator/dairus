@@ -4,18 +4,31 @@ import { usePreferencia } from "../../state/usePreferencia";
 import { formatarDataISOParaBR } from "../../services/formato";
 import { dicaDoDia } from "../ajuda/conteudoAjuda";
 import { calcular, diasEntre, proximoDiaDoMes } from "./dadosWidgetsInicio";
+import { useInstancia } from "./painel/contexto";
 
-/** Moldura simples dos widgets (título com ícone e, opcional, um botão de ajustes). */
-export function Cartao({ titulo, icone: Icone, ajustes, children }: { titulo: string; icone: typeof Lightbulb; ajustes?: React.ReactNode; children: React.ReactNode }) {
+/**
+ * Moldura dos widgets: ocupa toda a altura escolhida na grade (o conteúdo rola se não
+ * couber), com título e ícone. O título pode ser trocado ou escondido na configuração
+ * do widget; `extra` fica à direita do título (ex.: controles do gráfico).
+ */
+export function Cartao({ titulo, icone: Icone, ajustes, extra, children }: { titulo: string; icone: typeof Lightbulb; ajustes?: React.ReactNode; extra?: React.ReactNode; children: React.ReactNode }) {
   const [aberto, setAberto] = useState(false);
+  const inst = useInstancia();
+  const nome = inst?.config.titulo?.trim() || titulo;
+  const semTitulo = inst?.config.semTitulo && !extra && !ajustes;
   return (
-    <div className="h-full rounded-xl border border-borda bg-cartao p-3">
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-xs font-semibold text-texto-secundario"><Icone size={13} className="text-primaria" /> {titulo}</p>
-        {ajustes && <button type="button" onClick={() => setAberto(!aberto)} aria-label={`Ajustes: ${titulo}`} aria-expanded={aberto} className="rounded p-1 text-texto-secundario hover:bg-borda/50 hover:text-texto-primario"><Settings2 size={13} /></button>}
-      </div>
-      {aberto && ajustes && <div className="mb-2 space-y-2 rounded-lg border border-borda bg-fundo p-2.5 text-xs">{ajustes}</div>}
-      {children}
+    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-borda bg-cartao p-3">
+      {!semTitulo && (
+        <div className="mb-1.5 flex shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          <p className="flex min-w-[7rem] flex-1 items-center gap-1.5 text-xs font-semibold text-texto-secundario">{!inst?.config.semTitulo && <><Icone size={13} className="shrink-0 text-primaria" /> <span className="truncate">{nome}</span></>}</p>
+          <span className="flex shrink-0 items-center gap-1">
+            {extra}
+            {ajustes && <button type="button" onClick={() => setAberto(!aberto)} aria-label={`Ajustes: ${nome}`} aria-expanded={aberto} className="nao-arrastar rounded p-1 text-texto-secundario hover:bg-borda/50 hover:text-texto-primario"><Settings2 size={13} /></button>}
+          </span>
+        </div>
+      )}
+      {aberto && ajustes && <div className="nao-arrastar mb-2 max-h-[60%] shrink-0 space-y-2 overflow-auto rounded-lg border border-borda bg-fundo p-2.5 text-xs">{ajustes}</div>}
+      <div className="min-h-0 flex-1 overflow-auto">{children}</div>
     </div>
   );
 }

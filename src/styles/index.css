@@ -212,3 +212,11 @@ html.sem-brilho [style*="box-shadow"] { box-shadow: none !important; }
 @keyframes fundo-sobe { 0% { transform: translateY(20vh) scale(0.8); opacity: 0; } 15% { opacity: 0.7; } 100% { transform: translateY(-120vh) scale(1.1); opacity: 0; } }
 @keyframes deslizar { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
 html.sem-animacoes .fundo-animado *, html.sem-animacoes-ui .fundo-animado * { animation: none !important; }
+
+/* Grade do painel inicial (react-grid-layout) com as cores do tema. */
+.react-grid-item.react-grid-placeholder { background: var(--cor-primaria); opacity: 0.18; border-radius: 0.75rem; }
+.react-grid-item > .react-resizable-handle::after { border-color: var(--cor-primaria); }
+.painel-editando .react-grid-item > .react-resizable-handle { opacity: 0.85; z-index: 25; }
+.painel-editando .react-grid-item { cursor: grab; }
+.painel-editando .react-grid-item.react-draggable-dragging { cursor: grabbing; }
+@media (prefers-reduced-motion: reduce) { .react-grid-layout, .react-grid-item { transition: none !important; } }

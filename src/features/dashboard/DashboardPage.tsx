@@ -16,7 +16,6 @@ import {
   Sparkles,
   Target,
   TrendingDown,
-  User,
   Eye,
   EyeOff,
   Pencil,
@@ -24,6 +23,7 @@ import {
   LayoutGrid,
 } from "lucide-react";
 import { contabilidade } from "../../services/contabilidade";
+import { AvatarUsuario } from "../../components/ui/AvatarUsuario";
 import { dataAtualISO, formatarCentavos, formatarDataISOParaBR, nomeMesAno, proximaDataComDia } from "../../services/formato";
 import { despesasPorCategoriaNoMes, fluxoCaixaPorAno } from "../../services/agregacoes";
 import { FinancialCalendar } from "./FinancialCalendar";
@@ -196,9 +196,7 @@ export function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primaria/10 text-primaria">
-            <User size={20} />
-          </span>
+          <AvatarUsuario tamanho={44} nomeAlternativo={nomeUsuario} className="ring-2 ring-primaria/30" />
           <div>
             <h1 className="flex items-center gap-2 text-lg font-semibold text-texto-primario">
               {saudacao}{nomeUsuario ? `, ${nomeUsuario}` : ""}!

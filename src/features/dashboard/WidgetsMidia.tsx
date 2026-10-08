@@ -1,34 +1,52 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Clock, Film, Image as ImageIcon, Maximize2, Minimize2, Pause, Play, Plus, Settings2, Trash2, Volume2, VolumeX, Wallpaper } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, Film, Image as ImageIcon, Pause, Play, Plus, Settings2, Trash2, Volume2, VolumeX, Wallpaper } from "lucide-react";
 import { toast } from "sonner";
 import { usePreferencia } from "../../state/usePreferencia";
-import { useWidgetsStore } from "../../state/widgets-store";
+import { useInstancia } from "./painel/contexto";
 import { useAparenciaStore } from "../../state/aparencia-store";
 import { apagarMidia, listarMidias, salvarMidia, urlDaMidia, type InfoMidia } from "../aparencia/midia";
 
-/** Moldura comum dos widgets de mídia: título, botão de ajustes e de largura. */
-function Moldura({ titulo, icone: Icone, largo, onLargo, ajustes, children, semPadding = false }: { titulo: string; icone: typeof Clock; largo: boolean; onLargo: () => void; ajustes?: React.ReactNode; children: React.ReactNode; semPadding?: boolean }) {
+/**
+ * Moldura dos widgets de mídia: ocupa o tamanho escolhido na grade. Com "esconder título"
+ * (padrão nas fotos), o conteúdo vai de borda a borda e os ajustes aparecem ao passar o mouse.
+ */
+function Moldura({ titulo, icone: Icone, ajustes, children, semPadding = false }: { titulo: string; icone: typeof Clock; ajustes?: React.ReactNode; children: React.ReactNode; semPadding?: boolean }) {
   const [abrirAjustes, setAbrirAjustes] = useState(false);
+  const inst = useInstancia();
+  const nome = inst?.config.titulo?.trim() || titulo;
+  const flutuante = !!inst?.config.semTitulo;
+  const botao = ajustes && (
+    <button type="button" onClick={() => setAbrirAjustes(!abrirAjustes)} aria-label={`Ajustes: ${nome}`} aria-expanded={abrirAjustes} className={`nao-arrastar rounded p-1 ${flutuante ? "rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70" : "text-texto-secundario hover:bg-borda/50 hover:text-texto-primario"}`}><Settings2 size={13} /></button>
+  );
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-borda bg-cartao">
-      <div className="flex items-center justify-between gap-2 px-3 pt-2.5">
-        <p className="flex items-center gap-1.5 text-xs font-semibold text-texto-secundario"><Icone size={13} className="text-primaria" /> {titulo}</p>
-        <span className="flex items-center gap-1">
-          {ajustes && <button type="button" onClick={() => setAbrirAjustes(!abrirAjustes)} aria-label={`Ajustes: ${titulo}`} aria-expanded={abrirAjustes} className="rounded p-1 text-texto-secundario hover:bg-borda/50 hover:text-texto-primario"><Settings2 size={13} /></button>}
-          <button type="button" onClick={onLargo} aria-label={largo ? "Deixar estreito" : "Deixar largo"} className="rounded p-1 text-texto-secundario hover:bg-borda/50 hover:text-texto-primario">{largo ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</button>
-        </span>
-      </div>
-      {abrirAjustes && ajustes && <div className="mx-3 mt-2 space-y-2 rounded-lg border border-borda bg-fundo p-2.5 text-xs">{ajustes}</div>}
-      <div className={`flex-1 ${semPadding ? "mt-2" : "p-3 pt-2"}`}>{children}</div>
+    <div className="group/moldura relative flex h-full flex-col overflow-hidden rounded-xl border border-borda bg-cartao">
+      {flutuante ? (
+        botao && <div className={`absolute right-2 top-2 z-10 transition-opacity focus-within:opacity-100 group-hover/moldura:opacity-100 ${abrirAjustes ? "opacity-100" : "opacity-0"}`}>{botao}</div>
+      ) : (
+        <div className="flex shrink-0 items-center justify-between gap-2 px-3 pt-2.5">
+          <p className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-texto-secundario"><Icone size={13} className="shrink-0 text-primaria" /> <span className="truncate">{nome}</span></p>
+          {botao}
+        </div>
+      )}
+      {abrirAjustes && ajustes && (
+        <div className={`nao-arrastar space-y-2 overflow-auto rounded-lg border border-borda p-2.5 text-xs ${flutuante ? "absolute inset-x-2 top-11 z-10 max-h-[75%] bg-superficie shadow-lg" : "mx-3 mt-2 max-h-[60%] shrink-0 bg-fundo"}`}>{ajustes}</div>
+      )}
+      <div className={`min-h-0 flex-1 ${flutuante ? "" : semPadding ? "mt-2" : "overflow-auto p-3 pt-2"}`}>{children}</div>
     </div>
   );
 }
 
-/** Largo = ocupa 2 ou mais colunas (o mesmo tamanho do "Editar layout" do Início). */
-function useLargo(id: "relogio" | "fotos" | "video"): [boolean, () => void] {
-  const tamanho = useWidgetsStore((s) => s.tamanhoDe(id));
-  const definir = useWidgetsStore((s) => s.definirTamanho);
-  return [tamanho >= 2, () => definir(id, tamanho >= 2 ? 1 : 2)];
+/** true quando o elemento passa da largura (para o relógio crescer quando o card fica largo). */
+function useLargo(ref: React.RefObject<HTMLElement | null>, minimo = 380): boolean {
+  const [largo, setLargo] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const obs = new ResizeObserver(([e]) => setLargo(e.contentRect.width >= minimo));
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [ref, minimo]);
+  return largo;
 }
 
 // ---------------------------------------------------------------------------
@@ -84,7 +102,8 @@ function Analogico({ h, m, s, segundos, tamanho = 120 }: { h: number; m: number;
 
 export function WidgetRelogio() {
   const [cfg, setCfg] = usePreferencia<ConfigRelogio>("widget_relogio", { estilo: "digital", segundos: false, fusos: [] });
-  const [largo, alternarLargo] = useLargo("relogio");
+  const area = useRef<HTMLDivElement>(null);
+  const largo = useLargo(area);
   const [agora, setAgora] = useState(() => new Date());
   useEffect(() => {
     const t = window.setInterval(() => setAgora(new Date()), cfg.segundos || cfg.estilo === "analogico" ? 1000 : 15_000);
@@ -98,8 +117,6 @@ export function WidgetRelogio() {
     <Moldura
       titulo="Relógio"
       icone={Clock}
-      largo={largo}
-      onLargo={alternarLargo}
       ajustes={
         <>
           <div className="flex flex-wrap gap-3">
@@ -116,7 +133,7 @@ export function WidgetRelogio() {
         </>
       }
     >
-      <div className={`flex items-center gap-4 ${cfg.estilo === "analogico" ? "" : "flex-col items-start"}`}>
+      <div ref={area} className={`flex h-full items-center gap-4 ${cfg.estilo === "analogico" ? "" : "flex-col items-start justify-center"}`}>
         {cfg.estilo === "analogico" ? (
           <Analogico {...local} segundos={cfg.segundos} tamanho={largo ? 130 : 104} />
         ) : (
@@ -146,12 +163,10 @@ export function WidgetRelogio() {
 interface ConfigFotos {
   intervalo: number;
   ajuste: "cover" | "contain";
-  altura: number;
 }
 
 export function WidgetFotos() {
-  const [cfg, setCfg] = usePreferencia<ConfigFotos>("widget_fotos", { intervalo: 8, ajuste: "cover", altura: 220 });
-  const [largo, alternarLargo] = useLargo("fotos");
+  const [cfg, setCfg] = usePreferencia<ConfigFotos>("widget_fotos", { intervalo: 8, ajuste: "cover" });
   const [fotos, setFotos] = useState<InfoMidia[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [indice, setIndice] = useState(0);
@@ -202,15 +217,12 @@ export function WidgetFotos() {
 
   return (
     <Moldura
-      titulo="Minhas fotos"
+      titulo="Fotos"
       icone={ImageIcon}
-      largo={largo}
-      onLargo={alternarLargo}
       semPadding={fotos.length > 0}
       ajustes={
         <>
           <label className="flex items-center gap-2">Trocar a cada <input type="range" min={3} max={60} value={cfg.intervalo} onChange={(e) => setCfg({ ...cfg, intervalo: Number(e.target.value) })} className="flex-1 accent-[var(--cor-primaria)]" /> <span className="w-8 tabular-nums">{cfg.intervalo}s</span></label>
-          <label className="flex items-center gap-2">Altura <input type="range" min={140} max={420} step={10} value={cfg.altura} onChange={(e) => setCfg({ ...cfg, altura: Number(e.target.value) })} className="flex-1 accent-[var(--cor-primaria)]" /> <span className="w-10 tabular-nums">{cfg.altura}px</span></label>
           <div className="flex gap-3">
             <label className="flex items-center gap-1.5"><input type="radio" checked={cfg.ajuste === "cover"} onChange={() => setCfg({ ...cfg, ajuste: "cover" })} className="accent-[var(--cor-primaria)]" /> Preencher</label>
             <label className="flex items-center gap-1.5"><input type="radio" checked={cfg.ajuste === "contain"} onChange={() => setCfg({ ...cfg, ajuste: "contain" })} className="accent-[var(--cor-primaria)]" /> Foto inteira</label>
@@ -230,13 +242,13 @@ export function WidgetFotos() {
       }
     >
       {fotos.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-borda px-3 py-6 text-center text-xs text-texto-secundario">
+        <div className="m-3 flex h-[calc(100%-1.5rem)] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-borda px-3 py-6 text-center text-xs text-texto-secundario">
           <ImageIcon size={22} />
           <p>Coloque fotos da família, de uma viagem ou do que você está juntando dinheiro para conquistar.</p>
           {botaoEnviar}
         </div>
       ) : (
-        <div className="group relative overflow-hidden" style={{ height: cfg.altura }} onMouseEnter={() => setSobre(true)} onMouseLeave={() => setSobre(false)}>
+        <div className="group relative h-full min-h-[120px] overflow-hidden" onMouseEnter={() => setSobre(true)} onMouseLeave={() => setSobre(false)}>
           {fotos.map((f, i) =>
             urls[f.id] ? (
               <img
@@ -279,12 +291,10 @@ export function WidgetFotos() {
 interface ConfigVideo {
   id: string;
   mudo: boolean;
-  altura: number;
 }
 
 export function WidgetVideo() {
-  const [cfg, setCfg] = usePreferencia<ConfigVideo>("widget_video", { id: "", mudo: true, altura: 220 });
-  const [largo, alternarLargo] = useLargo("video");
+  const [cfg, setCfg] = usePreferencia<ConfigVideo>("widget_video", { id: "", mudo: true });
   const [videos, setVideos] = useState<InfoMidia[]>([]);
   const [url, setUrl] = useState<string | null>(null);
   const [tocando, setTocando] = useState(true);
@@ -327,12 +337,9 @@ export function WidgetVideo() {
     <Moldura
       titulo="Vídeo"
       icone={Film}
-      largo={largo}
-      onLargo={alternarLargo}
       semPadding={!!url}
       ajustes={
         <>
-          <label className="flex items-center gap-2">Altura <input type="range" min={140} max={420} step={10} value={cfg.altura} onChange={(e) => setCfg({ ...cfg, altura: Number(e.target.value) })} className="flex-1 accent-[var(--cor-primaria)]" /> <span className="w-10 tabular-nums">{cfg.altura}px</span></label>
           <div className="flex flex-wrap items-center gap-3">{botaoEnviar}<span className="text-texto-secundario">MP4/WebM até 150 MB, só neste computador.</span></div>
           {videos.map((v) => (
             <div key={v.id} className="flex items-center justify-between gap-2">
@@ -350,7 +357,7 @@ export function WidgetVideo() {
           {botaoEnviar}
         </div>
       ) : (
-        <div className="group relative" style={{ height: cfg.altura }}>
+        <div className="group relative h-full min-h-[120px]">
           <video ref={ref} src={url} autoPlay muted={cfg.mudo} loop playsInline className="h-full w-full bg-black object-cover" onPlay={() => setTocando(true)} onPause={() => setTocando(false)} />
           <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-3 bg-gradient-to-t from-black/60 to-transparent px-3 pb-2 pt-6 text-white opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
             <button type="button" onClick={() => (tocando ? ref.current?.pause() : ref.current?.play())} aria-label={tocando ? "Pausar vídeo" : "Tocar vídeo"}>{tocando ? <Pause size={15} /> : <Play size={15} />}</button>

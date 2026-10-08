@@ -3,6 +3,15 @@
 Cada versão publicada no GitHub usa a seção correspondente daqui como lista de
 mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 
+## Próxima versão
+
+- Correção: a sincronização entre computadores não estava salvando na nuvem (o Supabase recusava o arquivo de controle). Agora funciona, e se falhar aparece um aviso na tela e em Backup → Nuvem.
+- Início 100% personalizável: arraste qualquer widget para qualquer lugar e mude largura e altura puxando as bordas (grade de 12 colunas). Opção de encaixar automaticamente ou deixar cada um exatamente onde soltar.
+- Vários layouts salvos (ex.: Visão geral, Relatório financeiro, Produtividade), com abas para alternar, criar a partir de 8 modelos, duplicar, renomear e excluir. Ficam no banco da conta: entram no backup e na sincronização.
+- Gráfico personalizável: despesas, receitas, resultado, uma categoria ou saldo; período de 7 dias a 1 ano; por dia, semana ou mês; em barras, linha, rosca, tabela ou número com comparação. Pode ter vários, cada um com a sua configuração.
+- Cada widget pode ter título próprio ou nenhum título. O widget de fotos voltou, agora sem o título "Minhas fotos": a foto ocupa o card inteiro.
+- Foto do perfil da conta Google na barra de título e na saudação do Início, guardada para funcionar sem internet, com "Sincronizar com o Google" em Configurações e as iniciais do nome quando não houver foto.
+
 ## 0.2.4
 
 - Dashboard totalmente personalizável: layout livre com widgets em grade, ordenação, remoção e modelos prontos para uso rápido.

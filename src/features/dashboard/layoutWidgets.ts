@@ -59,6 +59,7 @@ export const CATALOGO: InfoWidget[] = [
   { id: "calculadora", rotulo: "Calculadora", descricao: "Contas rápidas com + − × ÷ e %.", grupo: "Produtividade", w: 4, h: 6 },
   { id: "dica", rotulo: "Dica do dia", descricao: "Uma dica do Dairus por dia.", grupo: "Produtividade", w: 4, h: 4 },
   { id: "relogio", rotulo: "Relógio", descricao: "Digital ou de ponteiros, com outros fusos.", grupo: "Mídia", w: 4, h: 5 },
+  { id: "fotos", rotulo: "Fotos", descricao: "Álbum que troca sozinho e vira fundo, sem título por cima da foto.", grupo: "Mídia", w: 6, h: 8, minH: 4 },
   { id: "video", rotulo: "Vídeo", descricao: "Um vídeo seu em loop.", grupo: "Mídia", w: 6, h: 8, minH: 4 },
 ];
 
@@ -185,95 +186,18 @@ export function emOrdemDeLeitura<T extends { x: number; y: number }>(widgets: T[
 }
 
 // ---------------------------------------------------------------------------
-// Formato antigo (v0.2.3): lista de widgets ativos + tamanho P/M/G
+// Formato antigo (até a v0.2.4): lista de widgets ativos + tamanho P/M/G nas preferências
 
-export type Tamanho = 1 | 2 | 3;
-export interface LayoutWidgets {
-  colunas: number;
-  espaco: "compacto" | "normal" | "amplo";
-  titulo: boolean;
-}
+export const WIDGETS_PADRAO: WidgetId[] = ["fimdomes", "hoje", "sequencia", "metas", "receber", "faturas"];
 
-export const WIDGETS_PADRAO: WidgetId[] = ["fimdomes", "hoje", "sequencia", "metas", "receber", "faturas", "contaspagar", "orcamento", "maioresgastos", "ultimos", "saldos", "patrimonio", "reserva", "poupanca", "investido", "cotacoes", "atalhos", "notas", "foco", "calculadora", "dica", "relogio", "video"];
-export const LAYOUT_PADRAO: LayoutWidgets = { colunas: 3, espaco: "normal", titulo: true };
-export const TAMANHOS_PADRAO: Partial<Record<WidgetId, Tamanho>> = { relogio: 2 };
-
-export function normalizarAtivos(ativos: unknown): WidgetId[] {
-  if (!Array.isArray(ativos)) return [...WIDGETS_PADRAO];
-  const itens: WidgetId[] = [];
-  for (const item of ativos) {
-    if (typeof item !== "string" || !tipoValido(item)) continue;
-    if (!itens.includes(item as WidgetId)) itens.push(item as WidgetId);
-  }
-  return itens;
-}
-
-export function normalizarLayout(layout: unknown): LayoutWidgets {
-  const base = (layout && typeof layout === "object" ? layout : {}) as Partial<LayoutWidgets>;
-  const colunas = typeof base.colunas === "number" && Number.isFinite(base.colunas) ? Math.max(1, Math.min(12, Math.round(base.colunas))) : 3;
-  return {
-    colunas: colunas === 9 ? 3 : colunas,
-    espaco: base.espaco === "compacto" || base.espaco === "amplo" ? base.espaco : "normal",
-    titulo: base.titulo !== false,
-  };
-}
-
-export function normalizarTamanhos(tamanhos: unknown, largos?: unknown): Partial<Record<WidgetId, Tamanho>> {
-  const saida: Partial<Record<WidgetId, Tamanho>> = {};
-  const mapa = (tamanhos && typeof tamanhos === "object" ? tamanhos : {}) as Record<string, unknown>;
-  for (const [id, valor] of Object.entries(mapa)) {
-    if (typeof valor !== "number" || !Number.isFinite(valor) || !tipoValido(id)) continue;
-    const n = Math.max(1, Math.min(3, Math.round(valor))) as Tamanho;
-    saida[id as WidgetId] = n;
-  }
-  if (Array.isArray(largos)) {
-    for (const item of largos) {
-      if (typeof item === "string" && tipoValido(item)) saida[item as WidgetId] = 2;
-    }
-  }
-  return saida;
-}
-
-export function mover<T>(lista: T[], de: number, para: number): T[] {
-  if (!Array.isArray(lista) || lista.length === 0) return lista;
-  const origem = Math.max(0, Math.min(de, lista.length - 1));
-  const destino = Math.max(0, Math.min(para, lista.length));
-  const copia = [...lista];
-  const [item] = copia.splice(origem, 1);
-  if (item === undefined) return lista;
-  copia.splice(destino, 0, item);
-  return copia;
-}
-
-export function classesDaGrade(layout: LayoutWidgets): string {
-  const colunas = Math.max(1, Math.min(12, layout.colunas));
-  const espaco = layout.espaco === "compacto" ? "gap-2" : layout.espaco === "amplo" ? "gap-4" : "gap-3";
-  const linhas = colunas === 1 ? "grid-cols-1" : colunas === 2 ? "sm:grid-cols-2" : colunas === 3 ? "sm:grid-cols-2 lg:grid-cols-3" : colunas === 4 ? "sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" : "sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6";
-  return `grid ${linhas} ${espaco}`;
-}
-
-export function classeDoTamanho(tamanho: Tamanho, layout: LayoutWidgets): string {
-  if (tamanho <= 1) return "";
-  const colunas = Math.max(1, Math.min(12, layout.colunas));
-  const base = `sm:col-span-${Math.min(2, tamanho)}`;
-  if (colunas <= 2) return base;
-  if (colunas === 3) {
-    return tamanho === 3 ? "sm:col-span-2 xl:col-span-3" : "sm:col-span-2";
-  }
-  if (colunas === 4) {
-    if (tamanho === 3) return "sm:col-span-2 lg:col-span-3 2xl:col-span-4";
-    return "sm:col-span-2";
-  }
-  return base;
-}
-
+/** Converte o formato antigo num layout com posições: P = largura padrão, M = 8 colunas, G = 12. */
 export function migrarFormatoAntigo(ativos: unknown, tamanhos: unknown, largos: unknown, layout: unknown): { widgets: WidgetNoPainel[]; opcoes: OpcoesPainel } {
   const lista = Array.isArray(ativos) ? (ativos.filter((x, i, a) => tipoValido(x) && a.indexOf(x) === i) as WidgetId[]) : WIDGETS_PADRAO;
   const t = (tamanhos && typeof tamanhos === "object" ? tamanhos : {}) as Record<string, number>;
   const l = Array.isArray(largos) ? (largos as string[]) : [];
   const widgets = montar(lista.map((tipo) => {
     const tam = t[tipo] ?? (l.includes(tipo) ? 2 : 1);
-    return { tipo, w: tam === 3 ? 12 : tam === 2 ? 8 : infoDoWidget(tipo).w };
+    return { tipo, w: tam === 3 ? 12 : tam === 2 ? 8 : infoDoWidget(tipo).w, config: tipo === "fotos" ? { semTitulo: true } : undefined };
   }));
   const antigo = (layout && typeof layout === "object" ? layout : {}) as { espaco?: string; titulo?: boolean };
   return { widgets, opcoes: normalizarOpcoes({ compactar: true, espaco: antigo.espaco, titulo: antigo.titulo }) };
@@ -286,37 +210,23 @@ export interface ModeloPainel {
   id: string;
   nome: string;
   descricao: string;
-  widgets: WidgetId[];
-  itens?: Array<{ tipo: WidgetId; w?: number; h?: number; config?: ConfigWidget }>;
+  itens: Array<{ tipo: WidgetId; w?: number; h?: number; config?: ConfigWidget }>;
   opcoes?: Partial<OpcoesPainel>;
-  layout?: LayoutWidgets;
-  tamanhos?: Partial<Record<WidgetId, Tamanho>>;
-}
-
-export interface ModeloLayout extends ModeloPainel {
-  layout: LayoutWidgets;
-  tamanhos: Partial<Record<WidgetId, Tamanho>>;
-}
-
-export function colunasDoTamanho(tamanho: Tamanho, colunas: number): number {
-  if (tamanho <= 1) return 1;
-  if (tamanho === 2) return Math.min(2, Math.max(1, colunas >= 2 ? 2 : 1));
-  return Math.max(1, colunas);
 }
 
 const grafico = (c: ConfigGrafico, w = 6, h = 9, titulo?: string) => ({ tipo: "grafico" as const, w, h, config: { grafico: c, titulo } });
 
 export const MODELOS: ModeloPainel[] = [
-  { id: "visao", nome: "Visão geral", descricao: "O essencial do dia a dia, com o gráfico de despesas.", widgets: ["fimdomes", "hoje", "contaspagar", "grafico", "maioresgastos", "receber", "metas", "sequencia"], itens: [{ tipo: "fimdomes" }, { tipo: "hoje" }, { tipo: "contaspagar" }, grafico({ metrica: "despesas", periodo: "6m", granularidade: "mes", exibicao: "barras" }, 8), { tipo: "maioresgastos" }, { tipo: "receber" }, { tipo: "metas" }, { tipo: "sequencia" }] },
-  { id: "relatorio", nome: "Relatório financeiro", descricao: "Gráficos de receitas, despesas, resultado e categorias.", widgets: ["grafico", "grafico", "grafico", "grafico", "grafico", "grafico", "grafico"], itens: [grafico({ metrica: "resultado", periodo: "mes", granularidade: "auto", exibicao: "kpi" }, 4, 5, "Resultado do mês"), grafico({ metrica: "receitas", periodo: "mes", granularidade: "auto", exibicao: "kpi" }, 4, 5, "Receitas do mês"), grafico({ metrica: "despesas", periodo: "mes", granularidade: "auto", exibicao: "kpi" }, 4, 5, "Despesas do mês"), grafico({ metrica: "despesas", periodo: "12m", granularidade: "mes", exibicao: "linha" }, 8, 9), grafico({ metrica: "despesas", periodo: "mes", granularidade: "auto", exibicao: "rosca" }, 4, 9, "Despesas por categoria"), grafico({ metrica: "saldo", periodo: "6m", granularidade: "semana", exibicao: "linha" }, 6, 8, "Saldo disponível"), grafico({ metrica: "despesas", periodo: "mes", granularidade: "auto", exibicao: "tabela" }, 6, 8, "Tabela de despesas")] },
-  { id: "contas", nome: "Contas em dia", descricao: "Vencimentos, faturas, calendário e saldo previsto.", widgets: ["contaspagar", "calendario", "faturas", "fimdomes", "receber", "saldos"], itens: [{ tipo: "contaspagar" }, { tipo: "calendario" }, { tipo: "faturas" }, { tipo: "fimdomes" }, { tipo: "receber" }, { tipo: "saldos" }] },
-  { id: "economia", nome: "Economizar", descricao: "Orçamento, maiores gastos, sobra do mês e sequência.", widgets: ["orcamento", "poupanca", "maioresgastos", "grafico", "sequencia", "foco"], itens: [{ tipo: "orcamento", w: 8 }, { tipo: "poupanca" }, { tipo: "maioresgastos" }, grafico({ metrica: "despesas", periodo: "30d", granularidade: "dia", exibicao: "barras" }, 8, 8, "Gasto por dia"), { tipo: "sequencia" }, { tipo: "foco" }] },
-  { id: "investidor", nome: "Investidor", descricao: "Patrimônio, reserva, investimentos e cotações.", widgets: ["patrimonio", "reserva", "investido", "grafico", "cotacoes", "metas"], itens: [{ tipo: "patrimonio" }, { tipo: "reserva" }, { tipo: "investido" }, grafico({ metrica: "saldo", periodo: "12m", granularidade: "mes", exibicao: "linha" }, 8, 9, "Evolução do saldo"), { tipo: "cotacoes" }, { tipo: "metas" }] },
-  { id: "produtividade", nome: "Produtividade", descricao: "Relógio, calendário, notas, foco, atalhos e calculadora.", widgets: ["relogio", "calendario", "notas", "foco", "atalhos", "calculadora"], itens: [{ tipo: "relogio" }, { tipo: "calendario" }, { tipo: "notas" }, { tipo: "foco" }, { tipo: "atalhos" }, { tipo: "calculadora" }] },
-  { id: "minimalista", nome: "Minimalista", descricao: "Só três números, sem distrações.", widgets: ["fimdomes", "hoje", "contaspagar"], itens: [{ tipo: "fimdomes" }, { tipo: "hoje" }, { tipo: "contaspagar" }], opcoes: { espaco: "amplo", titulo: false } },
-  { id: "vazio", nome: "Em branco", descricao: "Comece do zero e monte do seu jeito.", widgets: [], itens: [] },
+  { id: "visao", nome: "Visão geral", descricao: "O essencial do dia a dia, com o gráfico de despesas.", itens: [{ tipo: "fimdomes" }, { tipo: "hoje" }, { tipo: "contaspagar" }, grafico({ metrica: "despesas", periodo: "6m", granularidade: "mes", exibicao: "barras" }, 8), { tipo: "maioresgastos" }, { tipo: "receber" }, { tipo: "metas" }, { tipo: "sequencia" }] },
+  { id: "relatorio", nome: "Relatório financeiro", descricao: "Receitas, despesas e resultado em números, linha, rosca e tabela.", itens: [grafico({ metrica: "resultado", periodo: "mes", granularidade: "auto", exibicao: "kpi" }, 4, 5, "Resultado do mês"), grafico({ metrica: "receitas", periodo: "mes", granularidade: "auto", exibicao: "kpi" }, 4, 5, "Receitas do mês"), grafico({ metrica: "despesas", periodo: "mes", granularidade: "auto", exibicao: "kpi" }, 4, 5, "Despesas do mês"), grafico({ metrica: "despesas", periodo: "12m", granularidade: "mes", exibicao: "linha" }, 8, 9), grafico({ metrica: "despesas", periodo: "mes", granularidade: "auto", exibicao: "rosca" }, 4, 9, "Despesas por categoria"), grafico({ metrica: "saldo", periodo: "6m", granularidade: "semana", exibicao: "linha" }, 6, 8, "Saldo disponível"), grafico({ metrica: "despesas", periodo: "mes", granularidade: "auto", exibicao: "tabela" }, 6, 8, "Despesas do mês por categoria")] },
+  { id: "contas", nome: "Contas em dia", descricao: "Vencimentos, faturas, calendário e saldo previsto.", itens: [{ tipo: "contaspagar" }, { tipo: "calendario" }, { tipo: "faturas" }, { tipo: "fimdomes" }, { tipo: "receber" }, { tipo: "saldos" }] },
+  { id: "economia", nome: "Economizar", descricao: "Orçamento, maiores gastos, sobra do mês e gasto por dia.", itens: [{ tipo: "orcamento", w: 8 }, { tipo: "poupanca" }, { tipo: "maioresgastos" }, grafico({ metrica: "despesas", periodo: "30d", granularidade: "dia", exibicao: "barras" }, 8, 8, "Gasto por dia"), { tipo: "sequencia" }, { tipo: "foco" }] },
+  { id: "investidor", nome: "Investidor", descricao: "Patrimônio, reserva, investimentos e cotações.", itens: [{ tipo: "patrimonio" }, { tipo: "reserva" }, { tipo: "investido" }, grafico({ metrica: "saldo", periodo: "12m", granularidade: "mes", exibicao: "linha" }, 8, 9, "Evolução do saldo"), { tipo: "cotacoes" }, { tipo: "metas" }] },
+  { id: "produtividade", nome: "Produtividade", descricao: "Relógio, calendário, notas, foco, atalhos e calculadora.", itens: [{ tipo: "relogio" }, { tipo: "calendario" }, { tipo: "notas" }, { tipo: "foco" }, { tipo: "atalhos" }, { tipo: "calculadora" }] },
+  { id: "minimalista", nome: "Minimalista", descricao: "Só três números, sem distrações.", itens: [{ tipo: "fimdomes" }, { tipo: "hoje" }, { tipo: "contaspagar" }], opcoes: { espaco: "amplo", titulo: false } },
+  { id: "vazio", nome: "Em branco", descricao: "Comece do zero e monte do seu jeito.", itens: [] },
 ];
 
 export function widgetsDoModelo(m: ModeloPainel): WidgetNoPainel[] {
-  return montar(m.itens ?? (m.widgets ?? []).map((tipo) => ({ tipo })));
+  return montar(m.itens);
 }
