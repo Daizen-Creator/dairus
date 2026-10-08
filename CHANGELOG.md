@@ -3,7 +3,7 @@
 Cada versão publicada no GitHub usa a seção correspondente daqui como lista de
 mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 
-## Próxima versão
+## 0.2.5
 
 - Correção: a sincronização entre computadores não estava salvando na nuvem (o Supabase recusava o arquivo de controle). Agora funciona, e se falhar aparece um aviso na tela e em Backup → Nuvem.
 - Início 100% personalizável: arraste qualquer widget para qualquer lugar e mude largura e altura puxando as bordas (grade de 12 colunas). Opção de encaixar automaticamente ou deixar cada um exatamente onde soltar.
