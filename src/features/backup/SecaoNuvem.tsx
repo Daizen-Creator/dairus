@@ -6,7 +6,7 @@ import { Secao } from "../../components/ui/Campos";
 import { extras } from "../../services/extras";
 import { apagarBackupDaNuvem, baixarBackupDaNuvem, enviarBackupParaNuvem, listarBackupsNaNuvem, type ArquivoNuvem } from "../../services/nuvem";
 import { usePreferencia } from "../../state/usePreferencia";
-import { lerEstadoLocal, pendenteDeEnvio, type EstadoLocal } from "../../services/sincronizacao";
+import { lerEstadoLocal, lerUltimoErroSync, pendenteDeEnvio, type ErroSync, type EstadoLocal } from "../../services/sincronizacao";
 import { sincronizarEmSegundoPlano } from "../../components/layout/IntegracaoSistema";
 
 const tamanho = (b: number) => (b > 1_048_576 ? `${(b / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
@@ -23,8 +23,10 @@ export function SecaoNuvem({ onBaixado }: { onBaixado: () => void }) {
   const [syncAuto, setSyncAuto] = usePreferencia<boolean>("sync_auto", true);
   const [estadoSync, setEstadoSync] = useState<EstadoLocal | null>(null);
   const [pendente, setPendente] = useState(false);
+  const [erroSync, setErroSync] = useState<ErroSync | null>(null);
 
   async function atualizarStatusSync() {
+    setErroSync(await lerUltimoErroSync().catch(() => null));
     setEstadoSync(await lerEstadoLocal());
     setPendente(await pendenteDeEnvio().catch(() => false));
   }
@@ -99,12 +101,13 @@ export function SecaoNuvem({ onBaixado }: { onBaixado: () => void }) {
           {estadoSync ? `Última sincronização: ${quando(estadoSync.sincronizado_em)} (versão ${estadoSync.versao_vista}).` : "Ainda não sincronizado neste computador."}{" "}
           {pendente ? <strong className="text-alerta">Há alterações deste computador ainda não enviadas.</strong> : estadoSync ? <span className="text-sucesso">Nuvem em dia.</span> : null}
         </p>
+        {erroSync && <p role="alert" className="mt-2 rounded-lg border border-erro/50 bg-erro/10 p-2 text-xs text-texto-primario"><strong className="text-erro">A última sincronização falhou</strong> ({quando(erroSync.em)}): {erroSync.mensagem}</p>}
         <Button
           tamanho="pequeno"
           variante="secundaria"
           className="mt-2"
           disabled={!!ocupado}
-          onClick={() => executar("sync", async () => { await sincronizarEmSegundoPlano(true); await atualizarStatusSync(); }, "Sincronização concluída.")}
+          onClick={() => executar("sync", async () => { try { await sincronizarEmSegundoPlano(true); } finally { await atualizarStatusSync(); } }, "Sincronização concluída.")}
         >
           {ocupado === "sync" ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Sincronizar agora
         </Button>

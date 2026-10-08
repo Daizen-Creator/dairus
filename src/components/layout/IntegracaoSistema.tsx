@@ -228,7 +228,18 @@ export function IntegracaoSistema() {
     const rodar = () => verificarAvisosAgora().catch((e) => registrarNoLog("warn", `avisos: ${String(e)}`));
     const primeiro = window.setTimeout(rodar, 5_000);
     const id = window.setInterval(rodar, INTERVALO_AVISOS);
-    const sync = () => sincronizarEmSegundoPlano().catch((e) => registrarNoLog("warn", `sincronização: ${String(e)}`));
+    // Falha na sincronização automática: registra no log e avisa uma vez por sessão
+    // (sem insistir a cada 5 minutos, e sem avisar quando é só falta de internet).
+    let avisado = "";
+    const sync = () =>
+      sincronizarEmSegundoPlano().catch((e) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        registrarNoLog("warn", `sincronização: ${msg}`);
+        if (msg !== avisado && !/Sem conexão/.test(msg)) {
+          avisado = msg;
+          toast.error(`A sincronização com a nuvem falhou: ${msg}`, { duration: 12_000 });
+        }
+      });
     const syncInicial = window.setTimeout(sync, 2_000);
     const idSync = window.setInterval(sync, INTERVALO_SYNC);
     return () => {

@@ -13,6 +13,26 @@ import { extras } from "./extras";
 import { supabase } from "./supabase";
 
 const BUCKET = "backups";
+/** O bucket "backups" só aceita arquivos binários: tudo vai como octet-stream (inclusive o estado.json). */
+const BINARIO = "application/octet-stream";
+/** Limite de tamanho por arquivo do bucket "backups" no Supabase. */
+export const LIMITE_NUVEM_BYTES = 50 * 1024 * 1024;
+
+/** Traduz os erros da nuvem para algo que dá para entender e resolver. */
+export function traduzirErroSync(erro: unknown): string {
+  const msg = erro instanceof Error ? erro.message : String(erro);
+  if (/mime type/i.test(msg)) return "A nuvem recusou o tipo de arquivo enviado. Atualize o Dairus para a versão mais nova.";
+  if (/payload too large|exceeded the maximum|too large|413/i.test(msg)) return "O banco ficou maior que o limite de 50 MB da nuvem. Apague anexos grandes (em Garantias e documentos) ou use backup local.";
+  if (/failed to fetch|network|load failed|ERR_INTERNET|timeout/i.test(msg)) return "Sem conexão com a nuvem agora. O Dairus tenta de novo em 5 minutos.";
+  if (/jwt|not authorized|unauthorized|401|403/i.test(msg)) return "A sessão da conta expirou. Saia e entre de novo para voltar a sincronizar.";
+  return msg;
+}
+
+export interface ErroSync {
+  mensagem: string;
+  em: string;
+}
+export const lerUltimoErroSync = () => lerPreferencia<ErroSync>("sync_ultimo_erro");
 
 export interface EstadoNuvem {
   versao: number;
@@ -84,10 +104,13 @@ export const impressaoDados = () => invoke<string>("impressao_dados");
 
 async function enviar(base: string, versaoAnterior: number): Promise<EstadoNuvem> {
   const copia = new Uint8Array(await invoke<number[]>("gerar_copia_sync"));
+  if (copia.byteLength > LIMITE_NUVEM_BYTES) {
+    throw new Error(`O banco tem ${(copia.byteLength / 1_048_576).toFixed(1).replace(".", ",")} MB e o limite da nuvem é 50 MB. Apague anexos grandes (em Garantias e documentos) ou use backup local.`);
+  }
   const impressao = await impressaoDados();
   const { error: e1 } = await supabase.storage
     .from(BUCKET)
-    .upload(`${base}/atual.db`, new Blob([copia], { type: "application/octet-stream" }), { upsert: true, contentType: "application/octet-stream" });
+    .upload(`${base}/atual.db`, new Blob([copia], { type: BINARIO }), { upsert: true, contentType: BINARIO });
   if (e1) throw new Error(e1.message);
   const estado: EstadoNuvem = {
     versao: versaoAnterior + 1,
@@ -97,7 +120,7 @@ async function enviar(base: string, versaoAnterior: number): Promise<EstadoNuvem
   };
   const { error: e2 } = await supabase.storage
     .from(BUCKET)
-    .upload(`${base}/estado.json`, new Blob([JSON.stringify(estado)], { type: "application/json" }), { upsert: true, contentType: "application/json" });
+    .upload(`${base}/estado.json`, new Blob([JSON.stringify(estado)], { type: BINARIO }), { upsert: true, contentType: BINARIO });
   if (e2) throw new Error(e2.message);
   await salvarEstadoLocal({ versao_vista: estado.versao, impressao, sincronizado_em: estado.alterado_em });
   return estado;
@@ -123,7 +146,24 @@ let emAndamento: Promise<ResultadoSync> | null = null;
 /** Sincroniza agora. Em conflito não mexe em nada: devolve "CONFLITO" para a tela perguntar. */
 export function sincronizar(): Promise<ResultadoSync> {
   if (emAndamento) return emAndamento;
-  emAndamento = (async () => {
+  emAndamento = sincronizarDeVerdade()
+    .then(async (r) => {
+      await salvarPreferencia("sync_ultimo_erro", null);
+      return r;
+    })
+    .catch(async (e) => {
+      const mensagem = traduzirErroSync(e);
+      await salvarPreferencia("sync_ultimo_erro", { mensagem, em: new Date().toISOString() } satisfies ErroSync).catch(() => {});
+      throw new Error(mensagem);
+    })
+    .finally(() => {
+      emAndamento = null;
+    });
+  return emAndamento;
+}
+
+function sincronizarDeVerdade(): Promise<ResultadoSync> {
+  return (async () => {
     const base = await pasta();
     const remoto = await lerEstadoNuvem(base);
     const local = await lerEstadoLocal();
@@ -140,10 +180,7 @@ export function sincronizar(): Promise<ResultadoSync> {
     }
     if (decisao === "NADA" && local) await salvarEstadoLocal({ ...local, sincronizado_em: new Date().toISOString() });
     return { decisao, remoto, aplicouRemoto: false };
-  })().finally(() => {
-    emAndamento = null;
-  });
-  return emAndamento;
+  })();
 }
 
 /** Resolve um conflito: "NUVEM" troca os dados deste computador pelos da nuvem; "LOCAL" sobrescreve a nuvem. */

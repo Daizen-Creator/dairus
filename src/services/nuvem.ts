@@ -50,10 +50,13 @@ export async function apagarBackupDaNuvem(nome: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-/** Envia um arquivo qualquer (ex.: relatório em PDF) para <conta>/<subpasta>/ na nuvem. */
-export async function enviarArquivoParaNuvem(subpasta: string, nome: string, bytes: Uint8Array, tipo: string): Promise<void> {
+/**
+ * Envia um arquivo qualquer (ex.: relatório em PDF) para <conta>/<subpasta>/ na nuvem.
+ * Vai sempre como binário: o bucket "backups" só aceita esse tipo (o nome mantém a extensão).
+ */
+export async function enviarArquivoParaNuvem(subpasta: string, nome: string, bytes: Uint8Array, _tipo?: string): Promise<void> {
   const pasta = await pastaDaConta();
-  const { error } = await supabase.storage.from(BUCKET).upload(`${pasta}/${subpasta}/${nome}`, new Blob([new Uint8Array(bytes)], { type: tipo }), { upsert: true, contentType: tipo });
+  const { error } = await supabase.storage.from(BUCKET).upload(`${pasta}/${subpasta}/${nome}`, new Blob([new Uint8Array(bytes)], { type: "application/octet-stream" }), { upsert: true, contentType: "application/octet-stream" });
   if (error) throw new Error(error.message);
 }
 
