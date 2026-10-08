@@ -6,6 +6,9 @@ import {
   MODELOS,
   OPCOES_PADRAO,
   criarWidget,
+  daGrade,
+  daLateral,
+  lugarLivre,
   migrarFormatoAntigo,
   normalizarOpcoes,
   normalizarWidgets,
@@ -30,6 +33,15 @@ interface Estado {
   carregado: boolean;
   /** Modo "Editar layout" do Início (não é salvo). */
   editando: boolean;
+  /** Widget com a janela de configuração aberta (não é salvo). */
+  configurando: string | null;
+  setConfigurando: (i: string | null) => void;
+  /** Leva o widget para a coluna lateral do Início (no fim da lista). */
+  paraLateral: (i: string) => void;
+  /** Devolve o widget da lateral para a grade, no primeiro lugar livre. */
+  paraGrade: (i: string) => void;
+  /** Sobe (-1) ou desce (+1) um widget dentro da coluna lateral. */
+  moverNaLateral: (i: string, direcao: -1 | 1) => void;
   carregar: () => Promise<void>;
   setEditando: (v: boolean) => void;
   ativar: (id: string) => Promise<void>;
@@ -120,6 +132,35 @@ export const useWidgetsStore = create<Estado>((set, get) => {
     ativoId: null,
     carregado: false,
     editando: false,
+    configurando: null,
+    setConfigurando: (i) => set({ configurando: i }),
+
+    paraLateral: (i) =>
+      alterarAtivo((p) => {
+        const ordem = daLateral(p.widgets).length;
+        return { ...p, widgets: p.widgets.map((w) => (w.i === i ? { ...w, y: ordem, config: { ...w.config, lateral: true } } : w)) };
+      }),
+
+    paraGrade: (i) =>
+      alterarAtivo((p) => {
+        const w = p.widgets.find((x) => x.i === i);
+        if (!w) return p;
+        const lugar = lugarLivre(daGrade(p.widgets), w.w, w.h);
+        const config = { ...w.config };
+        delete config.lateral;
+        return { ...p, widgets: p.widgets.map((x) => (x.i === i ? { ...x, ...lugar, config } : x)) };
+      }),
+
+    moverNaLateral: (i, direcao) =>
+      alterarAtivo((p) => {
+        const lista = daLateral(p.widgets);
+        const de = lista.findIndex((w) => w.i === i);
+        const para = de + direcao;
+        if (de < 0 || para < 0 || para >= lista.length) return p;
+        [lista[de], lista[para]] = [lista[para], lista[de]];
+        const ordem = new Map(lista.map((w, n) => [w.i, n]));
+        return { ...p, widgets: p.widgets.map((w) => (ordem.has(w.i) ? { ...w, y: ordem.get(w.i)! } : w)) };
+      }),
 
     carregar: () => {
       cargaEmAndamento ??= carregarDoBanco().finally(() => {
@@ -179,14 +220,17 @@ export const useWidgetsStore = create<Estado>((set, get) => {
 
     aplicarModelo: (m) => alterarAtivo((p) => ({ ...p, widgets: widgetsDoModelo(m), opcoes: normalizarOpcoes({ ...p.opcoes, ...m.opcoes }) })),
 
-    adicionar: (tipo, config) => alterarAtivo((p) => ({ ...p, widgets: [...p.widgets, criarWidget(p.widgets, tipo, config)] })),
+    adicionar: (tipo, config) => alterarAtivo((p) => ({ ...p, widgets: [...p.widgets, criarWidget(daGrade(p.widgets), tipo, config)] })),
 
     remover: (i) => alterarAtivo((p) => ({ ...p, widgets: p.widgets.filter((w) => w.i !== i) })),
 
     duplicarWidget: (i) =>
       alterarAtivo((p) => {
         const w = p.widgets.find((x) => x.i === i);
-        return w ? { ...p, widgets: [...p.widgets, criarWidget(p.widgets, w.tipo, w.config ? structuredClone(w.config) : undefined, { w: w.w, h: w.h })] } : p;
+        if (!w) return p;
+        const config = w.config ? structuredClone(w.config) : undefined;
+        if (config) delete config.lateral;
+        return { ...p, widgets: [...p.widgets, criarWidget(daGrade(p.widgets), w.tipo, config, { w: w.w, h: w.h })] };
       }),
 
     atualizarPosicoes: (posicoes) =>

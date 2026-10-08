@@ -76,6 +76,8 @@ export interface ConfigWidget {
   titulo?: string;
   /** Esconde a barra de título (ex.: foto ocupando o card inteiro). */
   semTitulo?: boolean;
+  /** Fica na coluna lateral do Início (empilhado, na ordem de `y`), fora da grade. */
+  lateral?: boolean;
   grafico?: ConfigGrafico;
 }
 
@@ -179,6 +181,11 @@ export function montar(itens: Array<{ tipo: WidgetId; w?: number; h?: number; co
   for (const it of itens) widgets.push(criarWidget(widgets, it.tipo, it.config, it));
   return widgets;
 }
+
+export const naLateral = (w: WidgetNoPainel) => !!w.config?.lateral;
+export const daGrade = (ws: WidgetNoPainel[]) => ws.filter((w) => !naLateral(w));
+/** Widgets da coluna lateral, na ordem (de cima para baixo). */
+export const daLateral = (ws: WidgetNoPainel[]) => ws.filter(naLateral).sort((a, b) => a.y - b.y);
 
 /** Ordem de leitura (para telas estreitas, onde os widgets ficam um embaixo do outro). */
 export function emOrdemDeLeitura<T extends { x: number; y: number }>(widgets: T[]): T[] {

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  AlertTriangle, CalendarCheck, CalendarDays, CreditCard, Flame, Goal, Landmark, LineChart, ListOrdered, NotebookPen, PiggyBank, Plus, Receipt,
-  Repeat, ShieldCheck, Target, TrendingUp, Wallet, X, Zap,
+  AlertTriangle, ArrowDown, ArrowUp, CalendarCheck, CalendarDays, CreditCard, Flame, Goal, Landmark, LineChart, ListOrdered, NotebookPen, PiggyBank, Plus, Receipt,
+  PanelLeft, PanelRight, Repeat, Settings2, ShieldCheck, Target, TrendingUp, Wallet, X, Zap,
 } from "lucide-react";
 import { formatarDataISOParaBR } from "../../services/formato";
 import { preverSaldo } from "../../services/previsao";
@@ -16,14 +16,14 @@ import {
   assinaturasDoMes, calendarioDoMes, contasAPagar, gastosRecentes, maioresGastosDoMes, patrimonioLiquido, poupancaDoMes, progressoDoOrcamento, proximosRecebimentos,
   reservaDeEmergencia, saldosDisponiveis,
 } from "./dadosWidgetsInicio";
-import type { WidgetNoPainel } from "./layoutWidgets";
+import { ALTURA_LINHA, daGrade, daLateral, infoDoWidget, type WidgetNoPainel } from "./layoutWidgets";
 import { WidgetFotos, WidgetRelogio, WidgetVideo } from "./WidgetsMidia";
 import { Cartao, WidgetCalculadora, WidgetContagem, WidgetCotacoes, WidgetDica } from "./WidgetsExtras";
 import { WidgetGrafico } from "./painel/WidgetGrafico";
 import { BarraPaineis, CatalogoWidgets } from "./painel/BarraPaineis";
 import { GradePainel } from "./painel/GradePainel";
 import { ConfigWidgetDialog } from "./painel/ConfigWidgetDialog";
-import { ContextoDados } from "./painel/contexto";
+import { ContextoDados, ContextoInstancia } from "./painel/contexto";
 
 export { CatalogoWidgets };
 
@@ -295,11 +295,10 @@ function useConteudo({ contas, lancamentos, agendamentos, metas, orcamentos = []
  * de uma grade de 12 colunas (arrastar e redimensionar), cada um com a sua configuração.
  */
 export function WidgetsInicio(props: Props) {
-  const { carregado, editando, carregar, setEditando } = useWidgetsStore();
+  const { carregado, editando, carregar, setEditando, configurando, setConfigurando } = useWidgetsStore();
   const painel = usePainelAtivo();
   const conteudo = useConteudo(props);
   const [catalogo, setCatalogo] = useState(false);
-  const [configurando, setConfigurando] = useState<string | null>(null);
   const dados = { ...props, orcamentos: props.orcamentos ?? [] };
 
   useEffect(() => {
@@ -330,15 +329,69 @@ export function WidgetsInicio(props: Props) {
             {catalogo && <div className="mt-2 rounded-xl border border-borda bg-superficie p-3"><CatalogoWidgets compacto /></div>}
           </div>
         )}
-        {painel.widgets.length === 0 ? (
+        {daGrade(painel.widgets).length === 0 ? (
           <button onClick={() => { setEditando(true); setCatalogo(true); }} className="w-full rounded-xl border border-dashed border-borda p-8 text-sm text-texto-secundario hover:border-primaria hover:text-primaria">
-            <Plus size={14} className="inline" /> Este layout está vazio. Adicione widgets.
+            <Plus size={14} className="inline" /> {painel.widgets.length ? "Todos os widgets estão na coluna lateral. Adicione mais aqui." : "Este layout está vazio. Adicione widgets."}
           </button>
         ) : (
           <GradePainel painel={painel} editando={editando} conteudo={conteudo} onConfigurar={(w) => setConfigurando(w.i)} />
         )}
         {emConfiguracao && <ConfigWidgetDialog widget={emConfiguracao} contas={props.contas} onFechar={() => setConfigurando(null)} />}
       </section>
+    </ContextoDados.Provider>
+  );
+}
+
+/**
+ * Widgets da coluna lateral do Início (ao lado de Metas e Vencimentos), um embaixo do outro.
+ * No "Editar layout": subir/descer, configurar, voltar para a grade e remover.
+ */
+export function WidgetsLaterais(props: Props) {
+  const { carregado, editando, carregar, moverNaLateral, paraGrade, remover, setConfigurando } = useWidgetsStore();
+  const painel = usePainelAtivo();
+  const conteudo = useConteudo(props);
+  const dados = { ...props, orcamentos: props.orcamentos ?? [] };
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  if (!carregado || !painel) return null;
+  const lista = daLateral(painel.widgets);
+  if (!lista.length) {
+    return editando ? (
+      <p className="rounded-xl border border-dashed border-primaria/50 p-3 text-center text-xs text-texto-secundario">
+        Coluna lateral: use o botão <PanelRight size={11} className="inline" /> nos widgets para colocá-los aqui.
+      </p>
+    ) : null;
+  }
+  const botao = "rounded-full p-1 text-texto-secundario hover:bg-borda/60 hover:text-texto-primario disabled:opacity-30";
+
+  return (
+    <ContextoDados.Provider value={dados}>
+      <div className="space-y-4" aria-label="Widgets da coluna lateral">
+        {lista.map((w, n) => {
+          const info = infoDoWidget(w.tipo);
+          return (
+            <ContextoInstancia.Provider key={w.i} value={{ i: w.i, config: w.config ?? {}, configurar: (c) => useWidgetsStore.getState().configurar(w.i, c) }}>
+              <div className={`relative ${editando ? "rounded-xl outline-2 outline-offset-2 outline-dashed outline-primaria/60" : ""}`} style={{ height: Math.max(3, w.h) * ALTURA_LINHA + (w.h - 1) * 12 }}>
+                {editando && (
+                  <div className="absolute inset-x-0 -top-3 z-30 flex justify-center">
+                    <div className="flex items-center gap-0.5 rounded-full border border-primaria/50 bg-superficie px-1.5 py-0.5 shadow-lg">
+                      <button type="button" onClick={() => moverNaLateral(w.i, -1)} disabled={n === 0} aria-label={`Subir ${info.rotulo}`} title="Subir" className={botao}><ArrowUp size={12} /></button>
+                      <button type="button" onClick={() => moverNaLateral(w.i, 1)} disabled={n === lista.length - 1} aria-label={`Descer ${info.rotulo}`} title="Descer" className={botao}><ArrowDown size={12} /></button>
+                      <button type="button" onClick={() => setConfigurando(w.i)} aria-label={`Configurar ${info.rotulo}`} title="Configurar" className={botao}><Settings2 size={12} /></button>
+                      <button type="button" onClick={() => paraGrade(w.i)} aria-label={`Voltar ${info.rotulo} para a grade`} title="Voltar para a grade" className={botao}><PanelLeft size={12} /></button>
+                      <button type="button" onClick={() => remover(w.i)} aria-label={`Remover ${info.rotulo}`} title="Remover" className={`${botao} hover:text-erro`}><X size={12} /></button>
+                    </div>
+                  </div>
+                )}
+                <div className={`h-full ${editando ? "pointer-events-none select-none" : ""}`}>{conteudo(w)}</div>
+              </div>
+            </ContextoInstancia.Provider>
+          );
+        })}
+      </div>
     </ContextoDados.Provider>
   );
 }

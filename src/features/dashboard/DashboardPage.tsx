@@ -34,9 +34,10 @@ import { BannerMotivacional } from "./BannerMotivacional";
 import { CardAtalho } from "./CardAtalho";
 import { calcularPeriodo, SeletorPeriodo, type Periodo } from "./SeletorPeriodo";
 import { StatusRodape } from "./StatusRodape";
+import { useStatusSync } from "./useStatusSync";
 import { CardDiagnosticoIA, CardResumoSemanal } from "./CardResumoSemanal";
 import { PrimeirosPassos } from "../ajuda/PrimeirosPassos";
-import { WidgetsInicio } from "./WidgetsInicio";
+import { WidgetsInicio, WidgetsLaterais } from "./WidgetsInicio";
 import { StatCard } from "../../components/ui/StatCard";
 import { IconeCoisa } from "../../components/ui/IconeCoisa";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -73,6 +74,7 @@ export function DashboardPage() {
   const [secao, setSecao] = useAbaDaPagina<"resumo" | "analises" | "movimentacoes">("dashboard", "resumo");
   const [ultimoBackup, setUltimoBackup] = useState<InfoBackup | null>(null);
   const pinAtivo = useSegurancaStore((s) => s.pinAtivo);
+  const statusSync = useStatusSync();
   const totalGuardado = metas.reduce((s, m) => s + m.guardado_centavos, 0);
   const hoje = dataAtualISO();
   const [periodo, setPeriodo] = useState<Periodo>(() => calcularPeriodo("este-mes", hoje));
@@ -413,6 +415,7 @@ export function DashboardPage() {
         <div className="space-y-4">
           <button onClick={() => setColunaRecolhida(!colunaRecolhida)} className="hidden w-full items-center justify-end gap-1 text-xs text-texto-secundario hover:text-primaria xl:flex" aria-label={colunaRecolhida ? "Mostrar coluna lateral" : "Recolher coluna lateral"}>{colunaRecolhida ? "Mostrar painel lateral" : "Recolher painel lateral →"}</button>
           <div className={`space-y-4 ${colunaRecolhida ? "xl:hidden" : ""}`}>
+          <WidgetsLaterais contas={contas} lancamentos={lancamentos} agendamentos={agendamentos} metas={metas} orcamentos={orcamentos} hoje={hoje} dinheiro={dinheiro} />
           <div className="rounded-xl border border-borda bg-cartao p-4">
             <div className="flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-texto-primario">
@@ -487,7 +490,7 @@ export function DashboardPage() {
                 corStatus: ultimoBackup ? "sucesso" : "alerta",
                 to: "/backup",
               },
-              { titulo: "Sincronização", status: "Desativada", icone: RefreshCw, cor: "primaria", corStatus: "primaria", to: "/configuracoes" },
+              { titulo: "Sincronização", status: statusSync.texto, icone: RefreshCw, cor: "primaria", corStatus: statusSync.estado === "ok" ? "sucesso" : statusSync.estado === "erro" ? "erro" : "alerta", to: "/backup" },
               {
                 titulo: "Modo Seguro",
                 status: pinAtivo ? "PIN ativo" : "Desativado",

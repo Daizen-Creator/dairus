@@ -2,9 +2,9 @@ import { useMemo } from "react";
 import ReactGridLayout, { noCompactor, useContainerWidth, verticalCompactor, type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
-import { Copy, Move, Settings2, X } from "lucide-react";
+import { Copy, Move, PanelRight, Settings2, X } from "lucide-react";
 import { useWidgetsStore } from "../../../state/widgets-store";
-import { ALTURA_LINHA, COLUNAS, MARGEM, emOrdemDeLeitura, infoDoWidget, type Painel, type WidgetNoPainel } from "../layoutWidgets";
+import { ALTURA_LINHA, COLUNAS, MARGEM, daGrade, emOrdemDeLeitura, infoDoWidget, type Painel, type WidgetNoPainel } from "../layoutWidgets";
 import { ContextoInstancia } from "./contexto";
 
 /** Abaixo desta largura os widgets ficam um embaixo do outro (sem grade). */
@@ -21,6 +21,7 @@ interface Props {
 function BarraDeEdicao({ w, onConfigurar }: { w: WidgetNoPainel; onConfigurar: () => void }) {
   const remover = useWidgetsStore((s) => s.remover);
   const duplicar = useWidgetsStore((s) => s.duplicarWidget);
+  const paraLateral = useWidgetsStore((s) => s.paraLateral);
   const info = infoDoWidget(w.tipo);
   const botao = "nao-arrastar rounded-full p-1 text-texto-secundario hover:bg-borda/60 hover:text-texto-primario";
   return (
@@ -28,6 +29,7 @@ function BarraDeEdicao({ w, onConfigurar }: { w: WidgetNoPainel; onConfigurar: (
       <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-primaria/50 bg-superficie px-1.5 py-0.5 shadow-lg">
         <span className="flex cursor-grab items-center gap-1 px-1 text-[10px] text-texto-secundario active:cursor-grabbing" title="Arraste o card para mover; puxe a borda ou o canto para mudar o tamanho"><Move size={11} /> {w.w}×{w.h}</span>
         <button type="button" onClick={onConfigurar} aria-label={`Configurar ${info.rotulo}`} title="Configurar" className={botao}><Settings2 size={12} /></button>
+        <button type="button" onClick={() => paraLateral(w.i)} aria-label={`Mandar ${info.rotulo} para a coluna lateral`} title="Mandar para a coluna lateral" className={botao}><PanelRight size={12} /></button>
         {info.multiplo && <button type="button" onClick={() => duplicar(w.i)} aria-label={`Duplicar ${info.rotulo}`} title="Duplicar" className={botao}><Copy size={12} /></button>}
         <button type="button" onClick={() => remover(w.i)} aria-label={`Remover ${info.rotulo}`} title="Remover" className={`${botao} hover:text-erro`}><X size={12} /></button>
       </div>
@@ -41,14 +43,15 @@ export function GradePainel({ painel, editando, conteudo, onConfigurar }: Props)
   const atualizarPosicoes = useWidgetsStore((s) => s.atualizarPosicoes);
   const configurar = useWidgetsStore((s) => s.configurar);
   const margem = MARGEM[painel.opcoes.espaco];
+  const widgets = useMemo(() => daGrade(painel.widgets), [painel.widgets]);
 
   const layout: Layout = useMemo(
     () =>
-      painel.widgets.map((w) => {
+      widgets.map((w) => {
         const info = infoDoWidget(w.tipo);
         return { i: w.i, x: w.x, y: w.y, w: w.w, h: w.h, minW: info.minW ?? 2, minH: info.minH ?? 3, maxW: COLUNAS };
       }),
-    [painel.widgets],
+    [widgets],
   );
 
   const item = (w: WidgetNoPainel, altura?: number) => (
@@ -65,7 +68,7 @@ export function GradePainel({ painel, editando, conteudo, onConfigurar }: Props)
       {mounted && width > 0 && width < LARGURA_EMPILHAR ? (
         // Tela estreita: um embaixo do outro, na ordem de leitura, com a altura escolhida.
         <div className="space-y-3">
-          {emOrdemDeLeitura(painel.widgets).map((w) => <div key={w.i}>{item(w, w.h * ALTURA_LINHA + (w.h - 1) * margem)}</div>)}
+          {emOrdemDeLeitura(widgets).map((w) => <div key={w.i}>{item(w, w.h * ALTURA_LINHA + (w.h - 1) * margem)}</div>)}
         </div>
       ) : (
         mounted && (
@@ -78,7 +81,7 @@ export function GradePainel({ painel, editando, conteudo, onConfigurar }: Props)
             compactor={painel.opcoes.compactar ? verticalCompactor : noCompactor}
             onLayoutChange={(novo) => editando && atualizarPosicoes(novo)}
           >
-            {painel.widgets.map((w) => <div key={w.i}>{item(w)}</div>)}
+            {widgets.map((w) => <div key={w.i}>{item(w)}</div>)}
           </ReactGridLayout>
         )
       )}

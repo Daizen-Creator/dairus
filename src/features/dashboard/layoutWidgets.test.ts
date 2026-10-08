@@ -58,3 +58,16 @@ describe("painel do Início (grade livre)", () => {
     expect(emOrdemDeLeitura([{ i: "c", x: 0, y: 5 }, { i: "b", x: 6, y: 0 }, { i: "a", x: 0, y: 0 }]).map((w) => w.i)).toEqual(["a", "b", "c"]);
   });
 });
+
+describe("coluna lateral", () => {
+  it("separa grade e lateral, e a lateral segue a ordem de y", async () => {
+    const { daGrade, daLateral } = await import("./layoutWidgets");
+    const ws = [
+      { i: "a", tipo: "hoje" as const, x: 0, y: 0, w: 4, h: 4 },
+      { i: "b", tipo: "metas" as const, x: 0, y: 1, w: 4, h: 4, config: { lateral: true } },
+      { i: "c", tipo: "dica" as const, x: 0, y: 0, w: 4, h: 4, config: { lateral: true } },
+    ];
+    expect(daGrade(ws).map((w) => w.i)).toEqual(["a"]);
+    expect(daLateral(ws).map((w) => w.i)).toEqual(["c", "b"]);
+  });
+});

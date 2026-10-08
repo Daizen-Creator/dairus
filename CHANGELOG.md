@@ -3,6 +3,11 @@
 Cada versão publicada no GitHub usa a seção correspondente daqui como lista de
 mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 
+## Próxima versão
+
+- Widgets também na coluna do lado do Início: no "Editar layout", o botão de painel lateral manda o widget para lá (acima de Metas e Vencimentos), com setas para ordenar e botão para voltar à grade.
+- O card "Sincronização" do Início mostra o estado real (ativa e quando foi a última, falhou e por quê, ou desativada). Antes era um texto fixo "Desativada".
+
 ## 0.2.5
 
 - Correção: a sincronização entre computadores não estava salvando na nuvem (o Supabase recusava o arquivo de controle). Agora funciona, e se falhar aparece um aviso na tela e em Backup → Nuvem.
