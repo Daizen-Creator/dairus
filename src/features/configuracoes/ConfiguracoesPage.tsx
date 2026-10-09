@@ -20,6 +20,7 @@ import { MaisOpcoes } from "./MaisOpcoes";
 import { FotoPerfil } from "./FotoPerfil";
 import { ModoViagemConfig } from "./ModoViagemConfig";
 import type { InfoBanco } from "../../types/extras";
+import { dataAtualISO } from "../../services/formato";
 
 const PAGINAS_INICIAIS = [
   { value: "/", label: "Dashboard" },
@@ -141,7 +142,7 @@ export function ConfiguracoesPage() {
       if (v !== null) dados[k] = v;
     }
     try {
-      const caminho = await extras.salvarExportacao(`dairus-configuracoes-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(dados, null, 2));
+      const caminho = await extras.salvarExportacao(`dairus-configuracoes-${dataAtualISO()}.json`, JSON.stringify(dados, null, 2));
       toast.success(`Configurações salvas em ${caminho}`, { duration: 8000 });
     } catch (e) {
       toast.error(String(e));

@@ -8,6 +8,7 @@
 // reserva quando o escolhido não está disponível.
 
 import { lerPreferencia, salvarPreferencia } from "./armazenamento";
+import { dataAtualISO } from "./formato";
 
 export interface Mensagem {
   papel: "usuario" | "ia";
@@ -88,7 +89,7 @@ function avisarEspera(ms: number, motivo: string) {
 }
 
 async function contarUso() {
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = dataAtualISO();
   const atual = await lerPreferencia<{ data: string; n: number }>("gemini_uso");
   const n = atual?.data === hoje ? atual.n + 1 : 1;
   await salvarPreferencia("gemini_uso", { data: hoje, n });
@@ -96,7 +97,7 @@ async function contarUso() {
 
 /** Quantas requisições ao Gemini foram feitas hoje (para mostrar na tela da IA). */
 export async function usoDeHoje(): Promise<number> {
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = dataAtualISO();
   const atual = await lerPreferencia<{ data: string; n: number }>("gemini_uso");
   return atual?.data === hoje ? atual.n : 0;
 }

@@ -3,6 +3,7 @@ import temasCatalogo from "../styles/themes.json";
 import { lerPreferencia, salvarPreferencia } from "../services/armazenamento";
 import type { Tema } from "../types/theme";
 import { temaDoDia } from "../features/temas/temasExtras";
+import { dataAtualISO } from "../services/formato";
 
 const CATALOGO = temasCatalogo as Tema[];
 
@@ -127,7 +128,7 @@ export const useThemeStore = create<EstadoTema>((set, get) => ({
       ]);
 
     set({
-      temaSelecionadoId: (temaDoDiaLigado && favoritos?.length ? temaDoDia(favoritos, new Date().toISOString().slice(0, 10)) : null) ?? temaId ?? TEMA_PADRAO_INICIAL,
+      temaSelecionadoId: (temaDoDiaLigado && favoritos?.length ? temaDoDia(favoritos, dataAtualISO()) : null) ?? temaId ?? TEMA_PADRAO_INICIAL,
       modoAutomatico: modoAuto ?? false,
       temaPreferidoClaroId: preferidoClaro ?? TEMA_CLARO_PADRAO,
       temaPreferidoEscuroId: preferidoEscuro ?? TEMA_ESCURO_PADRAO,

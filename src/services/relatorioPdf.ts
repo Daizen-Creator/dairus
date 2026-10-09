@@ -5,7 +5,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { despesasPorCategoriaNoMes } from "./agregacoes";
-import { formatarCentavos, formatarDataISOParaBR } from "./formato";
+import { dataAtualISO, formatarCentavos, formatarDataISOParaBR } from "./formato";
 import { balancete, resultadoPorTipo } from "./relatorios";
 import type { Agendamento, Conta, Lancamento } from "../types/accounting";
 import type { Bem, Meta, Orcamento } from "../types/extras";
@@ -279,7 +279,7 @@ export async function gerarRelatorioPdf(d: DadosRelatorio): Promise<Uint8Array> 
   const xd = M + colEsq + 8;
   const ld = UTIL - colEsq - 8;
   const abertos = d.agendamentos.filter((a) => !a.pago_em && a.tipo !== "RECEBER");
-  const hojeISO = new Date().toISOString().slice(0, 10);
+  const hojeISO = dataAtualISO();
   const atrasados = abertos.filter((a) => a.vencimento < hojeISO);
   const saldoContas = d.contas.filter((c) => c.tipo === "ATIVO" && c.subtipo !== "CATEGORIA" && c.ativa).reduce((s, c) => s + c.saldo_atual_centavos, 0);
   const passivos = d.contas.filter((c) => c.tipo === "PASSIVO" && c.subtipo !== "CATEGORIA").reduce((s, c) => s + c.saldo_atual_centavos, 0);

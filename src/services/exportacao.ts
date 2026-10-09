@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { extras } from "./extras";
+import { dataAtualISO } from "./formato";
 
 function celula(valor: string | number): string {
   const texto = String(valor);
@@ -13,7 +14,7 @@ export function paraCsv(cabecalho: string[], linhas: Array<Array<string | number
 }
 
 export async function exportarCsv(nomeBase: string, cabecalho: string[], linhas: Array<Array<string | number>>) {
-  const carimbo = new Date().toISOString().slice(0, 10);
+  const carimbo = dataAtualISO();
   return extras.salvarExportacao(`${nomeBase}-${carimbo}.csv`, paraCsv(cabecalho, linhas));
 }
 
@@ -39,6 +40,6 @@ export const col = (titulo: string, formato: FormatoColuna = "TEXTO", largura?: 
 
 /** Gera um .xlsx de verdade (várias abas, cabeçalho formatado, R$ somável) em Documentos\Dairus\Exportacoes. */
 export async function exportarXlsx(nomeBase: string, abas: AbaPlanilha[]) {
-  const carimbo = new Date().toISOString().slice(0, 10);
+  const carimbo = dataAtualISO();
   return invoke<string>("exportar_xlsx", { nomeArquivo: `${nomeBase}-${carimbo}.xlsx`, abas });
 }

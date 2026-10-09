@@ -256,7 +256,7 @@ pub fn criar(conn: &mut Connection, input: EmprestimoInput) -> Res<String> {
         return Err("Confira o valor, a taxa ao mês e o número de parcelas.".into());
     }
     data_ok(&input.primeiro_vencimento)?;
-    let contratacao = input.data_contratacao.clone().unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
+    let contratacao = input.data_contratacao.clone().unwrap_or_else(crate::accounting::engine::hoje_brasilia);
     data_ok(&contratacao)?;
     let sufixo = Uuid::new_v4().simple().to_string()[..8].to_string();
     let conta_id = format!("emp-{sufixo}");

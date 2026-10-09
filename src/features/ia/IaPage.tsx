@@ -297,7 +297,7 @@ export function IaPage() {
   function novaConversa() {
     if (mensagens.length) {
       const titulo = mensagens.find((m) => m.papel === "usuario")?.texto.slice(0, 50) ?? "Conversa";
-      setConversas([{ titulo, data: new Date().toISOString().slice(0, 10), mensagens }, ...conversas].slice(0, 10));
+      setConversas([{ titulo, data: dataAtualISO(), mensagens }, ...conversas].slice(0, 10));
     }
     setMensagens([]);
   }
@@ -315,7 +315,7 @@ export function IaPage() {
   async function exportarConversa() {
     const txt = mensagens.map((m) => `${m.papel === "usuario" ? "Você" : "Assistente"}:\n${m.texto}`).join("\n\n---\n\n");
     try {
-      const caminho = await extras.salvarExportacao(`conversa-ia-${new Date().toISOString().slice(0, 10)}.txt`, txt);
+      const caminho = await extras.salvarExportacao(`conversa-ia-${dataAtualISO()}.txt`, txt);
       toast.success(`Conversa salva em ${caminho}`, { duration: 8000 });
     } catch (e) {
       toast.error(String(e));

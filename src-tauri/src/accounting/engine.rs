@@ -10,6 +10,18 @@ use super::models::{
 
 type Resultado<T> = Result<T, AccountingError>;
 
+/// Data de hoje no horário de Brasília (UTC−3, sem horário de verão desde 2019), em AAAA-MM-DD.
+/// Usar `Utc::now()` aqui faria, depois das 21h, tudo cair no dia seguinte.
+pub fn hoje_brasilia() -> String {
+    data_em_brasilia(Utc::now())
+}
+
+/// A data (AAAA-MM-DD) que o relógio de Brasília marca num instante em UTC.
+pub fn data_em_brasilia(instante: chrono::DateTime<Utc>) -> String {
+    let brasilia = chrono::FixedOffset::west_opt(3 * 3600).expect("fuso válido");
+    instante.with_timezone(&brasilia).format("%Y-%m-%d").to_string()
+}
+
 /// id, data, descrição, observação, origem, estornado_de, etiqueta, parcelas, corrige.
 type CabecalhoLancamento = (
     String,
@@ -255,7 +267,7 @@ pub fn estornar_lancamento(conn: &mut Connection, lancamento_id: &str) -> Result
         lancamento_id,
         &original.descricao,
         &partidas,
-        Utc::now().format("%Y-%m-%d").to_string(),
+        hoje_brasilia(),
     )?;
     tx.commit()?;
     Ok(estorno)
@@ -427,7 +439,7 @@ pub fn criar_conta(conn: &mut Connection, input: NovaContaInput) -> Resultado<Co
     )?;
 
     if input.saldo_inicial_centavos > 0 {
-        let hoje = Utc::now().format("%Y-%m-%d").to_string();
+        let hoje = hoje_brasilia();
         let partidas = match input.tipo {
             TipoConta::Ativo | TipoConta::Despesa => vec![
                 super::models::PartidaInput {
@@ -581,6 +593,25 @@ fn soma_saldo_por_tipo(conn: &Connection, tipo: TipoConta) -> Resultado<i64> {
     Ok(total)
 }
 
+/// Dinheiro que dá para gastar agora: bancos, carteiras digitais, dinheiro e benefícios.
+/// Fora ficam investimentos, valores a receber e bens (são patrimônio, não saldo).
+fn soma_saldo_disponivel(conn: &Connection) -> Resultado<i64> {
+    let ids: Vec<String> = {
+        let mut stmt = conn.prepare(
+            "SELECT id FROM contas_contabeis
+             WHERE tipo = 'ATIVO' AND ativa = 1
+               AND subtipo IN ('BANCO', 'CARTEIRA_DIGITAL', 'DINHEIRO', 'BENEFICIO')",
+        )?;
+        let ids = stmt.query_map([], |row| row.get::<_, String>(0))?.collect::<rusqlite::Result<_>>()?;
+        ids
+    };
+    let mut total = 0i64;
+    for id in ids {
+        total += saldo_conta(conn, &id)?;
+    }
+    Ok(total)
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ResumoDashboard {
     pub saldo_disponivel_centavos: i64,
@@ -594,7 +625,7 @@ pub fn resumo_dashboard(conn: &Connection, data_inicio: &str, data_fim: &str) ->
     let total_passivo = soma_saldo_por_tipo(conn, TipoConta::Passivo)?;
 
     Ok(ResumoDashboard {
-        saldo_disponivel_centavos: total_ativo,
+        saldo_disponivel_centavos: soma_saldo_disponivel(conn)?,
         patrimonio_liquido_centavos: total_ativo - total_passivo,
         receitas_mes_centavos: movimento_periodo_por_tipo(conn, TipoConta::Receita, data_inicio, data_fim)?,
         despesas_mes_centavos: movimento_periodo_por_tipo(conn, TipoConta::Despesa, data_inicio, data_fim)?,
@@ -1321,5 +1352,47 @@ mod testes_validacao_entrada {
         assert!(validar_entrada_lancamento("2026-10-03", &"a".repeat(301), None, 2).is_err());
         assert!(validar_entrada_lancamento("2026-10-03", "x", Some(&"a".repeat(5001)), 2).is_err());
         assert!(validar_entrada_lancamento("2026-10-03", "x", None, 501).is_err());
+    }
+}
+
+#[cfg(test)]
+mod testes_data_e_saldo_disponivel {
+    use super::*;
+    use crate::db::{abrir_conexao, executar_migracoes};
+    use chrono::TimeZone;
+
+    #[test]
+    fn data_de_brasilia_nao_pula_para_o_dia_seguinte_a_noite() {
+        // 23h48 em Brasília já é 02h48 do dia seguinte em UTC.
+        let noite = Utc.with_ymd_and_hms(2026, 10, 8, 2, 48, 0).unwrap();
+        assert_eq!(data_em_brasilia(noite), "2026-10-07");
+        let manha = Utc.with_ymd_and_hms(2026, 10, 8, 3, 0, 0).unwrap();
+        assert_eq!(data_em_brasilia(manha), "2026-10-08");
+        let virada = Utc.with_ymd_and_hms(2027, 1, 1, 1, 0, 0).unwrap();
+        assert_eq!(data_em_brasilia(virada), "2026-12-31");
+    }
+
+    #[test]
+    fn saldo_disponivel_nao_inclui_investimentos_nem_valores_a_receber() {
+        let mut conn = abrir_conexao(std::path::Path::new(":memory:")).unwrap();
+        executar_migracoes(&conn).unwrap();
+        let nova = |codigo: &str, nome: &str, subtipo: &str, saldo: i64| NovaContaInput {
+            codigo: codigo.into(),
+            nome: nome.into(),
+            tipo: TipoConta::Ativo,
+            subtipo: Some(subtipo.into()),
+            categoria_pai_id: None,
+            instituicao: None,
+            saldo_inicial_centavos: saldo,
+            dia_fechamento_fatura: None,
+            dia_vencimento_fatura: None,
+            limite_centavos: None,
+        };
+        criar_conta(&mut conn, nova("1.9.1", "Banco", "BANCO", 100_000)).unwrap();
+        criar_conta(&mut conn, nova("1.9.2", "Corretora", "INVESTIMENTO", 900_000)).unwrap();
+        let r = resumo_dashboard(&conn, "2026-10-01", "2026-10-31").unwrap();
+        assert_eq!(r.saldo_disponivel_centavos, 100_000);
+        // O patrimônio continua somando tudo.
+        assert_eq!(r.patrimonio_liquido_centavos, 1_000_000);
     }
 }

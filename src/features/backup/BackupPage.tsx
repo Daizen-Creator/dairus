@@ -28,7 +28,7 @@ import { Select } from "../../components/ui/Select";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { contabilidade } from "../../services/contabilidade";
 import { extras } from "../../services/extras";
-import { formatarDataISOParaBR } from "../../services/formato";
+import { dataAtualISO, formatarDataISOParaBR } from "../../services/formato";
 import { usePreferencia } from "../../state/usePreferencia";
 import { useSegurancaStore } from "../../state/seguranca-store";
 import type { InfoBackup, InfoBanco, RegistroAuditoria } from "../../types/extras";
@@ -145,7 +145,7 @@ export function BackupPage() {
         extras.listarOrcamentos(),
       ]);
       const conteudo = JSON.stringify({ exportado_em: new Date().toISOString(), versao_app: "0.1.0", contas, lancamentos, agendamentos, metas, bens, radar, orcamentos }, null, 2);
-      const caminho = await extras.salvarExportacao(`dairus-dados-${new Date().toISOString().slice(0, 10)}.json`, conteudo);
+      const caminho = await extras.salvarExportacao(`dairus-dados-${dataAtualISO()}.json`, conteudo);
       toast.success(`Dados exportados em ${caminho}`, { duration: 8000 });
     } catch (e) {
       toast.error(String(e));
