@@ -54,6 +54,29 @@ export async function importarPreferenciasLegadas(): Promise<number> {
   return itens.length;
 }
 
+/** Todas as preferências da conta atual (chave → valor). Usado para o backup e a sincronização. */
+export async function listarPreferencias(): Promise<Record<string, unknown>> {
+  if (estaNoTauri()) {
+    try {
+      const loja = await obterLoja();
+      return Object.fromEntries(await loja.entries<unknown>());
+    } catch {
+      // segue para o fallback abaixo
+    }
+  }
+  const saida: Record<string, unknown> = {};
+  if (!prefixoLocal) return saida;
+  for (const chave of Object.keys(localStorage)) {
+    if (!chave.startsWith(prefixoLocal)) continue;
+    try {
+      saida[chave.slice(prefixoLocal.length)] = JSON.parse(localStorage.getItem(chave) ?? "null");
+    } catch {
+      // valor que não é JSON: fica de fora
+    }
+  }
+  return saida;
+}
+
 export async function lerPreferencia<T>(chave: string): Promise<T | null> {
   if (estaNoTauri()) {
     try {

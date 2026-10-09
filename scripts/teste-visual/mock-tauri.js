@@ -147,6 +147,9 @@
     criptografia_ativa: () => false,
     verificar_integridade: () => [],
     uso_da_conta: () => ({ lancamentos: 3, saldo_inicial: 1, agendamentos: 0, subcategorias: 0, sistema: false }),
+    // Preferências da conta guardadas no banco (tabela preferencias_conta).
+    ler_preferencias_conta: () => JSON.parse(localStorage.getItem("mock-preferencias-conta") || "{}"),
+    gravar_preferencias_conta: ({ itens }) => { const antes = localStorage.getItem("mock-preferencias-conta") || "{}"; const depois = JSON.stringify(itens); localStorage.setItem("mock-preferencias-conta", depois); return antes === depois ? 0 : Object.keys(itens).length; },
     listar_dashboards: () => lerPaineis(),
     salvar_dashboard: ({ dashboard }) => {
       const lista = lerPaineis();

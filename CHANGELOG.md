@@ -5,6 +5,7 @@ mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 
 ## Próxima versão
 
+- Suas preferências agora vão junto no backup e na sincronização entre computadores: nome, perfil de renda (salário, VA, dia do pagamento), FGTS, chave Pix, bloco de notas e foco do mês, perguntas salvas e conversa da IA, metas de economia e patrimônio, modelos de lançamento, configurações dos widgets e outras. Ficam de fora o que é só deste computador (PIN, pastas) e as chaves secretas (Gemini, brapi).
 - Widgets também na coluna do lado do Início: no "Editar layout", o botão de painel lateral manda o widget para lá (acima de Metas e Vencimentos), com setas para ordenar e botão para voltar à grade.
 - O card "Sincronização" do Início mostra o estado real (ativa e quando foi a última, falhou e por quê, ou desativada). Antes era um texto fixo "Desativada".
 

@@ -15,6 +15,7 @@ mod limitador;
 mod mercado;
 mod planejamento;
 mod planilha;
+mod preferencias_conta;
 mod sincronizacao;
 mod sistema;
 
@@ -146,6 +147,8 @@ pub fn run() {
             lancamentos_extras::processar_agendamentos_automaticos,
             lancamentos_extras::listar_pasta_importar,
             cartoes::listar_faturas,
+            preferencias_conta::ler_preferencias_conta,
+            preferencias_conta::gravar_preferencias_conta,
             dashboards::listar_dashboards,
             dashboards::salvar_dashboard,
             dashboards::ativar_dashboard,

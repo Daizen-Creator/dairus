@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { guardarPreferenciasNoBanco, restaurarPreferenciasDoBanco } from "./preferenciasConta";
 import type { InfoBanco, RegistroAuditoria, AporteComMeta, AporteMeta, Bem, InfoBackup, ItemRadar, Meta, Orcamento, TipoBem } from "../types/extras";
 
 // Porta de entrada para os módulos de src-tauri/src/extras.rs.
@@ -96,9 +97,19 @@ export const extras = {
   gravarBackupBaixado: (nome: string, conteudo: Uint8Array) =>
     invoke<InfoBackup>("gravar_backup_baixado", { nome, conteudo: Array.from(conteudo) }),
 
-  criarBackup: () => invoke<InfoBackup>("criar_backup"),
+  /** O backup leva junto as preferências da conta (nome, perfil de renda, notas...). */
+  criarBackup: async () => {
+    await guardarPreferenciasNoBanco().catch(() => 0);
+    return invoke<InfoBackup>("criar_backup");
+  },
   listarBackups: () => invoke<InfoBackup[]>("listar_backups"),
-  restaurarBackup: (nome: string) => invoke<InfoBackup>("restaurar_backup", { nome }),
+  /** Restaura o banco e traz de volta as preferências que vieram nele (a cópia "antes de restaurar" leva as atuais). */
+  restaurarBackup: async (nome: string) => {
+    await guardarPreferenciasNoBanco().catch(() => 0);
+    const seguranca = await invoke<InfoBackup>("restaurar_backup", { nome });
+    await restaurarPreferenciasDoBanco().catch(() => 0);
+    return seguranca;
+  },
   salvarExportacaoBinaria: (nomeArquivo: string, conteudo: Uint8Array) =>
     invoke<string>("salvar_exportacao_binaria", { nomeArquivo, conteudo: Array.from(conteudo) }),
   salvarExportacao: (nomeArquivo: string, conteudo: string) =>

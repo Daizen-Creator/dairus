@@ -10,6 +10,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { lerPreferencia, salvarPreferencia } from "./armazenamento";
 import { extras } from "./extras";
+import { guardarPreferenciasNoBanco } from "./preferenciasConta";
 import { supabase } from "./supabase";
 
 const BUCKET = "backups";
@@ -103,6 +104,7 @@ async function lerEstadoNuvem(base: string): Promise<EstadoNuvem | null> {
 export const impressaoDados = () => invoke<string>("impressao_dados");
 
 async function enviar(base: string, versaoAnterior: number): Promise<EstadoNuvem> {
+  await guardarPreferenciasNoBanco().catch(() => 0);
   const copia = new Uint8Array(await invoke<number[]>("gerar_copia_sync"));
   if (copia.byteLength > LIMITE_NUVEM_BYTES) {
     throw new Error(`O banco tem ${(copia.byteLength / 1_048_576).toFixed(1).replace(".", ",")} MB e o limite da nuvem é 50 MB. Apague anexos grandes (em Garantias e documentos) ou use backup local.`);
@@ -165,6 +167,8 @@ export function sincronizar(): Promise<ResultadoSync> {
 function sincronizarDeVerdade(): Promise<ResultadoSync> {
   return (async () => {
     const base = await pasta();
+    // As preferências da conta vão no banco: copia antes de comparar, para a mudança contar.
+    await guardarPreferenciasNoBanco().catch(() => 0);
     const remoto = await lerEstadoNuvem(base);
     const local = await lerEstadoLocal();
     const impressaoAtual = await impressaoDados();
