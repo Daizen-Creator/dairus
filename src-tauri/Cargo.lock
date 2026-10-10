@@ -745,7 +745,6 @@ name = "dairus"
 version = "0.2.5"
 dependencies = [
  "aes-gcm",
- "anyhow",
  "argon2",
  "base64 0.23.1",
  "chrono",
