@@ -1,4 +1,14 @@
 # Abre pull requests com as correções de segurança e atualizações das bibliotecas.
+#
+# Regras:
+# - Bibliotecas de criptografia e de rede do motor (aes-gcm, argon2, sha2, ureq) NÃO recebem
+#   atualização de versão maior nem menor automática: mudar o formato pode impedir abrir bancos
+#   e backups antigos. Essas migrações são manuais, com teste de abrir um banco e um backup
+#   antigos (veja o agente "modernizacao"). Correções (patch) continuam chegando, em PR separado.
+# - Segurança: os alertas de vulnerabilidade (Dependabot security updates) não dependem desta
+#   lista; o `ignore` aqui vale só para as atualizações de versão rotineiras.
+# - O Tauri (crates e pacotes npm) vem num grupo só, porque o motor e o front-end precisam
+#   ficar na mesma versão menor.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -7,19 +17,43 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
+      tauri:
+        patterns: ["@tauri-apps/*"]
+        update-types: [minor, patch]
       bibliotecas:
         patterns: ["*"]
         update-types: [minor, patch]
+
   - package-ecosystem: cargo
     directory: /src-tauri
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "aes-gcm"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "argon2"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "sha2"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "ureq"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
+      tauri:
+        patterns: ["tauri", "tauri-*"]
+        update-types: [minor, patch]
+      # Baixo risco: o resto, em minor e patch, num PR só. Criptografia e rede ficam de fora
+      # para que cada correção delas chegue num PR separado e fácil de revisar.
       bibliotecas:
         patterns: ["*"]
+        exclude-patterns: ["aes-gcm", "argon2", "sha2", "ureq"]
         update-types: [minor, patch]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    groups:
+      acoes:
+        patterns: ["*"]
+        update-types: [minor, patch]
