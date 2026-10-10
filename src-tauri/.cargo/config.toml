@@ -1,5 +1,9 @@
 # Builds de debug do Rust/Tauri acumulam vários GB (símbolos de debug de
-# centenas de dependências). O C: deste computador já ficou sem espaço
+# centenas de dependências). O C: do computador do dono já ficou sem espaço
 # duas vezes por causa disso — movendo para o D:, que tem bastante sobra.
+#
+# Em outro computador (sem D:), sobrescreva com a variável de ambiente, que vale
+# mais que este arquivo:   $env:CARGO_TARGET_DIR = "$PWD\src-tauri\target"
+# O GitHub Actions faz isso nos workflows (testes.yml e release.yml); veja o README.
 [build]
 target-dir = "D:/dairus-target"
