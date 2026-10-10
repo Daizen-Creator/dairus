@@ -121,21 +121,28 @@ pub fn definir_juros_cartao(state: State<AppState>, cartao_id: String, juros_men
 /// Débito em "Juros, Multas e IOF do Cartão", Crédito no cartão (entra na próxima fatura).
 #[tauri::command]
 pub fn lancar_encargos(state: State<AppState>, fatura_id: String, data: String, valor_centavos: i64, detalhe: String) -> Res<Lancamento> {
+    let mut conn = state.conn.lock().expect("mutex envenenado");
+    lancar_encargos_db(&mut conn, &fatura_id, data, valor_centavos, detalhe)
+}
+
+/// Lançamento dos encargos e marca na fatura numa transação só: se a marca
+/// falhar, o lançamento também não fica (senão daria para cobrar duas vezes).
+pub fn lancar_encargos_db(conn: &mut Connection, fatura_id: &str, data: String, valor_centavos: i64, detalhe: String) -> Res<Lancamento> {
     if valor_centavos <= 0 {
         return Err("Valor dos encargos precisa ser maior que zero.".into());
     }
-    let mut conn = state.conn.lock().expect("mutex envenenado");
-    let (cartao, ja): (String, Option<String>) = conn
-        .query_row("SELECT cartao_id, encargos_lancamento_id FROM faturas WHERE id = ?1", [&fatura_id], |r| Ok((r.get(0)?, r.get(1)?)))
+    let tx = conn.transaction().map_err(e)?;
+    let (cartao, ja): (String, Option<String>) = tx
+        .query_row("SELECT cartao_id, encargos_lancamento_id FROM faturas WHERE id = ?1", [fatura_id], |r| Ok((r.get(0)?, r.get(1)?)))
         .optional()
         .map_err(e)?
         .ok_or("Fatura não encontrada.")?;
     if ja.is_some() {
         return Err("Os encargos desta fatura já foram lançados.".into());
     }
-    let lanc = engine::criar_lancamento(
-        &mut conn,
-        NovoLancamentoInput {
+    let lanc = engine::inserir_lancamento(
+        &tx,
+        &NovoLancamentoInput {
             data,
             descricao: "Encargos do cartão (juros, multa e IOF)".into(),
             observacao: Some(detalhe).filter(|d| !d.trim().is_empty()),
@@ -149,7 +156,8 @@ pub fn lancar_encargos(state: State<AppState>, fatura_id: String, data: String, 
         },
     )
     .map_err(String::from)?;
-    conn.execute("UPDATE faturas SET encargos_lancamento_id = ?1 WHERE id = ?2", params![lanc.id, fatura_id]).map_err(e)?;
+    tx.execute("UPDATE faturas SET encargos_lancamento_id = ?1 WHERE id = ?2", params![lanc.id, fatura_id]).map_err(e)?;
+    tx.commit().map_err(e)?;
     Ok(lanc)
 }
 
@@ -247,12 +255,10 @@ pub fn reembolsar(conn: &mut Connection, compra_id: &str, valor: i64, data: &str
         return Err("O valor do reembolso precisa ser maior que zero.".into());
     }
     chrono::NaiveDate::parse_from_str(data, "%Y-%m-%d").map_err(|_| "Data inválida.".to_string())?;
-    let compra = engine::listar_lancamentos(conn, i64::MAX)
-        .map_err(String::from)?
-        .into_iter()
-        .find(|l| l.id == compra_id)
-        .ok_or("Compra não encontrada.")?;
-    let estornada: bool = conn
+    // Leitura, lançamento e vínculo na mesma transação: tudo ou nada.
+    let tx = conn.transaction().map_err(e)?;
+    let compra = engine::carregar_lancamento(&tx, compra_id).map_err(String::from)?.ok_or("Compra não encontrada.")?;
+    let estornada: bool = tx
         .query_row("SELECT EXISTS(SELECT 1 FROM lancamentos WHERE estornado_de = ?1)", [compra_id], |r| r.get(0))
         .map_err(e)?;
     if estornada {
@@ -266,7 +272,7 @@ pub fn reembolsar(conn: &mut Connection, compra_id: &str, valor: i64, data: &str
         .ok_or("Compra sem conta de pagamento.")?;
     let debitos: Vec<_> = compra.partidas.iter().filter(|p| p.tipo == TipoPartida::Debito).collect();
     let total: i64 = debitos.iter().map(|p| p.valor_centavos).sum();
-    let ja_reembolsado: i64 = conn
+    let ja_reembolsado: i64 = tx
         .query_row(
             "SELECT COALESCE(SUM(p.valor_centavos), 0) FROM reembolsos r JOIN partidas p ON p.lancamento_id = r.reembolso_id
              WHERE r.compra_id = ?1 AND p.tipo = 'DEBITO'
@@ -290,9 +296,9 @@ pub fn reembolsar(conn: &mut Connection, compra_id: &str, valor: i64, data: &str
             partidas.push(PartidaInput { conta_id: p.conta_id.clone(), tipo: TipoPartida::Credito, valor_centavos: v });
         }
     }
-    let lanc = engine::criar_lancamento(
-        conn,
-        NovoLancamentoInput {
+    let lanc = engine::inserir_lancamento(
+        &tx,
+        &NovoLancamentoInput {
             data: data.to_string(),
             descricao: format!("Reembolso: {}", compra.descricao),
             observacao: motivo.filter(|m| !m.trim().is_empty()),
@@ -303,7 +309,8 @@ pub fn reembolsar(conn: &mut Connection, compra_id: &str, valor: i64, data: &str
         },
     )
     .map_err(String::from)?;
-    conn.execute("INSERT INTO reembolsos (reembolso_id, compra_id) VALUES (?1, ?2)", params![lanc.id, compra_id]).map_err(e)?;
+    tx.execute("INSERT INTO reembolsos (reembolso_id, compra_id) VALUES (?1, ?2)", params![lanc.id, compra_id]).map_err(e)?;
+    tx.commit().map_err(e)?;
     Ok(lanc)
 }
 
@@ -356,6 +363,51 @@ mod testes {
         assert!(reembolsar(&mut conn, &compra.id, 6_001, "2026-09-21", None).is_err());
         reembolsar(&mut conn, &compra.id, 6_000, "2026-09-21", None).unwrap();
         assert_eq!(engine::saldo_conta(&conn, &cartao).unwrap(), 0);
+    }
+
+    #[test]
+    fn compra_com_reembolso_so_estorna_depois_do_reembolso() {
+        let (mut conn, cartao, compra) = preparar();
+        let r = reembolsar(&mut conn, &compra.id, 4_000, "2026-09-20", None).unwrap();
+        assert!(engine::estornar_lancamento(&mut conn, &compra.id).unwrap_err().to_string().contains("reembolso"));
+        engine::estornar_lancamento(&mut conn, &r.id).unwrap();
+        engine::estornar_lancamento(&mut conn, &compra.id).unwrap();
+        assert_eq!(engine::saldo_conta(&conn, &cartao).unwrap(), 0);
+        assert_eq!(engine::saldo_conta(&conn, "despesa-vestuario").unwrap(), 0);
+    }
+
+    fn total_lancamentos(conn: &Connection) -> i64 {
+        conn.query_row("SELECT COUNT(*) FROM lancamentos", [], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn encargos_estornados_podem_ser_lancados_de_novo() {
+        let (mut conn, cartao, _) = preparar();
+        congelar(&conn, &cartao, "2026-08-06", "2026-09-05", "2026-09-12", 10_000).unwrap();
+        let fatura: String = conn.query_row("SELECT id FROM faturas", [], |r| r.get(0)).unwrap();
+        let l = lancar_encargos_db(&mut conn, &fatura, "2026-09-20".into(), 1_500, "juros".into()).unwrap();
+        assert!(lancar_encargos_db(&mut conn, &fatura, "2026-09-20".into(), 1_500, String::new()).is_err());
+        engine::estornar_lancamento(&mut conn, &l.id).unwrap();
+        lancar_encargos_db(&mut conn, &fatura, "2026-09-21".into(), 1_200, String::new()).unwrap();
+        assert_eq!(engine::saldo_conta(&conn, ENCARGOS).unwrap(), 1_200);
+    }
+
+    #[test]
+    fn falha_na_segunda_etapa_nao_deixa_lancamento_orfao() {
+        let (mut conn, cartao, compra) = preparar();
+        congelar(&conn, &cartao, "2026-08-06", "2026-09-05", "2026-09-12", 10_000).unwrap();
+        let fatura: String = conn.query_row("SELECT id FROM faturas", [], |r| r.get(0)).unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER falha_fatura BEFORE UPDATE ON faturas BEGIN SELECT RAISE(ABORT, 'falha simulada'); END;
+             CREATE TRIGGER falha_reembolso BEFORE INSERT ON reembolsos BEGIN SELECT RAISE(ABORT, 'falha simulada'); END;",
+        )
+        .unwrap();
+        let antes = total_lancamentos(&conn);
+        assert!(lancar_encargos_db(&mut conn, &fatura, "2026-09-20".into(), 1_500, String::new()).is_err());
+        assert!(reembolsar(&mut conn, &compra.id, 1_000, "2026-09-20", None).is_err());
+        assert_eq!(total_lancamentos(&conn), antes, "nenhum lançamento pode sobrar sem o vínculo");
+        assert_eq!(engine::saldo_conta(&conn, &cartao).unwrap(), 10_000);
+        assert!(conn.is_autocommit(), "a transação foi desfeita");
     }
 
     #[test]

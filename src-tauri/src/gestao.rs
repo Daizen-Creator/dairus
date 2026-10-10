@@ -76,24 +76,35 @@ pub(crate) fn apagar_lancamentos(conn: &Connection, iniciais: Vec<String>) -> Re
         }
         todos.extend(novos);
     }
-    for id in &todos {
-        conn.execute("UPDATE agendamentos SET lancamento_id = NULL WHERE lancamento_id = ?1", [id]).map_err(e)?;
-        conn.execute("UPDATE operacoes_invest SET lancamento_id = NULL WHERE lancamento_id = ?1", [id]).map_err(e)?;
-        conn.execute("DELETE FROM emprestimo_parcelas WHERE lancamento_id = ?1", [id]).map_err(e)?;
+    // Comandos preparados uma vez e reaproveitados no laço (índices da 0017
+    // cobrem as colunas procuradas).
+    {
+        let mut soltar_agendamento = conn.prepare_cached("UPDATE agendamentos SET lancamento_id = NULL WHERE lancamento_id = ?1").map_err(e)?;
+        let mut soltar_operacao = conn.prepare_cached("UPDATE operacoes_invest SET lancamento_id = NULL WHERE lancamento_id = ?1").map_err(e)?;
+        let mut apagar_parcela = conn.prepare_cached("DELETE FROM emprestimo_parcelas WHERE lancamento_id = ?1").map_err(e)?;
+        for id in &todos {
+            soltar_agendamento.execute([id]).map_err(e)?;
+            soltar_operacao.execute([id]).map_err(e)?;
+            apagar_parcela.execute([id]).map_err(e)?;
+        }
     }
     // Apaga primeiro quem aponta para os outros (estornos/correções), depois os originais.
     let mut restantes: Vec<String> = todos.iter().cloned().collect();
     let mut voltas = 0;
+    let mut referenciado = conn
+        .prepare_cached(
+            "SELECT EXISTS(SELECT 1 FROM lancamentos WHERE estornado_de = ?1)
+                 OR EXISTS(SELECT 1 FROM lancamentos WHERE corrige = ?1)",
+        )
+        .map_err(e)?;
+    let mut apagar = conn.prepare_cached("DELETE FROM lancamentos WHERE id = ?1").map_err(e)?;
     while !restantes.is_empty() && voltas < 50 {
         voltas += 1;
         restantes.retain(|id| {
-            let referenciado: bool = conn
-                .query_row("SELECT EXISTS(SELECT 1 FROM lancamentos WHERE estornado_de = ?1 OR corrige = ?1)", [id], |r| r.get(0))
-                .unwrap_or(true);
-            if referenciado {
+            if referenciado.query_row([id], |r| r.get::<_, bool>(0)).unwrap_or(true) {
                 return true;
             }
-            conn.execute("DELETE FROM lancamentos WHERE id = ?1", [id]).is_err()
+            apagar.execute([id]).is_err()
         });
     }
     if !restantes.is_empty() {
@@ -408,6 +419,27 @@ mod testes {
         )
         .unwrap()
         .id
+    }
+
+    #[test]
+    fn indices_dos_vinculos_existem_e_sao_usados() {
+        let conn = banco();
+        for indice in [
+            "idx_lancamentos_corrige", "idx_reembolsos_compra", "idx_agendamentos_lancamento", "idx_operacoes_invest_lancamento",
+            "idx_emprestimo_parcelas_lancamento", "idx_lancamento_portador_adicional",
+        ] {
+            let existe: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?1)", [indice], |r| r.get(0)).unwrap();
+            assert!(existe, "falta o índice {indice}");
+        }
+        let plano: Vec<String> = conn
+            .prepare("EXPLAIN QUERY PLAN SELECT EXISTS(SELECT 1 FROM lancamentos WHERE estornado_de = ?1) OR EXISTS(SELECT 1 FROM lancamentos WHERE corrige = ?1)")
+            .unwrap()
+            .query_map(["x"], |r| r.get::<_, String>(3))
+            .unwrap()
+            .map(|x| x.unwrap())
+            .collect();
+        assert!(plano.iter().any(|l| l.contains("idx_lancamentos_corrige")), "{plano:?}");
+        assert!(plano.iter().all(|l| !l.starts_with("SCAN lancamentos")), "{plano:?}");
     }
 
     #[test]

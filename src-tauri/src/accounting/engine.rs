@@ -174,6 +174,14 @@ pub fn criar_lancamento(conn: &mut Connection, input: NovoLancamentoInput) -> Re
     Ok(lancamento)
 }
 
+/// Grava um lançamento dentro de uma transação que já está aberta. Para quem
+/// grava o lançamento e mais alguma coisa ligada a ele (fatura, parcela,
+/// operação...): o chamador faz tudo na mesma transação e só então dá
+/// `commit` — se a segunda parte falhar, o lançamento também não fica.
+pub fn inserir_lancamento(tx: &Transaction, input: &NovoLancamentoInput) -> Resultado<Lancamento> {
+    inserir_lancamento_na_transacao(tx, input, None, None)
+}
+
 /// Dados de um lançamento que podem ser estornados: devolve a origem e as
 /// partidas, ou erro se ele não existe, já é um estorno ou já foi estornado.
 fn carregar_estornavel(tx: &Transaction, lancamento_id: &str) -> Resultado<(LancamentoOriginal, Vec<PartidaInput>)> {
@@ -261,16 +269,129 @@ fn gravar_estorno(
 
 pub fn estornar_lancamento(conn: &mut Connection, lancamento_id: &str) -> Resultado<Lancamento> {
     let tx = conn.transaction()?;
-    let (original, partidas) = carregar_estornavel(&tx, lancamento_id)?;
-    let estorno = gravar_estorno(
-        &tx,
-        lancamento_id,
-        &original.descricao,
-        &partidas,
-        hoje_brasilia(),
+    let de_investimento: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM operacoes_invest WHERE lancamento_id = ?1)",
+        [lancamento_id],
+        |row| row.get(0),
     )?;
+    if de_investimento {
+        // A posição do ativo vem das operações: estornar só o dinheiro deixaria a
+        // carteira dizendo que o ativo ainda existe.
+        return Err(AccountingError::DadoInvalido(
+            "Este lançamento é de uma operação de investimento: exclua a operação na tela Investimentos.".into(),
+        ));
+    }
+    let estorno = estornar_na_transacao(&tx, lancamento_id)?;
     tx.commit()?;
     Ok(estorno)
+}
+
+/// Estorna dentro de uma transação já aberta e desfaz, na mesma transação, o
+/// que dependia do lançamento: a conta agendada volta a ficar em aberto, a
+/// parcela do empréstimo volta a ficar devendo, o valor recebido de uma pessoa
+/// volta a ser a receber, os encargos da fatura podem ser lançados de novo.
+pub fn estornar_na_transacao(tx: &Transaction, lancamento_id: &str) -> Resultado<Lancamento> {
+    let (original, partidas) = carregar_estornavel(tx, lancamento_id)?;
+    impedir_estorno_com_dependentes(tx, lancamento_id)?;
+    let estorno = gravar_estorno(tx, lancamento_id, &original.descricao, &partidas, hoje_brasilia())?;
+    desfazer_vinculos(tx, lancamento_id)?;
+    Ok(estorno)
+}
+
+/// Casos em que estornar deixaria outro registro pela metade: antes é preciso
+/// desfazer o que veio depois (o reembolso, o recebimento).
+fn impedir_estorno_com_dependentes(tx: &Transaction, lancamento_id: &str) -> Resultado<()> {
+    let com_reembolso: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM reembolsos r WHERE r.compra_id = ?1
+            AND NOT EXISTS (SELECT 1 FROM lancamentos x WHERE x.estornado_de = r.reembolso_id))",
+        [lancamento_id],
+        |row| row.get(0),
+    )?;
+    if com_reembolso {
+        return Err(AccountingError::DadoInvalido(
+            "Esta compra tem reembolso lançado. Estorne o reembolso antes de estornar a compra.".into(),
+        ));
+    }
+    let divisao_recebida: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM a_receber WHERE lancamento_id = ?1 AND (recebido_em IS NOT NULL OR perdoado <> 0))",
+        [lancamento_id],
+        |row| row.get(0),
+    )?;
+    if divisao_recebida {
+        return Err(AccountingError::DadoInvalido(
+            "Parte desta divisão já foi recebida ou perdoada. Estorne o recebimento antes.".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Reabre o que o lançamento estornado tinha quitado.
+fn desfazer_vinculos(tx: &Transaction, lancamento_id: &str) -> Resultado<()> {
+    // Conta agendada volta a ficar em aberto. Se era automática, deixa de ser
+    // (só esta ocorrência): senão o app lançaria de novo, sozinho, o que a
+    // pessoa acabou de estornar.
+    tx.execute(
+        "UPDATE agendamentos SET pago_em = NULL, lancamento_id = NULL, automatico = 0 WHERE lancamento_id = ?1",
+        [lancamento_id],
+    )?;
+    // Parcela do empréstimo volta a ser devida.
+    tx.execute("DELETE FROM emprestimo_parcelas WHERE lancamento_id = ?1", [lancamento_id])?;
+    // Valor recebido (ou perdoado) de uma pessoa volta a ser a receber.
+    tx.execute(
+        "UPDATE a_receber SET recebido_em = NULL, perdoado = 0, recebimento_lancamento_id = NULL
+         WHERE recebimento_lancamento_id = ?1",
+        [lancamento_id],
+    )?;
+    // A divisão estornada não deixa ninguém devendo (nada dela foi recebido:
+    // `impedir_estorno_com_dependentes` já garantiu).
+    tx.execute("DELETE FROM a_receber WHERE lancamento_id = ?1", [lancamento_id])?;
+    // Encargos da fatura podem ser lançados de novo.
+    tx.execute(
+        "UPDATE faturas SET encargos_lancamento_id = NULL WHERE encargos_lancamento_id = ?1",
+        [lancamento_id],
+    )?;
+    // Aporte de meta desfeito sai do histórico da meta.
+    tx.execute("DELETE FROM metas_aportes WHERE lancamento_id = ?1", [lancamento_id])?;
+    Ok(())
+}
+
+/// Na correção, o lançamento novo passa a ser o que vale: quem apontava para o
+/// original (conta agendada paga, encargos da fatura, quem usou o cartão)
+/// passa a apontar para o novo — assim um estorno futuro do novo reabre tudo.
+fn repontar_vinculos(tx: &Transaction, antigo: &str, novo: &str) -> Resultado<()> {
+    tx.execute("UPDATE agendamentos SET lancamento_id = ?2 WHERE lancamento_id = ?1", [antigo, novo])?;
+    tx.execute("UPDATE faturas SET encargos_lancamento_id = ?2 WHERE encargos_lancamento_id = ?1", [antigo, novo])?;
+    tx.execute("UPDATE OR IGNORE lancamento_portador SET lancamento_id = ?2 WHERE lancamento_id = ?1", [antigo, novo])?;
+    Ok(())
+}
+
+/// Lançamentos cujo valor está amarrado a outro registro: corrigir só o valor
+/// deixaria os dois diferentes. Nesses casos o caminho é estornar e refazer.
+fn impedir_correcao_com_vinculo(tx: &Transaction, lancamento_id: &str) -> Resultado<()> {
+    let casos: [(&str, &str); 6] = [
+        ("SELECT EXISTS(SELECT 1 FROM operacoes_invest WHERE lancamento_id = ?1)", "uma operação de investimento"),
+        ("SELECT EXISTS(SELECT 1 FROM emprestimo_parcelas WHERE lancamento_id = ?1)", "uma parcela de empréstimo"),
+        (
+            "SELECT EXISTS(SELECT 1 FROM a_receber WHERE lancamento_id = ?1 OR recebimento_lancamento_id = ?1)",
+            "uma divisão ou um recebimento de valores a receber",
+        ),
+        ("SELECT EXISTS(SELECT 1 FROM reembolsos WHERE compra_id = ?1 OR reembolso_id = ?1)", "uma compra com reembolso"),
+        ("SELECT EXISTS(SELECT 1 FROM metas_aportes WHERE lancamento_id = ?1)", "um aporte de meta"),
+        (
+            "SELECT EXISTS(SELECT 1 FROM contas_contabeis c JOIN partidas p ON p.conta_id = c.id
+                WHERE p.lancamento_id = ?1 AND c.subtipo = 'EMPRESTIMO')",
+            "um empréstimo",
+        ),
+    ];
+    for (sql, oque) in casos {
+        let ligado: bool = tx.query_row(sql, [lancamento_id], |row| row.get(0))?;
+        if ligado {
+            return Err(AccountingError::DadoInvalido(format!(
+                "Este lançamento é de {oque}: para mudar o valor, estorne e lance de novo."
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Reparte `novo_total` entre os valores de um lado do lançamento (débitos ou
@@ -323,6 +444,7 @@ pub fn corrigir_lancamento(conn: &mut Connection, input: CorrecaoInput) -> Resul
             "O saldo inicial não é corrigido por aqui: ajuste a conta com um lançamento manual.".into(),
         ));
     }
+    impedir_correcao_com_vinculo(&tx, &input.lancamento_id)?;
 
     let valor_atual: i64 = partidas.iter().filter(|p| p.tipo == TipoPartida::Debito).map(|p| p.valor_centavos).sum();
     let descricao = input
@@ -366,6 +488,7 @@ pub fn corrigir_lancamento(conn: &mut Connection, input: CorrecaoInput) -> Resul
         partidas: novas_partidas,
     };
     let corrigido = inserir_lancamento_na_transacao(&tx, &novo, None, Some(&input.lancamento_id))?;
+    repontar_vinculos(&tx, &input.lancamento_id, &corrigido.id)?;
     registrar_auditoria(&tx, "CORRIGIR_LANCAMENTO", "lancamento", &input.lancamento_id)?;
     tx.commit()?;
     Ok(corrigido)
@@ -653,28 +776,67 @@ pub fn listar_lancamentos(conn: &Connection, limite: i64) -> Resultado<Vec<Lanca
         })?
         .collect::<rusqlite::Result<_>>()?;
     drop(stmt);
+    montar_lancamentos(conn, cabecalhos)
+}
+
+/// Um lançamento pelo id (com as partidas), sem carregar o banco inteiro.
+pub fn carregar_lancamento(conn: &Connection, lancamento_id: &str) -> Resultado<Option<Lancamento>> {
+    let cabecalho: Option<CabecalhoLancamento> = conn
+        .query_row(
+            "SELECT id, data, descricao, observacao, origem, estornado_de, etiqueta, parcelas, corrige
+             FROM lancamentos WHERE id = ?1",
+            [lancamento_id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                ))
+            },
+        )
+        .optional()?;
+    Ok(cabecalho.map(|c| montar_lancamentos(conn, vec![c])).transpose()?.and_then(|mut v| v.pop()))
+}
+
+/// Junta as partidas aos cabeçalhos com UMA consulta (em vez de uma por
+/// lançamento), mantendo a ordem dos cabeçalhos e a ordem de gravação das partidas.
+fn montar_lancamentos(conn: &Connection, cabecalhos: Vec<CabecalhoLancamento>) -> Resultado<Vec<Lancamento>> {
+    let ids: Vec<&str> = cabecalhos.iter().map(|c| c.0.as_str()).collect();
+    let ids_json = serde_json::to_string(&ids).map_err(|e| AccountingError::DadoInvalido(e.to_string()))?;
+    let mut por_lancamento: std::collections::HashMap<String, Vec<Partida>> = std::collections::HashMap::with_capacity(ids.len());
+    {
+        let mut stmt = conn.prepare_cached(
+            "SELECT lancamento_id, id, conta_id, tipo, valor_centavos FROM partidas
+             WHERE lancamento_id IN (SELECT value FROM json_each(?1))
+             ORDER BY rowid",
+        )?;
+        let linhas = stmt.query_map([&ids_json], |row| {
+            let tipo_str: String = row.get(3)?;
+            Ok((
+                row.get::<_, String>(0)?,
+                Partida {
+                    id: row.get(1)?,
+                    conta_id: row.get(2)?,
+                    tipo: if tipo_str == "DEBITO" { TipoPartida::Debito } else { TipoPartida::Credito },
+                    valor_centavos: row.get(4)?,
+                },
+            ))
+        })?;
+        for linha in linhas {
+            let (lancamento_id, partida) = linha?;
+            por_lancamento.entry(lancamento_id).or_default().push(partida);
+        }
+    }
 
     let mut resultado = Vec::with_capacity(cabecalhos.len());
     for (id, data, descricao, observacao, origem, estornado_de, etiqueta, parcelas, corrige) in cabecalhos {
-        let mut stmt_partidas = conn.prepare(
-            "SELECT id, conta_id, tipo, valor_centavos FROM partidas WHERE lancamento_id = ?1",
-        )?;
-        let partidas: Vec<Partida> = stmt_partidas
-            .query_map([&id], |row| {
-                let tipo_str: String = row.get(2)?;
-                Ok(Partida {
-                    id: row.get(0)?,
-                    conta_id: row.get(1)?,
-                    tipo: if tipo_str == "DEBITO" {
-                        TipoPartida::Debito
-                    } else {
-                        TipoPartida::Credito
-                    },
-                    valor_centavos: row.get(3)?,
-                })
-            })?
-            .collect::<rusqlite::Result<_>>()?;
-
+        let partidas = por_lancamento.remove(&id).unwrap_or_default();
         resultado.push(Lancamento {
             id,
             data,
@@ -730,11 +892,14 @@ fn validar_recorrencia(recorrencia: &Option<String>) -> Resultado<()> {
     }
 }
 
-/// Próxima data de uma conta recorrente. Mensal/anual mantêm o dia, ajustando
-/// ao último dia do mês quando ele não existe (ex.: 31/01 -> 28/02).
-pub fn proximo_vencimento(vencimento: &str, recorrencia: &str) -> Option<String> {
+/// Próxima data de uma conta recorrente. Mensal/anual partem do dia-âncora (o
+/// dia em que a conta foi criada para vencer), limitado ao último dia do mês:
+/// 31/01 → 28/02 → 31/03, em vez de ficar presa no dia 28. `None` usa o dia
+/// do próprio vencimento.
+pub fn proximo_vencimento_ancorado(vencimento: &str, recorrencia: &str, dia_original: Option<u32>) -> Option<String> {
     use chrono::{Datelike, Duration, NaiveDate};
     let data = NaiveDate::parse_from_str(vencimento, "%Y-%m-%d").ok()?;
+    let dia = dia_original.filter(|d| (1..=31).contains(d)).unwrap_or(data.day());
     let proxima = match recorrencia {
         "SEMANAL" => data + Duration::days(7),
         "MENSAL" | "ANUAL" => {
@@ -744,7 +909,7 @@ pub fn proximo_vencimento(vencimento: &str, recorrencia: &str) -> Option<String>
             let ultimo = NaiveDate::from_ymd_opt(if mes == 12 { ano + 1 } else { ano }, if mes == 12 { 1 } else { mes + 1 }, 1)?
                 .pred_opt()?
                 .day();
-            NaiveDate::from_ymd_opt(ano, mes, data.day().min(ultimo))?
+            NaiveDate::from_ymd_opt(ano, mes, dia.min(ultimo))?
         }
         _ => return None,
     };
@@ -798,8 +963,8 @@ pub fn criar_agendamento(conn: &mut Connection, input: NovoAgendamentoInput) -> 
     let id = Uuid::new_v4().to_string();
     tx.execute(
         "INSERT INTO agendamentos (id, descricao, valor_centavos, vencimento, categoria_despesa_id, etiqueta, recorrencia,
-                                   tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                                   tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa, dia_original)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, CAST(substr(?4, 9, 2) AS INTEGER))",
         params![
             id,
             input.descricao.trim(),
@@ -903,7 +1068,7 @@ pub fn pagar_agendamento(
     let tx = conn.transaction()?;
 
     #[allow(clippy::type_complexity)]
-    let (descricao, valor, categoria, etiqueta, pago_em, vencimento, recorrencia, tipo, automatico, conta_id, reajuste, mes_reajuste, pessoa): (
+    let (descricao, valor, categoria, etiqueta, pago_em, vencimento, recorrencia, tipo, automatico, conta_id, reajuste, mes_reajuste, pessoa, dia_original): (
         String,
         i64,
         String,
@@ -917,16 +1082,17 @@ pub fn pagar_agendamento(
         Option<f64>,
         Option<i32>,
         Option<String>,
+        Option<u32>,
     ) = tx
         .query_row(
             "SELECT descricao, valor_centavos, categoria_despesa_id, etiqueta, pago_em, vencimento, recorrencia,
-                    tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa
+                    tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa, dia_original
              FROM agendamentos WHERE id = ?1",
             [agendamento_id],
             |row| {
                 Ok((
                     row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?,
-                    row.get(7)?, row.get(8)?, row.get(9)?, row.get(10)?, row.get(11)?, row.get(12)?,
+                    row.get(7)?, row.get(8)?, row.get(9)?, row.get(10)?, row.get(11)?, row.get(12)?, row.get(13)?,
                 ))
             },
         )
@@ -937,7 +1103,10 @@ pub fn pagar_agendamento(
         return Err(AccountingError::AgendamentoJaPago(agendamento_id.to_string()));
     }
 
-    let proximo = recorrencia.as_deref().and_then(|r| proximo_vencimento(&vencimento, r));
+    // Dia-âncora: a próxima parte do dia em que a conta foi criada para vencer
+    // (31/01 → 28/02 → 31/03), não do vencimento já ajustado ao mês curto.
+    let dia_ancora = dia_original.or_else(|| vencimento.get(8..10).and_then(|d| d.parse().ok()));
+    let proximo = recorrencia.as_deref().and_then(|r| proximo_vencimento_ancorado(&vencimento, r, dia_ancora));
     let receber = tipo == "RECEBER";
     let input = NovoLancamentoInput {
         data: data_pagamento.to_string(),
@@ -967,14 +1136,25 @@ pub fn pagar_agendamento(
     registrar_auditoria(&tx, "PAGAR_AGENDAMENTO", "agendamento", agendamento_id)?;
 
     // Recorrente: já deixa a próxima agendada (com reajuste anual, se houver).
-    if let (Some(venc), Some(rec)) = (proximo, recorrencia) {
+    // Se a próxima já existe (o pagamento foi estornado e agora é refeito),
+    // não cria outra igual.
+    let proxima_ja_existe = match (&proximo, &recorrencia) {
+        (Some(venc), Some(rec)) => tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM agendamentos WHERE pago_em IS NULL AND descricao = ?1 AND categoria_despesa_id = ?2
+                AND tipo = ?3 AND recorrencia = ?4 AND vencimento = ?5)",
+            params![descricao, categoria, tipo, rec, venc],
+            |row| row.get::<_, bool>(0),
+        )?,
+        _ => false,
+    };
+    if let (Some(venc), Some(rec), false) = (proximo, recorrencia, proxima_ja_existe) {
         let novo_valor = valor_com_reajuste(valor, &vencimento, &venc, reajuste, mes_reajuste);
         let novo_id = Uuid::new_v4().to_string();
         tx.execute(
             "INSERT INTO agendamentos (id, descricao, valor_centavos, vencimento, categoria_despesa_id, etiqueta, recorrencia,
-                                       tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-            params![novo_id, descricao, novo_valor, venc, categoria, etiqueta, rec, tipo, automatico, conta_id, reajuste, mes_reajuste, pessoa],
+                                       tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa, dia_original)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![novo_id, descricao, novo_valor, venc, categoria, etiqueta, rec, tipo, automatico, conta_id, reajuste, mes_reajuste, pessoa, dia_ancora],
         )?;
         registrar_auditoria(&tx, "CRIAR_AGENDAMENTO", "agendamento", &novo_id)?;
     }
@@ -1099,17 +1279,261 @@ mod testes_agendamento {
 }
 
 #[cfg(test)]
+mod testes_listagem {
+    use super::*;
+    use crate::db::{abrir_conexao, executar_migracoes};
+
+    /// A versão antiga (uma consulta de partidas por lançamento), para comparar.
+    fn listar_um_a_um(conn: &Connection, limite: i64) -> Vec<Lancamento> {
+        let ids: Vec<String> = conn
+            .prepare("SELECT id FROM lancamentos ORDER BY data DESC, criado_em DESC LIMIT ?1")
+            .unwrap()
+            .query_map([limite], |r| r.get(0))
+            .unwrap()
+            .map(|x| x.unwrap())
+            .collect();
+        ids.iter()
+            .map(|id| {
+                let mut l = carregar_lancamento(conn, id).unwrap().unwrap();
+                l.partidas = conn
+                    .prepare("SELECT id, conta_id, tipo, valor_centavos FROM partidas WHERE lancamento_id = ?1")
+                    .unwrap()
+                    .query_map([id], |row| {
+                        let t: String = row.get(2)?;
+                        Ok(Partida {
+                            id: row.get(0)?,
+                            conta_id: row.get(1)?,
+                            tipo: if t == "DEBITO" { TipoPartida::Debito } else { TipoPartida::Credito },
+                            valor_centavos: row.get(3)?,
+                        })
+                    })
+                    .unwrap()
+                    .map(|x| x.unwrap())
+                    .collect();
+                l
+            })
+            .collect()
+    }
+
+    #[test]
+    fn listagem_com_uma_consulta_e_igual_a_antiga() {
+        let mut conn = abrir_conexao(std::path::Path::new(":memory:")).unwrap();
+        executar_migracoes(&conn).unwrap();
+        for (i, valor) in [1_000, 2_500, 333, 7_700, 12].into_iter().enumerate() {
+            let l = criar_lancamento(
+                &mut conn,
+                NovoLancamentoInput {
+                    data: format!("2026-09-{:02}", 10 + i % 3),
+                    descricao: format!("Compra {i}"),
+                    observacao: None,
+                    origem: "MANUAL".into(),
+                    etiqueta: None,
+                    parcelas: None,
+                    partidas: vec![
+                        PartidaInput { conta_id: "despesa-alimentacao".into(), tipo: TipoPartida::Debito, valor_centavos: valor },
+                        PartidaInput { conta_id: "despesa-outras".into(), tipo: TipoPartida::Debito, valor_centavos: 1 },
+                        PartidaInput { conta_id: "ativo-dinheiro".into(), tipo: TipoPartida::Credito, valor_centavos: valor + 1 },
+                    ],
+                },
+            )
+            .unwrap();
+            if i == 2 {
+                estornar_lancamento(&mut conn, &l.id).unwrap();
+            }
+        }
+        for limite in [0, 1, 3, 100, i64::MAX] {
+            let nova = serde_json::to_value(listar_lancamentos(&conn, limite).unwrap()).unwrap();
+            let antiga = serde_json::to_value(listar_um_a_um(&conn, limite)).unwrap();
+            assert_eq!(nova, antiga, "limite {limite}");
+        }
+        assert_eq!(listar_lancamentos(&conn, 100).unwrap().len(), 6);
+        assert!(listar_lancamentos(&conn, 100).unwrap().iter().all(|l| l.partidas.len() == 3));
+        assert!(carregar_lancamento(&conn, "nao-existe").unwrap().is_none());
+    }
+}
+
+#[cfg(test)]
+mod testes_estorno_vinculos {
+    use super::*;
+    use crate::db::{abrir_conexao, executar_migracoes};
+
+    fn banco() -> Connection {
+        let conn = abrir_conexao(std::path::Path::new(":memory:")).unwrap();
+        executar_migracoes(&conn).unwrap();
+        conn
+    }
+
+    fn aluguel(conn: &mut Connection, recorrencia: Option<&str>, automatico: bool) -> Agendamento {
+        criar_agendamento(
+            conn,
+            NovoAgendamentoInput {
+                descricao: "Aluguel".into(),
+                valor_centavos: 150_000,
+                vencimento: "2026-10-05".into(),
+                categoria_despesa_id: "despesa-moradia".into(),
+                etiqueta: None,
+                recorrencia: recorrencia.map(String::from),
+                tipo: "PAGAR".into(),
+                automatico,
+                conta_id: Some("ativo-dinheiro".into()),
+                reajuste_anual: None,
+                mes_reajuste: None,
+                pessoa: None,
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn estornar_pagamento_reabre_a_conta_agendada_e_devolve_o_saldo() {
+        let mut conn = banco();
+        let ag = aluguel(&mut conn, None, false);
+        let lanc = pagar_agendamento(&mut conn, &ag.id, "ativo-dinheiro", "2026-10-05").unwrap();
+        assert_eq!(saldo_conta(&conn, "ativo-dinheiro").unwrap(), -150_000);
+
+        estornar_lancamento(&mut conn, &lanc.id).unwrap();
+        assert_eq!(saldo_conta(&conn, "ativo-dinheiro").unwrap(), 0);
+        assert_eq!(saldo_conta(&conn, "despesa-moradia").unwrap(), 0);
+        let todos = listar_agendamentos(&conn).unwrap();
+        assert_eq!(todos.len(), 1);
+        assert!(todos[0].pago_em.is_none(), "a conta volta a aparecer em aberto");
+        assert!(todos[0].lancamento_id.is_none());
+
+        // E pode ser paga de novo.
+        pagar_agendamento(&mut conn, &ag.id, "ativo-dinheiro", "2026-10-06").unwrap();
+        assert_eq!(saldo_conta(&conn, "ativo-dinheiro").unwrap(), -150_000);
+    }
+
+    #[test]
+    fn refazer_pagamento_recorrente_nao_duplica_a_proxima() {
+        let mut conn = banco();
+        let ag = aluguel(&mut conn, Some("MENSAL"), false);
+        let lanc = pagar_agendamento(&mut conn, &ag.id, "ativo-dinheiro", "2026-10-05").unwrap();
+        estornar_lancamento(&mut conn, &lanc.id).unwrap();
+        let abertos = |conn: &Connection| -> Vec<String> {
+            listar_agendamentos(conn).unwrap().into_iter().filter(|a| a.pago_em.is_none()).map(|a| a.vencimento).collect()
+        };
+        assert_eq!(abertos(&conn), vec!["2026-10-05".to_string(), "2026-11-05".to_string()]);
+
+        pagar_agendamento(&mut conn, &ag.id, "ativo-dinheiro", "2026-10-05").unwrap();
+        assert_eq!(listar_agendamentos(&conn).unwrap().len(), 2);
+        assert_eq!(abertos(&conn), vec!["2026-11-05".to_string()]);
+    }
+
+    #[test]
+    fn estorno_de_automatico_nao_e_lancado_de_novo_sozinho() {
+        let mut conn = banco();
+        aluguel(&mut conn, None, true);
+        let feitos = processar_automaticos(&mut conn, "2026-10-10").unwrap();
+        assert_eq!(feitos.len(), 1);
+        estornar_lancamento(&mut conn, &feitos[0].id).unwrap();
+
+        assert!(processar_automaticos(&mut conn, "2026-10-10").unwrap().is_empty());
+        assert_eq!(saldo_conta(&conn, "ativo-dinheiro").unwrap(), 0);
+        let ag = &listar_agendamentos(&conn).unwrap()[0];
+        assert!(ag.pago_em.is_none());
+        assert!(!ag.automatico);
+    }
+
+    #[test]
+    fn correcao_leva_o_vinculo_para_o_lancamento_novo() {
+        let mut conn = banco();
+        let ag = aluguel(&mut conn, None, false);
+        let lanc = pagar_agendamento(&mut conn, &ag.id, "ativo-dinheiro", "2026-10-05").unwrap();
+        let novo = corrigir_lancamento(
+            &mut conn,
+            CorrecaoInput { lancamento_id: lanc.id, nova_data: "2026-10-05".into(), novo_valor_centavos: 140_000, nova_descricao: None },
+        )
+        .unwrap();
+        let pago = &listar_agendamentos(&conn).unwrap()[0];
+        assert_eq!(pago.lancamento_id.as_deref(), Some(novo.id.as_str()));
+        assert!(pago.pago_em.is_some(), "corrigir não reabre a conta");
+
+        estornar_lancamento(&mut conn, &novo.id).unwrap();
+        assert!(listar_agendamentos(&conn).unwrap()[0].pago_em.is_none());
+        assert_eq!(saldo_conta(&conn, "ativo-dinheiro").unwrap(), 0);
+    }
+}
+
+#[cfg(test)]
 mod testes_recorrencia {
     use super::*;
 
     #[test]
     fn proximo_vencimento_respeita_fim_de_mes_e_virada_de_ano() {
-        assert_eq!(proximo_vencimento("2026-01-31", "MENSAL").as_deref(), Some("2026-02-28"));
-        assert_eq!(proximo_vencimento("2028-01-31", "MENSAL").as_deref(), Some("2028-02-29"));
-        assert_eq!(proximo_vencimento("2026-12-15", "MENSAL").as_deref(), Some("2027-01-15"));
-        assert_eq!(proximo_vencimento("2026-10-10", "SEMANAL").as_deref(), Some("2026-10-17"));
-        assert_eq!(proximo_vencimento("2028-02-29", "ANUAL").as_deref(), Some("2029-02-28"));
-        assert_eq!(proximo_vencimento("2026-10-10", "QUINZENAL"), None);
+        assert_eq!(proximo_vencimento_ancorado("2026-01-31", "MENSAL", None).as_deref(), Some("2026-02-28"));
+        assert_eq!(proximo_vencimento_ancorado("2028-01-31", "MENSAL", None).as_deref(), Some("2028-02-29"));
+        assert_eq!(proximo_vencimento_ancorado("2026-12-15", "MENSAL", None).as_deref(), Some("2027-01-15"));
+        assert_eq!(proximo_vencimento_ancorado("2026-10-10", "SEMANAL", None).as_deref(), Some("2026-10-17"));
+        assert_eq!(proximo_vencimento_ancorado("2028-02-29", "ANUAL", None).as_deref(), Some("2029-02-28"));
+        assert_eq!(proximo_vencimento_ancorado("2026-10-10", "QUINZENAL", None), None);
+    }
+
+    #[test]
+    fn dia_ancora_volta_ao_dia_original_depois_do_mes_curto() {
+        assert_eq!(proximo_vencimento_ancorado("2026-02-28", "MENSAL", Some(31)).as_deref(), Some("2026-03-31"));
+        assert_eq!(proximo_vencimento_ancorado("2026-03-31", "MENSAL", Some(31)).as_deref(), Some("2026-04-30"));
+        assert_eq!(proximo_vencimento_ancorado("2026-04-30", "MENSAL", Some(31)).as_deref(), Some("2026-05-31"));
+        assert_eq!(proximo_vencimento_ancorado("2029-02-28", "ANUAL", Some(29)).as_deref(), Some("2030-02-28"));
+        assert_eq!(proximo_vencimento_ancorado("2031-02-28", "ANUAL", Some(29)).as_deref(), Some("2032-02-29"));
+        assert_eq!(proximo_vencimento_ancorado("2026-10-10", "SEMANAL", Some(31)).as_deref(), Some("2026-10-17"));
+        // Sem âncora (ou âncora inválida), vale o dia do vencimento — o comportamento antigo.
+        assert_eq!(proximo_vencimento_ancorado("2026-02-28", "MENSAL", None).as_deref(), Some("2026-03-28"));
+        assert_eq!(proximo_vencimento_ancorado("2026-02-28", "MENSAL", Some(0)).as_deref(), Some("2026-03-28"));
+    }
+
+    #[test]
+    fn conta_do_dia_31_volta_ao_31_depois_de_fevereiro() {
+        use crate::db::{abrir_conexao, executar_migracoes};
+        let mut conn = abrir_conexao(std::path::Path::new(":memory:")).unwrap();
+        executar_migracoes(&conn).unwrap();
+        criar_agendamento(
+            &mut conn,
+            NovoAgendamentoInput {
+                descricao: "Condomínio".into(),
+                valor_centavos: 50_000,
+                vencimento: "2027-01-31".into(),
+                categoria_despesa_id: "despesa-moradia".into(),
+                etiqueta: None,
+                recorrencia: Some("MENSAL".into()),
+                tipo: "PAGAR".into(),
+                automatico: true,
+                conta_id: Some("ativo-dinheiro".into()),
+                reajuste_anual: None,
+                mes_reajuste: None,
+                pessoa: None,
+            },
+        )
+        .unwrap();
+        let feitos = processar_automaticos(&mut conn, "2027-05-01").unwrap();
+        let datas: Vec<&str> = feitos.iter().map(|l| l.data.as_str()).collect();
+        assert_eq!(datas, vec!["2027-01-31", "2027-02-28", "2027-03-31", "2027-04-30"]);
+        let aberto = listar_agendamentos(&conn).unwrap().into_iter().find(|a| a.pago_em.is_none()).unwrap();
+        assert_eq!(aberto.vencimento, "2027-05-31");
+    }
+
+    #[test]
+    fn dia_ancora_no_banco_ao_criar_e_ao_editar() {
+        use crate::db::{abrir_conexao, executar_migracoes};
+        let conn = abrir_conexao(std::path::Path::new(":memory:")).unwrap();
+        executar_migracoes(&conn).unwrap();
+        let dia = |conn: &Connection| -> Option<i64> {
+            conn.query_row("SELECT dia_original FROM agendamentos WHERE id = 'a'", [], |r| r.get(0)).unwrap()
+        };
+        // Quem grava sem informar o dia (código antigo, importação) fica com o dia do vencimento.
+        conn.execute(
+            "INSERT INTO agendamentos (id, descricao, valor_centavos, vencimento, categoria_despesa_id, recorrencia)
+             VALUES ('a', 'Luz', 100, '2026-01-30', 'despesa-moradia', 'MENSAL')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(dia(&conn), Some(30));
+        // Editar sem mudar a data mantém a âncora; mudar a data troca.
+        conn.execute("UPDATE agendamentos SET dia_original = 31 WHERE id = 'a'", []).unwrap();
+        conn.execute("UPDATE agendamentos SET vencimento = '2026-01-30', valor_centavos = 200 WHERE id = 'a'", []).unwrap();
+        assert_eq!(dia(&conn), Some(31));
+        conn.execute("UPDATE agendamentos SET vencimento = '2026-01-15' WHERE id = 'a'", []).unwrap();
+        assert_eq!(dia(&conn), Some(15));
     }
 
     #[test]

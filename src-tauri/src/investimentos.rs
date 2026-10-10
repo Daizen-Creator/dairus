@@ -393,7 +393,10 @@ pub fn registrar_operacao(conn: &mut Connection, input: OperacaoInput) -> Res<Op
     if input.taxas_centavos < 0 || input.ir_retido_centavos < 0 {
         return Err("Taxas e IR não podem ser negativos.".into());
     }
-    let codigo: String = conn
+    // Leitura da posição, lançamento e operação numa transação só: se gravar a
+    // operação falhar, o dinheiro também não sai da conta.
+    let tx = conn.transaction().map_err(e)?;
+    let codigo: String = tx
         .query_row("SELECT codigo FROM ativos_invest WHERE id = ?1", [&input.ativo_id], |r| r.get(0))
         .optional()
         .map_err(e)?
@@ -411,7 +414,7 @@ pub fn registrar_operacao(conn: &mut Connection, input: OperacaoInput) -> Res<Op
         return Err("O valor precisa ser maior que zero.".into());
     }
 
-    let anteriores = ler_operacoes(conn, Some(&input.ativo_id))?;
+    let anteriores = ler_operacoes(&tx, Some(&input.ativo_id))?;
     let ate_a_data: Vec<OperacaoInvest> = anteriores.iter().filter(|o| o.data <= input.data).cloned().collect();
     if anteriores.iter().any(|o| o.data > input.data) && input.tipo == "VENDA" {
         return Err("Há operações depois desta data; registre as vendas em ordem cronológica.".into());
@@ -452,9 +455,9 @@ pub fn registrar_operacao(conn: &mut Connection, input: OperacaoInput) -> Res<Op
             return Err("\"Já tinha\" vale só para registrar compras antigas.".into());
         }
         let partidas = partidas_da_operacao(&op, &conta);
-        let lanc = engine::criar_lancamento(
-            conn,
-            NovoLancamentoInput {
+        let lanc = engine::inserir_lancamento(
+            &tx,
+            &NovoLancamentoInput {
                 data: op.data.clone(),
                 descricao: descricao_operacao(&op, &codigo),
                 observacao: op.notas.clone(),
@@ -476,7 +479,7 @@ pub fn registrar_operacao(conn: &mut Connection, input: OperacaoInput) -> Res<Op
         op.lancamento_id = Some(lanc.id);
     }
 
-    conn.execute(
+    tx.execute(
         "INSERT INTO operacoes_invest (id, ativo_id, tipo, data, quantidade, preco_unitario, taxas_centavos, valor_centavos,
          ir_retido_centavos, custo_centavos, day_trade, conta_id, lancamento_id, notas)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
@@ -486,6 +489,7 @@ pub fn registrar_operacao(conn: &mut Connection, input: OperacaoInput) -> Res<Op
         ],
     )
     .map_err(e)?;
+    tx.commit().map_err(e)?;
     Ok(op)
 }
 
@@ -501,15 +505,18 @@ pub fn excluir_operacao(conn: &mut Connection, id: &str) -> Res<()> {
     if ops.last().map(|o| o.id.as_str()) != Some(id) {
         return Err("Só a operação mais recente do ativo pode ser excluída. Exclua as posteriores antes.".into());
     }
+    // Estorno e exclusão juntos: ou os dois acontecem, ou nenhum.
+    let tx = conn.transaction().map_err(e)?;
     if let Some(l) = lancamento {
-        let ja_estornado: bool = conn
+        let ja_estornado: bool = tx
             .query_row("SELECT EXISTS(SELECT 1 FROM lancamentos WHERE estornado_de = ?1)", [&l], |r| r.get(0))
             .map_err(e)?;
         if !ja_estornado {
-            engine::estornar_lancamento(conn, &l).map_err(String::from)?;
+            engine::estornar_na_transacao(&tx, &l).map_err(String::from)?;
         }
     }
-    conn.execute("DELETE FROM operacoes_invest WHERE id = ?1", [id]).map_err(e)?;
+    tx.execute("DELETE FROM operacoes_invest WHERE id = ?1", [id]).map_err(e)?;
+    tx.commit().map_err(e)?;
     Ok(())
 }
 
@@ -700,9 +707,24 @@ mod testes {
         let o1 = registrar_operacao(&mut conn, op(&a, "COMPRA", "2026-01-10", 1.0, 10.0, 0, None)).unwrap();
         let o2 = registrar_operacao(&mut conn, op(&a, "COMPRA", "2026-01-11", 1.0, 10.0, 0, None)).unwrap();
         assert!(excluir_operacao(&mut conn, &o1.id).is_err());
+        // Estornar só o dinheiro pelo Histórico deixaria a carteira errada: recusa.
+        let l2 = o2.lancamento_id.clone().unwrap();
+        assert!(engine::estornar_lancamento(&mut conn, &l2).unwrap_err().to_string().contains("Investimentos"));
         excluir_operacao(&mut conn, &o2.id).unwrap();
         assert_eq!(engine::saldo_conta(&conn, CARTEIRA).unwrap(), 1_000);
         assert_eq!(listar_ativos(&conn).unwrap()[0].quantidade, 1.0);
+    }
+
+    #[test]
+    fn falha_ao_gravar_operacao_nao_tira_dinheiro_da_conta() {
+        let mut conn = banco();
+        let a = ativo(&conn, "WEGE3");
+        conn.execute_batch("CREATE TRIGGER falha BEFORE INSERT ON operacoes_invest BEGIN SELECT RAISE(ABORT, 'falha simulada'); END;").unwrap();
+        assert!(registrar_operacao(&mut conn, op(&a, "COMPRA", "2026-01-10", 1.0, 10.0, 0, None)).is_err());
+        let lancamentos: i64 = conn.query_row("SELECT COUNT(*) FROM lancamentos", [], |r| r.get(0)).unwrap();
+        assert_eq!(lancamentos, 0);
+        assert_eq!(engine::saldo_conta(&conn, "ativo-dinheiro").unwrap(), 0);
+        assert!(conn.is_autocommit());
     }
 
     #[test]

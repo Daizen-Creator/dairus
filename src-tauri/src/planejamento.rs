@@ -1,7 +1,7 @@
 //! Planejamento: orçamento por mês e sobra acumulada, metas ligadas a contas
 //! reais, empréstimos/financiamentos (Price e SAC) e valores a receber de pessoas.
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use uuid::Uuid;
@@ -30,10 +30,13 @@ fn p(conta: &str, tipo: TipoPartida, v: i64) -> PartidaInput {
     PartidaInput { conta_id: conta.to_string(), tipo, valor_centavos: v }
 }
 
-fn lancar(conn: &mut Connection, data: &str, descricao: String, origem: &str, partidas: Vec<PartidaInput>) -> Res<Lancamento> {
-    engine::criar_lancamento(
-        conn,
-        NovoLancamentoInput {
+/// Grava o lançamento na transação aberta pelo chamador, que grava em seguida o
+/// registro ligado a ele (parcela, valor a receber, aporte) e só então dá
+/// `commit`: tudo ou nada, sem lançamento órfão.
+fn lancar(tx: &Transaction, data: &str, descricao: String, origem: &str, partidas: Vec<PartidaInput>) -> Res<Lancamento> {
+    engine::inserir_lancamento(
+        tx,
+        &NovoLancamentoInput {
             data: data.to_string(),
             descricao,
             observacao: None,
@@ -130,7 +133,8 @@ pub fn aportar_com_conta(conn: &mut Connection, meta_id: &str, valor: i64, data:
     if valor == 0 {
         return Err("Informe um valor diferente de zero.".into());
     }
-    let (nome, conta_meta): (String, Option<String>) = conn
+    let tx = conn.transaction().map_err(e)?;
+    let (nome, conta_meta): (String, Option<String>) = tx
         .query_row("SELECT nome, conta_id FROM metas WHERE id = ?1", [meta_id], |r| Ok((r.get(0)?, r.get(1)?)))
         .optional()
         .map_err(e)?
@@ -145,12 +149,13 @@ pub fn aportar_com_conta(conn: &mut Connection, meta_id: &str, valor: i64, data:
         (conta_origem_id, conta_meta.as_str(), format!("Retirada da meta {nome}"))
     };
     let v = valor.abs();
-    let lanc = lancar(conn, data, texto, "TRANSFERENCIA", vec![p(debito, TipoPartida::Debito, v), p(credito, TipoPartida::Credito, v)])?;
-    conn.execute(
+    let lanc = lancar(&tx, data, texto, "TRANSFERENCIA", vec![p(debito, TipoPartida::Debito, v), p(credito, TipoPartida::Credito, v)])?;
+    tx.execute(
         "INSERT INTO metas_aportes (id, meta_id, valor_centavos, data, lancamento_id) VALUES (?1, ?2, ?3, ?4, ?5)",
         params![Uuid::new_v4().to_string(), meta_id, valor, data, lanc.id],
     )
     .map_err(e)?;
+    tx.commit().map_err(e)?;
     Ok(lanc)
 }
 
@@ -260,7 +265,9 @@ pub fn criar(conn: &mut Connection, input: EmprestimoInput) -> Res<String> {
     data_ok(&contratacao)?;
     let sufixo = Uuid::new_v4().simple().to_string()[..8].to_string();
     let conta_id = format!("emp-{sufixo}");
-    conn.execute(
+    // Conta da dívida, lançamento da contratação e empréstimo: tudo ou nada.
+    let tx = conn.transaction().map_err(e)?;
+    tx.execute(
         "INSERT INTO contas_contabeis (id, codigo, nome, tipo, subtipo, categoria_pai_id, sistema) VALUES (?1, ?2, ?3, 'PASSIVO', 'EMPRESTIMO', 'passivo-emprestimos', 0)",
         params![conta_id, format!("2.3.{sufixo}"), nome],
     )
@@ -270,19 +277,20 @@ pub fn criar(conn: &mut Connection, input: EmprestimoInput) -> Res<String> {
         None => ("patrimonio-saldo-inicial", "SALDO_INICIAL"),
     };
     lancar(
-        conn,
+        &tx,
         &contratacao,
         format!("Contratação: {nome}"),
         origem,
         vec![p(debito, TipoPartida::Debito, input.principal_centavos), p(&conta_id, TipoPartida::Credito, input.principal_centavos)],
     )?;
     let id = Uuid::new_v4().to_string();
-    conn.execute(
+    tx.execute(
         "INSERT INTO emprestimos (id, nome, sistema, principal_centavos, taxa_mensal, parcelas, primeiro_vencimento, conta_passivo_id)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         params![id, nome, input.sistema, input.principal_centavos, input.taxa_mensal, input.parcelas, input.primeiro_vencimento, conta_id],
     )
     .map_err(e)?;
+    tx.commit().map_err(e)?;
     Ok(id)
 }
 
@@ -332,11 +340,13 @@ pub fn listar_emprestimos(state: State<AppState>) -> Res<Vec<Emprestimo>> {
 /// Paga a próxima parcela: amortização reduz a dívida e os juros viram despesa.
 pub fn pagar_parcela(conn: &mut Connection, emprestimo_id: &str, conta_id: &str, data: &str) -> Res<Lancamento> {
     data_ok(data)?;
-    let emp = listar(conn)?.into_iter().find(|x| x.id == emprestimo_id).ok_or("Empréstimo não encontrado.")?;
+    // Escolha da parcela, lançamento e registro da parcela paga: tudo ou nada.
+    let tx = conn.transaction().map_err(e)?;
+    let emp = listar(&tx)?.into_iter().find(|x| x.id == emprestimo_id).ok_or("Empréstimo não encontrado.")?;
     let proxima = (1..=emp.parcelas).find(|k| !emp.pagas.contains(k)).ok_or("Todas as parcelas já foram pagas.")?;
     let linha = emp.tabela[(proxima - 1) as usize].clone();
     let lanc = lancar(
-        conn,
+        &tx,
         data,
         format!("Parcela {proxima}/{} de {}", emp.parcelas, emp.nome),
         "MANUAL",
@@ -346,11 +356,12 @@ pub fn pagar_parcela(conn: &mut Connection, emprestimo_id: &str, conta_id: &str,
             p(conta_id, TipoPartida::Credito, linha.parcela),
         ],
     )?;
-    conn.execute(
+    tx.execute(
         "INSERT INTO emprestimo_parcelas (emprestimo_id, numero, pago_em, lancamento_id) VALUES (?1, ?2, ?3, ?4)",
         params![emprestimo_id, proxima, data, lanc.id],
     )
     .map_err(e)?;
+    tx.commit().map_err(e)?;
     Ok(lanc)
 }
 
@@ -440,14 +451,16 @@ pub fn dividir(conn: &mut Connection, input: DivisaoInput) -> Res<Lancamento> {
     }
     partidas.push(p(&input.conta_id, TipoPartida::Credito, total));
     let origem = if input.minha_parte_centavos > 0 { "MANUAL" } else { "TRANSFERENCIA" };
-    let lanc = lancar(conn, &input.data, descricao.clone(), origem, partidas)?;
+    let tx = conn.transaction().map_err(e)?;
+    let lanc = lancar(&tx, &input.data, descricao.clone(), origem, partidas)?;
     for parte in partes {
-        conn.execute(
+        tx.execute(
             "INSERT INTO a_receber (id, pessoa, descricao, valor_centavos, data, lancamento_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![Uuid::new_v4().to_string(), parte.pessoa.trim(), descricao, parte.valor_centavos, input.data, lanc.id],
         )
         .map_err(e)?;
     }
+    tx.commit().map_err(e)?;
     Ok(lanc)
 }
 
@@ -460,10 +473,17 @@ pub fn registrar_divisao(state: State<AppState>, input: DivisaoInput) -> Res<Lan
 /// Recebe (dinheiro entra na conta) os valores escolhidos.
 pub fn receber(conn: &mut Connection, ids: &[String], conta_id: &str, data: &str) -> Res<Lancamento> {
     data_ok(data)?;
+    let tx = conn.transaction().map_err(e)?;
+    let lanc = receber_na_transacao(&tx, ids, conta_id, data)?;
+    tx.commit().map_err(e)?;
+    Ok(lanc)
+}
+
+fn receber_na_transacao(tx: &Transaction, ids: &[String], conta_id: &str, data: &str) -> Res<Lancamento> {
     let mut total = 0;
     let mut pessoas = Vec::new();
     for id in ids {
-        let (valor, pessoa, recebido, perdoado): (i64, String, Option<String>, i64) = conn
+        let (valor, pessoa, recebido, perdoado): (i64, String, Option<String>, i64) = tx
             .query_row("SELECT valor_centavos, pessoa, recebido_em, perdoado FROM a_receber WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
             .optional()
             .map_err(e)?
@@ -479,9 +499,9 @@ pub fn receber(conn: &mut Connection, ids: &[String], conta_id: &str, data: &str
     if total == 0 {
         return Err("Escolha o que foi recebido.".into());
     }
-    let lanc = lancar(conn, data, format!("Recebido de {}", pessoas.join(", ")), "TRANSFERENCIA", vec![p(conta_id, TipoPartida::Debito, total), p(A_RECEBER, TipoPartida::Credito, total)])?;
+    let lanc = lancar(tx, data, format!("Recebido de {}", pessoas.join(", ")), "TRANSFERENCIA", vec![p(conta_id, TipoPartida::Debito, total), p(A_RECEBER, TipoPartida::Credito, total)])?;
     for id in ids {
-        conn.execute("UPDATE a_receber SET recebido_em = ?1, recebimento_lancamento_id = ?2 WHERE id = ?3", params![data, lanc.id, id]).map_err(e)?;
+        tx.execute("UPDATE a_receber SET recebido_em = ?1, recebimento_lancamento_id = ?2 WHERE id = ?3", params![data, lanc.id, id]).map_err(e)?;
     }
     Ok(lanc)
 }
@@ -497,7 +517,8 @@ pub fn receber_valores(state: State<AppState>, ids: Vec<String>, conta_id: Strin
 pub fn perdoar_valor(state: State<AppState>, id: String, data: String) -> Res<()> {
     data_ok(&data)?;
     let mut conn = state.conn.lock().expect("mutex envenenado");
-    let (valor, pessoa, recebido, perdoado): (i64, String, Option<String>, i64) = conn
+    let tx = conn.transaction().map_err(e)?;
+    let (valor, pessoa, recebido, perdoado): (i64, String, Option<String>, i64) = tx
         .query_row("SELECT valor_centavos, pessoa, recebido_em, perdoado FROM a_receber WHERE id = ?1", [&id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
         .optional()
         .map_err(e)?
@@ -505,15 +526,17 @@ pub fn perdoar_valor(state: State<AppState>, id: String, data: String) -> Res<()
     if recebido.is_some() || perdoado != 0 {
         return Err("Este valor já foi recebido ou perdoado.".into());
     }
-    let lanc = lancar(&mut conn, &data, format!("Dívida perdoada: {pessoa}"), "MANUAL", vec![p("despesa-outras", TipoPartida::Debito, valor), p(A_RECEBER, TipoPartida::Credito, valor)])?;
-    conn.execute("UPDATE a_receber SET perdoado = 1, recebimento_lancamento_id = ?1 WHERE id = ?2", params![lanc.id, id]).map_err(e)?;
+    let lanc = lancar(&tx, &data, format!("Dívida perdoada: {pessoa}"), "MANUAL", vec![p("despesa-outras", TipoPartida::Debito, valor), p(A_RECEBER, TipoPartida::Credito, valor)])?;
+    tx.execute("UPDATE a_receber SET perdoado = 1, recebimento_lancamento_id = ?1 WHERE id = ?2", params![lanc.id, id]).map_err(e)?;
+    tx.commit().map_err(e)?;
     Ok(())
 }
 
 /// Recebe só uma parte de um valor: a parte vira um item já recebido e o resto continua aberto.
 pub fn receber_parte(conn: &mut Connection, id: &str, valor: i64, conta_id: &str, data: &str) -> Res<Lancamento> {
     data_ok(data)?;
-    let (total, pessoa, descricao, data_orig, lanc_orig, recebido, perdoado): (i64, String, String, String, Option<String>, Option<String>, i64) = conn
+    let tx = conn.transaction().map_err(e)?;
+    let (total, pessoa, descricao, data_orig, lanc_orig, recebido, perdoado): (i64, String, String, String, Option<String>, Option<String>, i64) = tx
         .query_row(
             "SELECT valor_centavos, pessoa, descricao, data, lancamento_id, recebido_em, perdoado FROM a_receber WHERE id = ?1",
             [id],
@@ -528,16 +551,19 @@ pub fn receber_parte(conn: &mut Connection, id: &str, valor: i64, conta_id: &str
     if valor <= 0 || valor > total {
         return Err("A parte precisa ser maior que zero e no máximo o valor em aberto.".into());
     }
-    if valor == total {
-        return receber(conn, &[id.to_string()], conta_id, data);
-    }
-    let lanc = lancar(conn, data, format!("Recebido (parte) de {pessoa}"), "TRANSFERENCIA", vec![p(conta_id, TipoPartida::Debito, valor), p(A_RECEBER, TipoPartida::Credito, valor)])?;
-    conn.execute("UPDATE a_receber SET valor_centavos = valor_centavos - ?2 WHERE id = ?1", params![id, valor]).map_err(e)?;
-    conn.execute(
-        "INSERT INTO a_receber (id, pessoa, descricao, valor_centavos, data, lancamento_id, recebido_em, recebimento_lancamento_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        params![Uuid::new_v4().to_string(), pessoa, format!("{descricao} (parte)"), valor, data_orig, lanc_orig, data, lanc.id],
-    )
-    .map_err(e)?;
+    let lanc = if valor == total {
+        receber_na_transacao(&tx, &[id.to_string()], conta_id, data)?
+    } else {
+        let lanc = lancar(&tx, data, format!("Recebido (parte) de {pessoa}"), "TRANSFERENCIA", vec![p(conta_id, TipoPartida::Debito, valor), p(A_RECEBER, TipoPartida::Credito, valor)])?;
+        tx.execute("UPDATE a_receber SET valor_centavos = valor_centavos - ?2 WHERE id = ?1", params![id, valor]).map_err(e)?;
+        tx.execute(
+            "INSERT INTO a_receber (id, pessoa, descricao, valor_centavos, data, lancamento_id, recebido_em, recebimento_lancamento_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![Uuid::new_v4().to_string(), pessoa, format!("{descricao} (parte)"), valor, data_orig, lanc_orig, data, lanc.id],
+        )
+        .map_err(e)?;
+        lanc
+    };
+    tx.commit().map_err(e)?;
     Ok(lanc)
 }
 
@@ -636,6 +662,89 @@ mod testes {
         assert_eq!(emp.saldo_devedor_centavos, emp.tabela[0].saldo_depois);
         assert_eq!(engine::saldo_conta(&conn, JUROS).unwrap(), 20_000);
         assert_eq!(lanc.partidas.len(), 3);
+    }
+
+    fn total(conn: &Connection, tabela_sql: &str) -> i64 {
+        conn.query_row(tabela_sql, [], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn falha_na_segunda_etapa_desfaz_o_lancamento() {
+        let mut conn = banco();
+        let carro = || EmprestimoInput {
+            nome: "Carro".into(), sistema: "PRICE".into(), principal_centavos: 1_000_000, taxa_mensal: 0.02, parcelas: 12,
+            primeiro_vencimento: "2026-11-10".into(), conta_destino_id: Some("ativo-dinheiro".into()), data_contratacao: Some("2026-10-01".into()),
+        };
+        // Contratação: falha ao gravar o empréstimo não deixa conta nem lançamento.
+        conn.execute_batch("CREATE TRIGGER falha_emp BEFORE INSERT ON emprestimos BEGIN SELECT RAISE(ABORT, 'falha simulada'); END;").unwrap();
+        assert!(criar(&mut conn, carro()).is_err());
+        assert_eq!(total(&conn, "SELECT COUNT(*) FROM lancamentos"), 0);
+        assert_eq!(total(&conn, "SELECT COUNT(*) FROM contas_contabeis WHERE subtipo = 'EMPRESTIMO'"), 0);
+        conn.execute_batch("DROP TRIGGER falha_emp;").unwrap();
+
+        // Parcela: falha ao marcar a parcela paga não cobra a parcela.
+        let id = criar(&mut conn, carro()).unwrap();
+        conn.execute_batch("CREATE TRIGGER falha_parc BEFORE INSERT ON emprestimo_parcelas BEGIN SELECT RAISE(ABORT, 'falha simulada'); END;").unwrap();
+        assert!(pagar_parcela(&mut conn, &id, "ativo-dinheiro", "2026-11-10").is_err());
+        assert_eq!(total(&conn, "SELECT COUNT(*) FROM lancamentos"), 1, "só a contratação");
+        assert_eq!(engine::saldo_conta(&conn, "ativo-dinheiro").unwrap(), 1_000_000);
+
+        // Divisão: falha ao gravar quem deve não tira o dinheiro da conta.
+        conn.execute_batch("CREATE TRIGGER falha_rec BEFORE INSERT ON a_receber BEGIN SELECT RAISE(ABORT, 'falha simulada'); END;").unwrap();
+        let div = DivisaoInput {
+            descricao: "Pizza".into(), data: "2026-10-01".into(), conta_id: "ativo-dinheiro".into(), categoria_id: None,
+            minha_parte_centavos: 0, partes: vec![ParteDivisao { pessoa: "Ana".into(), valor_centavos: 3_000 }],
+        };
+        assert!(dividir(&mut conn, div).is_err());
+        assert_eq!(total(&conn, "SELECT COUNT(*) FROM lancamentos"), 1);
+        assert!(conn.is_autocommit());
+    }
+
+    #[test]
+    fn estornar_parcela_volta_a_dever() {
+        let mut conn = banco();
+        let id = criar(
+            &mut conn,
+            EmprestimoInput { nome: "Carro".into(), sistema: "PRICE".into(), principal_centavos: 1_000_000, taxa_mensal: 0.02, parcelas: 12, primeiro_vencimento: "2026-11-10".into(), conta_destino_id: Some("ativo-dinheiro".into()), data_contratacao: Some("2026-10-01".into()) },
+        )
+        .unwrap();
+        let lanc = pagar_parcela(&mut conn, &id, "ativo-dinheiro", "2026-11-10").unwrap();
+        engine::estornar_lancamento(&mut conn, &lanc.id).unwrap();
+        let emp = listar(&conn).unwrap().pop().unwrap();
+        assert!(emp.pagas.is_empty(), "a parcela estornada volta a ficar em aberto");
+        assert_eq!(emp.saldo_devedor_centavos, 1_000_000);
+        assert_eq!(engine::saldo_conta(&conn, JUROS).unwrap(), 0);
+        assert_eq!(engine::saldo_conta(&conn, "ativo-dinheiro").unwrap(), 1_000_000);
+        let de_novo = pagar_parcela(&mut conn, &id, "ativo-dinheiro", "2026-11-11").unwrap();
+        assert!(de_novo.descricao.starts_with("Parcela 1/12"));
+    }
+
+    #[test]
+    fn estornar_recebimento_volta_a_receber_e_divisao_so_depois() {
+        let mut conn = banco();
+        let div = dividir(
+            &mut conn,
+            DivisaoInput {
+                descricao: "Show".into(), data: "2026-10-01".into(), conta_id: "ativo-dinheiro".into(), categoria_id: None,
+                minha_parte_centavos: 0, partes: vec![ParteDivisao { pessoa: "Ana".into(), valor_centavos: 3_000 }],
+            },
+        )
+        .unwrap();
+        let ids: Vec<String> = conn.prepare("SELECT id FROM a_receber").unwrap().query_map([], |r| r.get(0)).unwrap().map(|x| x.unwrap()).collect();
+        let rec = receber(&mut conn, &ids, "ativo-dinheiro", "2026-10-05").unwrap();
+        assert!(engine::estornar_lancamento(&mut conn, &div.id).unwrap_err().to_string().contains("recebida"));
+
+        engine::estornar_lancamento(&mut conn, &rec.id).unwrap();
+        let recebido: Option<String> = conn.query_row("SELECT recebido_em FROM a_receber WHERE id = ?1", [&ids[0]], |r| r.get(0)).unwrap();
+        assert!(recebido.is_none(), "o valor volta a ser a receber");
+        assert_eq!(engine::saldo_conta(&conn, A_RECEBER).unwrap(), 3_000);
+
+        // Sem nada recebido, a divisão pode ser estornada e ninguém fica devendo.
+        engine::estornar_lancamento(&mut conn, &div.id).unwrap();
+        let abertos: i64 = conn.query_row("SELECT COUNT(*) FROM a_receber", [], |r| r.get(0)).unwrap();
+        assert_eq!(abertos, 0);
+        assert_eq!(engine::saldo_conta(&conn, A_RECEBER).unwrap(), 0);
+        assert_eq!(engine::saldo_conta(&conn, "ativo-dinheiro").unwrap(), 0);
     }
 
     #[test]
