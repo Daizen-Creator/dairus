@@ -5,6 +5,7 @@ use serde::Deserialize;
 use tauri::State;
 
 use crate::accounting::engine;
+use crate::accounting::error::AccountingError;
 use crate::accounting::models::{
     Agendamento, Conta, Lancamento, NovaContaInput, NovoAgendamentoInput, NovoLancamentoInput, PartidaInput,
     TipoPartida,
@@ -91,6 +92,10 @@ pub fn registrar_recebimento(
     input: RecebimentoInput,
 ) -> Result<Lancamento, String> {
     let mut conn = state.conn.lock().expect("mutex da conexão envenenado");
+    registrar_recebimento_db(&mut conn, input).map_err(String::from)
+}
+
+pub fn registrar_recebimento_db(conn: &mut Connection, input: RecebimentoInput) -> Result<Lancamento, AccountingError> {
     let lancamento = NovoLancamentoInput {
         data: input.data,
         descricao: input.descricao,
@@ -111,7 +116,7 @@ pub fn registrar_recebimento(
             },
         ],
     };
-    engine::criar_lancamento(&mut conn, lancamento).map_err(String::from)
+    engine::criar_lancamento(conn, lancamento)
 }
 
 #[derive(Debug, Deserialize)]
@@ -135,6 +140,10 @@ pub struct DespesaInput {
 #[tauri::command]
 pub fn registrar_despesa(state: State<AppState>, input: DespesaInput) -> Result<Lancamento, String> {
     let mut conn = state.conn.lock().expect("mutex da conexão envenenado");
+    registrar_despesa_db(&mut conn, input).map_err(String::from)
+}
+
+pub fn registrar_despesa_db(conn: &mut Connection, input: DespesaInput) -> Result<Lancamento, AccountingError> {
     let lancamento = NovoLancamentoInput {
         data: input.data,
         descricao: input.descricao,
@@ -155,7 +164,7 @@ pub fn registrar_despesa(state: State<AppState>, input: DespesaInput) -> Result<
             },
         ],
     };
-    engine::criar_lancamento(&mut conn, lancamento).map_err(String::from)
+    engine::criar_lancamento(conn, lancamento)
 }
 
 #[derive(Debug, Deserialize)]
@@ -175,6 +184,10 @@ pub fn registrar_transferencia(
     input: TransferenciaInput,
 ) -> Result<Lancamento, String> {
     let mut conn = state.conn.lock().expect("mutex da conexão envenenado");
+    registrar_transferencia_db(&mut conn, input).map_err(String::from)
+}
+
+pub fn registrar_transferencia_db(conn: &mut Connection, input: TransferenciaInput) -> Result<Lancamento, AccountingError> {
     let lancamento = NovoLancamentoInput {
         data: input.data,
         descricao: input.descricao,
@@ -195,7 +208,7 @@ pub fn registrar_transferencia(
             },
         ],
     };
-    engine::criar_lancamento(&mut conn, lancamento).map_err(String::from)
+    engine::criar_lancamento(conn, lancamento)
 }
 
 #[tauri::command]
@@ -225,4 +238,122 @@ pub fn pagar_agendamento(
 pub fn excluir_agendamento(state: State<AppState>, agendamento_id: String) -> Result<(), String> {
     let mut conn = state.conn.lock().expect("mutex da conexão envenenado");
     engine::excluir_agendamento(&mut conn, &agendamento_id).map_err(String::from)
+}
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+    use crate::accounting::models::{NovaContaInput, TipoConta};
+    use crate::db::{abrir_conexao, executar_migracoes};
+
+    fn banco() -> Connection {
+        let conn = abrir_conexao(std::path::Path::new(":memory:")).unwrap();
+        executar_migracoes(&conn).unwrap();
+        conn
+    }
+
+    fn conta(conn: &mut Connection, codigo: &str, tipo: TipoConta, subtipo: &str, saldo: i64) -> String {
+        engine::criar_conta(
+            conn,
+            NovaContaInput {
+                codigo: codigo.into(), nome: format!("Conta {codigo}"), tipo, subtipo: Some(subtipo.into()), categoria_pai_id: None,
+                instituicao: None, saldo_inicial_centavos: saldo, dia_fechamento_fatura: None, dia_vencimento_fatura: None,
+                limite_centavos: None,
+            },
+        )
+        .unwrap()
+        .id
+    }
+
+    fn despesa(conta_origem: &str, valor: i64, parcelas: Option<i32>) -> DespesaInput {
+        DespesaInput {
+            conta_origem_id: conta_origem.into(),
+            categoria_despesa_id: "despesa-alimentacao".into(),
+            valor_centavos: valor,
+            data: "2026-10-05".into(),
+            descricao: "Mercado".into(),
+            etiqueta: None,
+            observacao: Some("  ".into()),
+            parcelas,
+        }
+    }
+
+    #[test]
+    fn despesa_debita_categoria_e_credita_a_conta() {
+        let mut conn = banco();
+        let banco_id = conta(&mut conn, "1.1.80", TipoConta::Ativo, "BANCO", 100_000);
+        let l = registrar_despesa_db(&mut conn, despesa(&banco_id, 12_345, None)).unwrap();
+        assert_eq!(l.origem, "MANUAL");
+        assert_eq!(l.observacao, None, "observação só com espaços vira vazia");
+        let debito = l.partidas.iter().find(|p| p.tipo == TipoPartida::Debito).unwrap();
+        let credito = l.partidas.iter().find(|p| p.tipo == TipoPartida::Credito).unwrap();
+        assert_eq!((debito.conta_id.as_str(), debito.valor_centavos), ("despesa-alimentacao", 12_345));
+        assert_eq!((credito.conta_id.as_str(), credito.valor_centavos), (banco_id.as_str(), 12_345));
+        assert_eq!(engine::saldo_conta(&conn, &banco_id).unwrap(), 100_000 - 12_345);
+        assert_eq!(engine::saldo_conta(&conn, "despesa-alimentacao").unwrap(), 12_345);
+        assert!(registrar_despesa_db(&mut conn, despesa(&banco_id, 0, None)).is_err());
+        assert!(registrar_despesa_db(&mut conn, despesa(&banco_id, 100, Some(3))).is_err(), "parcelar só no cartão");
+    }
+
+    #[test]
+    fn despesa_no_cartao_aumenta_a_divida() {
+        let mut conn = banco();
+        let cartao = conta(&mut conn, "2.1.80", TipoConta::Passivo, "CARTAO_CREDITO", 0);
+        let l = registrar_despesa_db(&mut conn, despesa(&cartao, 60_000, Some(6))).unwrap();
+        assert_eq!(l.parcelas, Some(6));
+        // Passivo tem natureza credora: o crédito da compra aumenta a dívida do cartão.
+        assert_eq!(engine::saldo_conta(&conn, &cartao).unwrap(), 60_000);
+        assert_eq!(engine::saldo_conta(&conn, "despesa-alimentacao").unwrap(), 60_000);
+        let resumo = engine::resumo_dashboard(&conn, "2026-10-01", "2026-10-31").unwrap();
+        assert_eq!(resumo.despesas_mes_centavos, 60_000);
+        assert_eq!(resumo.patrimonio_liquido_centavos, -60_000);
+    }
+
+    #[test]
+    fn recebimento_debita_a_conta_e_credita_a_receita() {
+        let mut conn = banco();
+        let banco_id = conta(&mut conn, "1.1.81", TipoConta::Ativo, "BANCO", 0);
+        let l = registrar_recebimento_db(
+            &mut conn,
+            RecebimentoInput {
+                conta_destino_id: banco_id.clone(),
+                conta_receita_id: "receita-salario".into(),
+                valor_centavos: 450_000,
+                data: "2026-10-05".into(),
+                descricao: "Salário".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(l.origem, "SALARIO");
+        assert_eq!(engine::saldo_conta(&conn, &banco_id).unwrap(), 450_000);
+        assert_eq!(engine::saldo_conta(&conn, "receita-salario").unwrap(), 450_000);
+        assert_eq!(engine::resumo_dashboard(&conn, "2026-10-01", "2026-10-31").unwrap().receitas_mes_centavos, 450_000);
+    }
+
+    #[test]
+    fn transferencia_move_saldo_sem_receita_nem_despesa() {
+        let mut conn = banco();
+        let a = conta(&mut conn, "1.1.82", TipoConta::Ativo, "BANCO", 50_000);
+        let b = conta(&mut conn, "1.1.83", TipoConta::Ativo, "BANCO", 0);
+        let transferir = |conn: &mut Connection, de: &str, para: &str, valor: i64| {
+            registrar_transferencia_db(
+                conn,
+                TransferenciaInput { conta_origem_id: de.into(), conta_destino_id: para.into(), valor_centavos: valor, data: "2026-10-05".into(), descricao: "Transferência".into() },
+            )
+            .unwrap()
+        };
+        assert_eq!(transferir(&mut conn, &a, &b, 20_000).origem, "TRANSFERENCIA");
+        assert_eq!(engine::saldo_conta(&conn, &a).unwrap(), 30_000);
+        assert_eq!(engine::saldo_conta(&conn, &b).unwrap(), 20_000);
+        let resumo = engine::resumo_dashboard(&conn, "2026-10-01", "2026-10-31").unwrap();
+        assert_eq!((resumo.receitas_mes_centavos, resumo.despesas_mes_centavos), (0, 0));
+
+        // Pagar a fatura é transferir do banco para o cartão: a dívida baixa, sem despesa nova.
+        let cartao = conta(&mut conn, "2.1.81", TipoConta::Passivo, "CARTAO_CREDITO", 0);
+        registrar_despesa_db(&mut conn, despesa(&cartao, 10_000, None)).unwrap();
+        transferir(&mut conn, &a, &cartao, 10_000);
+        assert_eq!(engine::saldo_conta(&conn, &cartao).unwrap(), 0);
+        assert_eq!(engine::saldo_conta(&conn, &a).unwrap(), 20_000);
+        assert_eq!(engine::resumo_dashboard(&conn, "2026-10-01", "2026-10-31").unwrap().despesas_mes_centavos, 10_000);
+    }
 }
