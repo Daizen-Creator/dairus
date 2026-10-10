@@ -9,46 +9,89 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listarPreferencias, salvarPreferencia } from "./armazenamento";
 
-/** Do computador (não faz sentido em outro PC) ou estado interno da sincronização/atualização. */
-const DO_COMPUTADOR = new Set([
-  "dispositivo_id",
-  "sync_estado",
-  "sync_ultimo_erro",
-  "sync_auto",
-  "pin_hash",
-  "pin_salt",
-  "pin_falhas",
-  "pin_bloqueado_ate",
-  "pin_minutos",
-  "pasta_vigiada",
-  "pasta_vigiada_conta",
-  "pasta_vigiada_inverter",
-  "fechar_para_bandeja",
-  "bloquear_ao_minimizar",
-  "avisos_windows",
-  "avisos_enviados",
-  "sidebar_recolhido",
-  "verificacao_semanal_resultado",
-  "verificacao_semanal_ultima",
-  "gemini_uso",
-  // Formato antigo dos widgets (hoje os layouts ficam na tabela `dashboards`).
-  "widgets_inicio",
-  "widgets_tamanhos",
-  "widgets_largos",
-  "widgets_layout",
-  // A aparência já vai para a nuvem pela tabela preferencias_aparencia.
-  "aparencia",
+/**
+ * LISTA PERMITIDA: só o que a pessoa escolheu ou preencheu vai para o banco (e daí para o
+ * backup e a nuvem). Ficam de fora, por não estarem aqui:
+ *  - estado automático (`*_ultimo`, `*_ultima`, `tema_do_dia`, `ocultar_saldos`, sincronização,
+ *    atualização...): mudaria sozinho e geraria CONFLITO falso entre computadores;
+ *  - o que é do computador (PIN, pasta vigiada, bandeja, dispositivo);
+ *  - segredos (`gemini_chave`, `brapi_token`) e a conversa com a IA (`gemini_historico`, com dados
+ *    financeiros): a cópia na nuvem pode estar sem criptografia.
+ * Uma preferência nova só sincroniza se for acrescentada aqui.
+ */
+export const PREFERENCIAS_DA_CONTA: ReadonlySet<string> = new Set([
+  // Perfil e Início
+  "nome_usuario",
+  "perfil_renda",
+  "saldo_fgts",
+  "chave_pix",
+  "notas_inicio",
+  "foco_mes",
+  "atalhos_inicio",
+  "widget_contagem",
+  "widget_relogio",
+  "widget_fotos",
+  "pagina_inicial",
+  // Lançamentos e contas
+  "conta_padrao",
+  "categoria_padrao",
+  "conta_principal",
+  "modelos_lancamento", // CHAVE_MODELOS em features/lancamentos/ModelosLancamento.tsx
+  "cores_contas",
+  "ordem_contas",
+  "contas_ordenacao",
+  "marcas_usuario",
+  "teto_cartoes",
+  // Orçamento e metas
+  "necessidades",
+  "categorias_superfluas",
+  "orcamento_renda_base",
+  "orcamento_auto",
+  "meta_economia_mes",
+  "meta_patrimonio",
+  "meta_sobra",
+  "meta_arredondar",
+  "meta_arredondar_ate",
+  "meta_lembrete",
+  "metas_pausadas",
+  "desafios",
+  // Investimentos
+  "invest_dia_aporte",
+  "invest_valor_aporte",
+  "invest_cotacoes_auto",
+  // Avisos e lembretes
+  "dias_aviso_contas",
+  "avisos_grupos_desligados",
+  "avisos_silencio",
+  "lembrete_backup_dias",
+  "assinaturas_ignoradas",
+  "duplicatas_ignoradas",
+  // Ajuda
+  "primeiros_passos_ocultos",
+  "tutorial_visto",
+  // IA (configurações; nunca a chave nem a conversa)
+  "ia_perguntas_salvas",
+  "gemini_modelo",
+  "gemini_tom",
+  "gemini_temperatura",
+  "gemini_blocos",
+  "gemini_anonimo",
+  "gemini_transacoes",
+  "gemini_rpm",
+  // Automações e relatórios
+  "radar_auto",
+  "radar_auto_ia",
+  "resumo_semanal",
+  "resumo_semanal_ia",
+  "pdf_mensal_auto",
+  "pdf_mensal_nuvem",
+  "pdf_secoes",
+  "modo_viagem",
 ]);
-const PREFIXOS_DO_COMPUTADOR = ["atualizacao_"];
-
-/** Chaves secretas: não vão para a nuvem (o banco na nuvem pode estar sem criptografia). */
-const SEGREDOS = new Set(["gemini_chave", "brapi_token"]);
 
 /** Esta preferência vai junto com os dados da conta? */
 export function vaiNaSincronizacao(chave: string): boolean {
-  if (!/^[a-z0-9_]{1,64}$/.test(chave)) return false;
-  if (DO_COMPUTADOR.has(chave) || SEGREDOS.has(chave)) return false;
-  return !PREFIXOS_DO_COMPUTADOR.some((p) => chave.startsWith(p));
+  return PREFERENCIAS_DA_CONTA.has(chave);
 }
 
 /** Conjunto (chave → JSON) que vai para o banco. Valores nulos ficam de fora. */
