@@ -108,24 +108,19 @@ pub fn listar_anexos(state: State<AppState>) -> Res<Vec<InfoAnexo>> {
     Ok(v)
 }
 
-/// Grava o anexo numa pasta temporária e devolve o caminho, para abrir no programa padrão.
+/// Grava o anexo na pasta `abertos` da conta e devolve o caminho, para abrir no programa
+/// padrão. A pasta é apagada ao sair da conta ou do app. Programas e scripts não abrem.
 #[tauri::command]
-pub fn abrir_anexo(state: State<AppState>, id: String) -> Res<String> {
-    let conn = state.conn.lock().expect("mutex envenenado");
-    let (nome, conteudo): (String, Vec<u8>) = conn
-        .query_row("SELECT nome, conteudo FROM anexos WHERE id = ?1", [&id], |r| Ok((r.get(0)?, r.get(1)?)))
-        .map_err(|_| "Comprovante não encontrado.".to_string())?;
-    let pasta = std::env::temp_dir().join("dairus-comprovantes");
-    std::fs::create_dir_all(&pasta).map_err(e)?;
-    let caminho = pasta.join(format!("{}-{}", &id[..8], nome));
-    std::fs::write(&caminho, conteudo).map_err(e)?;
+pub fn abrir_anexo(app: tauri::AppHandle, state: State<AppState>, id: String) -> Res<String> {
+    let (nome, conteudo): (String, Vec<u8>) = {
+        let conn = state.conn.lock().expect("mutex envenenado");
+        conn.query_row("SELECT nome, conteudo FROM anexos WHERE id = ?1", [&id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|_| "Comprovante não encontrado.".to_string())?
+    };
+    crate::documentos::nome_para_abrir(&id, &nome)?; // recusa antes de criar qualquer pasta
+    let pasta = crate::documentos::pasta_abertos(&app)?;
+    let caminho = crate::documentos::gravar_para_abrir(&pasta, &id, &nome, &conteudo)?;
     Ok(caminho.to_string_lossy().to_string())
-}
-
-#[tauri::command]
-pub fn ler_anexo(state: State<AppState>, id: String) -> Res<Vec<u8>> {
-    let conn = state.conn.lock().expect("mutex envenenado");
-    conn.query_row("SELECT conteudo FROM anexos WHERE id = ?1", [&id], |r| r.get(0)).map_err(|_| "Comprovante não encontrado.".to_string())
 }
 
 #[tauri::command]

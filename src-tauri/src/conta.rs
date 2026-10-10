@@ -61,6 +61,94 @@ fn contar_lancamentos(caminho: &Path) -> i64 {
         .unwrap_or(0)
 }
 
+/// Lançamentos do banco de antes do login que ainda estão no lugar de origem
+/// (0 quando não há banco antigo ou quando uma conta já o importou e arquivou).
+fn lancamentos_no_legado(dados: &Path) -> i64 {
+    let legado = dados.join("dairus.db");
+    if legado.is_file() { contar_lancamentos(&legado) } else { 0 }
+}
+
+/// Copia o banco de antes do login (`legado`) para o banco da conta (`destino`).
+/// A API de backup do SQLite copia de forma consistente (inclui o que está no WAL).
+/// Se falhar no meio, não deixa um banco pela metade na conta.
+fn copiar_legado_para_conta(legado: &Path, destino: &Path) -> Res<()> {
+    let origem = Connection::open_with_flags(legado, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(e)?;
+    if let Err(erro) = origem.backup(rusqlite::MAIN_DB, destino, None) {
+        drop(origem);
+        let _ = std::fs::remove_file(destino);
+        return Err(erro.to_string());
+    }
+    Ok(())
+}
+
+/// ARQUIVA o banco de antes do login como backup da conta que o importou: uma cópia
+/// consistente em `pasta_backups` (ou, se não der, em `<pasta da conta>\legado`) e o
+/// original (com `-wal` e `-shm`) é apagado. Assim nenhuma outra conta deste computador
+/// vê nem recebe a oferta desses dados. Devolve onde o backup ficou.
+fn arquivar_banco_legado(legado: &Path, pasta_backups: &Path, pasta_conta: &Path, carimbo: &str) -> Res<PathBuf> {
+    let origem = Connection::open_with_flags(legado, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(e)?;
+    let nome = format!("antes-do-login-{carimbo}.db");
+    let candidatos = [pasta_backups.join(&nome), pasta_conta.join("legado").join(&nome)];
+    let mut arquivado = None;
+    for alvo in candidatos {
+        if let Some(pasta) = alvo.parent() {
+            if std::fs::create_dir_all(pasta).is_err() {
+                continue;
+            }
+        }
+        if origem.backup(rusqlite::MAIN_DB, &alvo, None).is_ok() && alvo.is_file() {
+            arquivado = Some(alvo);
+            break;
+        }
+        let _ = std::fs::remove_file(&alvo);
+    }
+    drop(origem);
+    let arquivado = arquivado.ok_or_else(|| "Não foi possível arquivar o banco de antes do login.".to_string())?;
+    for sufixo in ["", "-wal", "-shm"] {
+        let arquivo = format!("{}{sufixo}", legado.to_string_lossy());
+        if let Err(err) = std::fs::remove_file(&arquivo) {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                log::warn!("não foi possível apagar o banco antigo ({sufixo}): {err}");
+            }
+        }
+    }
+    Ok(arquivado)
+}
+
+/// Grava as preferências de antes do login (texto puro, pode ter a chave do Gemini)
+/// como arquivo de backup da conta que as importou.
+fn arquivar_preferencias_legadas(itens: &[(String, serde_json::Value)], pasta: &Path, carimbo: &str) -> Res<PathBuf> {
+    std::fs::create_dir_all(pasta).map_err(e)?;
+    let mapa: serde_json::Map<String, serde_json::Value> = itens.iter().cloned().collect();
+    let alvo = pasta.join(format!("preferencias-antes-do-login-{carimbo}.json"));
+    std::fs::write(&alvo, serde_json::to_vec_pretty(&mapa).map_err(e)?).map_err(e)?;
+    Ok(alvo)
+}
+
+/// Leva as preferências do arquivo antigo (`preferencias.json`) para a conta, guarda uma
+/// cópia no backup da conta e ESVAZIA o arquivo antigo (e a cópia em memória do plugin,
+/// que senão o regravaria ao sair). Devolve quantas chaves foram levadas.
+fn migrar_preferencias_legadas(app: &AppHandle, id: &str, pasta_backup: &Path, carimbo: &str) -> Res<usize> {
+    use tauri_plugin_store::StoreExt;
+    let antiga = app.store("preferencias.json").map_err(e)?;
+    let itens = antiga.entries();
+    if itens.is_empty() {
+        return Ok(0);
+    }
+    let nova = app.store(format!("preferencias-{id}.json")).map_err(e)?;
+    for (chave, valor) in &itens {
+        // Nunca sobrescreve o que a conta já tem.
+        if !nova.has(chave) {
+            nova.set(chave.clone(), valor.clone());
+        }
+    }
+    nova.save().map_err(e)?;
+    arquivar_preferencias_legadas(&itens, pasta_backup, carimbo)?;
+    antiga.clear();
+    antiga.save().map_err(e)?;
+    Ok(itens.len())
+}
+
 #[derive(Serialize)]
 pub struct SituacaoConta {
     /// A conta ainda não tem banco neste computador (primeiro acesso aqui).
@@ -74,31 +162,44 @@ pub struct SituacaoConta {
 #[tauri::command]
 pub fn situacao_conta(app: AppHandle, usuario_id: String) -> Res<SituacaoConta> {
     let id = id_valido(&usuario_id)?;
-    let banco = app.path().app_data_dir().map_err(e)?.join("contas").join(id).join("dairus.db");
+    let dados = app.path().app_data_dir().map_err(e)?;
+    let banco = dados.join("contas").join(id).join("dairus.db");
     let cifrado = banco.with_extension("db.cripto");
-    let legado = caminho_banco_legado(&app)?;
     Ok(SituacaoConta {
         criptografado: cifrado.is_file(),
         primeiro_acesso: !banco.is_file() && !cifrado.is_file(),
-        lancamentos_legado: if legado.is_file() { contar_lancamentos(&legado) } else { 0 },
+        lancamentos_legado: lancamentos_no_legado(&dados),
     })
 }
 
 /// Abre (ou cria) o banco da conta e passa a usá-lo em todos os comandos.
-/// `importar_legado` copia o banco antigo deste computador para a conta (só no primeiro acesso).
+/// `importar_legado` copia o banco antigo deste computador para a conta (só no primeiro
+/// acesso) e depois o MOVE para um backup dessa conta: nenhuma outra conta vê esses dados.
 #[tauri::command]
 pub fn abrir_conta(app: AppHandle, state: State<AppState>, usuario_id: String, importar_legado: bool) -> Res<()> {
     let id = id_valido(&usuario_id)?.to_string();
     if caminho_cripto(&app, &id)?.is_file() {
         return Err("SENHA_NECESSARIA".into());
     }
+    crate::documentos::limpar_abertos(&app);
     let destino = caminho_banco_conta(&app, &id)?;
     if importar_legado && !destino.is_file() {
         let legado = caminho_banco_legado(&app)?;
+        let carimbo = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+        let pasta_conta = destino.parent().unwrap_or(Path::new(".")).to_path_buf();
         if legado.is_file() {
-            // A API de backup do SQLite copia de forma consistente (inclui o que está no WAL).
-            let origem = Connection::open_with_flags(&legado, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(e)?;
-            origem.backup(rusqlite::MAIN_DB, &destino, None).map_err(e)?;
+            copiar_legado_para_conta(&legado, &destino)?;
+            let backups = app.path().document_dir().map(|d| d.join("Dairus").join(&id).join("Backups")).unwrap_or_else(|_| pasta_conta.join("legado"));
+            match arquivar_banco_legado(&legado, &backups, &pasta_conta, &carimbo) {
+                Ok(arquivo) => log::info!("banco de antes do login importado e arquivado em {}", arquivo.display()),
+                Err(erro) => log::warn!("banco de antes do login importado, mas não arquivado: {erro}"),
+            }
+        }
+        // As preferências antigas (podem ter chaves de API) saem do arquivo comum a todas as contas.
+        match migrar_preferencias_legadas(&app, &id, &pasta_conta.join("legado"), &carimbo) {
+            Ok(n) if n > 0 => log::info!("{n} preferência(s) de antes do login levadas para a conta"),
+            Ok(_) => {}
+            Err(erro) => log::warn!("não foi possível levar as preferências de antes do login: {erro}"),
         }
     }
     let conn = crate::db::abrir_conexao(&destino).map_err(e)?;
@@ -119,6 +220,7 @@ fn abrir_cifrado(
 ) -> Res<()> {
     let conn = crate::cripto::banco_em_memoria(texto)?;
     crate::db::executar_migracoes(&conn).map_err(e)?;
+    crate::documentos::limpar_abertos(app);
     let arquivo = caminho_cripto(app, &id)?;
     let mut guarda = state.conn.lock().expect("mutex envenenado");
     crate::cripto::iniciar_sessao(chaves, senha, arquivo, &conn);
@@ -219,9 +321,10 @@ pub fn criptografia_ativa() -> bool {
     crate::cripto::ativa()
 }
 
-/// Ao sair da conta, volta para um banco vazio em memória (nada fica aberto).
+/// Ao sair da conta, volta para um banco vazio em memória (nada fica aberto) e apaga
+/// do disco os anexos que foram abertos no programa padrão.
 #[tauri::command]
-pub fn fechar_conta(state: State<AppState>) -> Res<()> {
+pub fn fechar_conta(app: AppHandle, state: State<AppState>) -> Res<()> {
     let conn = crate::db::abrir_conexao(Path::new(":memory:")).map_err(e)?;
     crate::db::executar_migracoes(&conn).map_err(e)?;
     let mut guarda = state.conn.lock().expect("mutex envenenado");
@@ -230,6 +333,7 @@ pub fn fechar_conta(state: State<AppState>) -> Res<()> {
     *guarda = conn;
     drop(guarda);
     *USUARIO_ATUAL.lock().expect("mutex envenenado") = None;
+    crate::documentos::limpar_abertos(&app);
     Ok(())
 }
 
@@ -490,6 +594,93 @@ mod testes {
         assert!(codigo_valido("aa3c42b7-b468-48f9-bbc1-97f3673a419e"));
         assert!(!codigo_valido("abc"));
         assert!(!codigo_valido("aa3c42b7<script>-b468-48f9"));
+    }
+
+    fn pasta_temp(nome: &str) -> PathBuf {
+        let p = std::env::temp_dir().join(format!("dairus-teste-{nome}-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    /// Banco antigo (de antes do login), em modo WAL como o do app, com `n` lançamentos.
+    fn banco_antigo(caminho: &Path, n: i64) {
+        let c = Connection::open(caminho).unwrap();
+        c.pragma_update(None, "journal_mode", "WAL").unwrap();
+        c.execute_batch("CREATE TABLE lancamentos (id INTEGER PRIMARY KEY, descricao TEXT)").unwrap();
+        for i in 0..n {
+            c.execute("INSERT INTO lancamentos (descricao) VALUES (?1)", [format!("compra {i}")]).unwrap();
+        }
+    }
+
+    #[test]
+    fn banco_de_antes_do_login_so_e_oferecido_a_uma_conta_e_depois_vira_backup_dela() {
+        let dados = pasta_temp("legado");
+        let docs = pasta_temp("legado-docs");
+        banco_antigo(&dados.join("dairus.db"), 3);
+        assert_eq!(lancamentos_no_legado(&dados), 3);
+
+        // A conta A aceita levar os dados.
+        let pasta_a = dados.join("contas").join("aaaaaaaa-0000-4000-8000-000000000001");
+        std::fs::create_dir_all(&pasta_a).unwrap();
+        let destino_a = pasta_a.join("dairus.db");
+        let backups_a = docs.join("Dairus").join("aaaaaaaa-0000-4000-8000-000000000001").join("Backups");
+        copiar_legado_para_conta(&dados.join("dairus.db"), &destino_a).unwrap();
+        let backup = arquivar_banco_legado(&dados.join("dairus.db"), &backups_a, &pasta_a, "20260101-120000").unwrap();
+
+        // A conta ficou com os dados e o backup também os tem, abrindo sozinho (sem -wal).
+        assert_eq!(contar_lancamentos(&destino_a), 3);
+        assert!(backup.starts_with(&backups_a) && backup.is_file());
+        assert_eq!(contar_lancamentos(&backup), 3);
+        // O banco antigo (e os arquivos do WAL) saiu do lugar comum: ninguém mais o vê.
+        for sufixo in ["", "-wal", "-shm"] {
+            assert!(!dados.join(format!("dairus.db{sufixo}")).exists(), "dairus.db{sufixo} ainda existe");
+        }
+        assert_eq!(lancamentos_no_legado(&dados), 0);
+
+        // A conta B, no mesmo PC, não recebe a oferta.
+        let pasta_b = dados.join("contas").join("bbbbbbbb-0000-4000-8000-000000000002");
+        assert!(!pasta_b.join("dairus.db").exists());
+        assert_eq!(lancamentos_no_legado(&dados), 0);
+        let _ = std::fs::remove_dir_all(&dados);
+        let _ = std::fs::remove_dir_all(&docs);
+    }
+
+    #[test]
+    fn sem_pasta_de_backups_o_arquivo_fica_na_pasta_da_conta() {
+        let dados = pasta_temp("legado-reserva");
+        banco_antigo(&dados.join("dairus.db"), 1);
+        let pasta_conta = dados.join("contas").join("aaaaaaaa-0000-4000-8000-000000000001");
+        std::fs::create_dir_all(&pasta_conta).unwrap();
+        // "Pasta de backups" impossível: um arquivo ocupa o lugar do diretório.
+        let ocupado = dados.join("nao-e-pasta");
+        std::fs::write(&ocupado, b"x").unwrap();
+        let backup = arquivar_banco_legado(&dados.join("dairus.db"), &ocupado.join("Backups"), &pasta_conta, "20260101-120000").unwrap();
+        assert!(backup.starts_with(pasta_conta.join("legado")));
+        assert_eq!(contar_lancamentos(&backup), 1);
+        assert!(!dados.join("dairus.db").exists());
+        let _ = std::fs::remove_dir_all(&dados);
+    }
+
+    #[test]
+    fn falha_ao_importar_nao_deixa_banco_pela_metade_nem_apaga_o_antigo() {
+        let dados = pasta_temp("legado-falha");
+        std::fs::write(dados.join("dairus.db"), b"isto nao e um banco sqlite").unwrap();
+        let destino = dados.join("conta.db");
+        assert!(copiar_legado_para_conta(&dados.join("dairus.db"), &destino).is_err());
+        assert!(!destino.exists());
+        assert!(dados.join("dairus.db").exists());
+        let _ = std::fs::remove_dir_all(&dados);
+    }
+
+    #[test]
+    fn preferencias_antigas_viram_arquivo_de_backup_da_conta() {
+        let pasta = pasta_temp("prefs-legadas").join("legado");
+        let itens = vec![("tema".to_string(), serde_json::json!("escuro")), ("gemini_chave".to_string(), serde_json::json!("chave-de-teste"))];
+        let arquivo = arquivar_preferencias_legadas(&itens, &pasta, "20260101-120000").unwrap();
+        let lido: serde_json::Value = serde_json::from_slice(&std::fs::read(&arquivo).unwrap()).unwrap();
+        assert_eq!(lido["tema"], "escuro");
+        assert_eq!(lido["gemini_chave"], "chave-de-teste");
+        let _ = std::fs::remove_dir_all(pasta.parent().unwrap());
     }
 }
 

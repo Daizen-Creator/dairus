@@ -3,6 +3,7 @@
 // passam pelo Rust (lista fixa de serviços) e os índices ficam guardados no
 // banco para uso sem internet.
 
+import { invoke } from "@tauri-apps/api/core";
 import { lerPreferencia } from "../../services/armazenamento";
 import { investimentos } from "../../services/investimentos";
 import type { AtivoInvest, PontoIndicador } from "../../types/investimentos";
@@ -130,8 +131,8 @@ async function tokenBrapi(): Promise<string> {
 
 export async function cotacaoBrapi(ticker: string, opcoes: { range?: "1mo" | "3mo" | "1y" | "5y"; fundamentos?: boolean } = {}): Promise<CotacaoBrapi | null> {
   const token = await tokenBrapi();
+  // O token vai à parte (cabeçalho Authorization no Rust), nunca na URL: URL aparece em erro e em log.
   const p = new URLSearchParams();
-  if (token) p.set("token", token);
   if (opcoes.range) {
     p.set("range", opcoes.range);
     p.set("interval", opcoes.range === "5y" ? "1mo" : "1d");
@@ -141,7 +142,9 @@ export async function cotacaoBrapi(ticker: string, opcoes: { range?: "1mo" | "3m
     p.set("dividends", "true");
     p.set("modules", "defaultKeyStatistics");
   }
-  const json = await investimentos.buscarJson(`https://brapi.dev/api/quote/${encodeURIComponent(ticker.toUpperCase())}?${p.toString()}`);
+  const consulta = p.toString();
+  const url = `https://brapi.dev/api/quote/${encodeURIComponent(ticker.toUpperCase())}${consulta ? `?${consulta}` : ""}`;
+  const json = await invoke<unknown>("buscar_json_mercado", { url, token: token || null });
   return lerCotacaoBrapi(json);
 }
 

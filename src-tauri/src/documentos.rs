@@ -260,10 +260,119 @@ pub fn renovar(conn: &Connection, id: &str) -> Res<Documento> {
     buscar(conn, id)
 }
 
-fn nome_seguro(nome: &str, padrao: &str) -> String {
+pub(crate) fn nome_seguro(nome: &str, padrao: &str) -> String {
     let n: String = nome.chars().filter(|c| !"\\/:*?\"<>|".contains(*c) && !c.is_control()).take(120).collect();
     let n = n.trim().trim_start_matches('.').to_string();
     if n.is_empty() { padrao.to_string() } else { n }
+}
+
+// ---------------------------------------------------------------------------
+// Arquivos abertos no programa padrão (nota fiscal, comprovante…)
+//
+// Para abrir um anexo, ele é gravado decifrado numa pasta da própria conta
+// (`contas\<id>\abertos`, dentro da pasta de dados do app). Essa pasta é apagada
+// ao sair da conta, ao sair do app e na próxima abertura, para o arquivo não ficar
+// decifrado no disco (nem na pasta temporária, que é de todos os usuários e contas).
+
+/// Subpasta da conta onde ficam os anexos abertos (precisa bater com `capabilities/default.json`).
+pub(crate) const PASTA_ABERTOS: &str = "abertos";
+
+/// Extensões que o Windows executa (ou interpreta como script) ao abrir: nunca são abertas pelo Dairus.
+const EXTENSOES_EXECUTAVEIS: &[&str] = &[
+    "exe", "bat", "cmd", "com", "scr", "msi", "ps1", "vbs", "js", "jse", "wsf", "hta", "lnk", "reg", "dll", // pedidas
+    "pif", "cpl", "jar", "vbe", "wsh", "wsc", "msp", "inf", "scf", "url", "sct", "msc", "ps1xml", "psm1", "gadget", "application",
+];
+
+/// Última extensão do nome, em minúsculas, ignorando pontos e espaços no fim
+/// (o Windows trata "a.exe." e "a.exe " como "a.exe").
+fn extensao_do_nome(nome: &str) -> Option<String> {
+    let limpo = nome.trim_end_matches(|c: char| c == '.' || c.is_whitespace());
+    let (_, ext) = limpo.rsplit_once('.')?;
+    let ext = ext.trim().to_lowercase();
+    (!ext.is_empty()).then_some(ext)
+}
+
+/// A extensão (sem o ponto) quando o nome é de um programa/script que não deve ser aberto.
+pub(crate) fn extensao_executavel(nome: &str) -> Option<String> {
+    extensao_do_nome(nome).filter(|ext| EXTENSOES_EXECUTAVEIS.contains(&ext.as_str()))
+}
+
+/// Nome do arquivo gravado para abrir: `<8 primeiros caracteres do id>-<nome limpo>`.
+/// Recusa extensões executáveis. Não entra em pânico com ids curtos.
+pub(crate) fn nome_para_abrir(id: &str, nome: &str) -> Res<String> {
+    let limpo = nome_seguro(nome, "arquivo");
+    if let Some(ext) = extensao_executavel(nome).or_else(|| extensao_executavel(&limpo)) {
+        return Err(format!(
+            "Por segurança, o Dairus não abre arquivos .{ext} (programas e scripts). Anexe o comprovante em PDF ou imagem."
+        ));
+    }
+    let prefixo: String = id.chars().filter(|c| c.is_ascii_alphanumeric()).take(8).collect();
+    let prefixo = if prefixo.is_empty() { "arquivo".to_string() } else { prefixo };
+    Ok(format!("{prefixo}-{limpo}"))
+}
+
+/// Pasta dos anexos abertos da conta atual (`contas\<id>\abertos`), criada se não existir.
+pub(crate) fn pasta_abertos<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Res<std::path::PathBuf> {
+    use tauri::Manager;
+    let conta = crate::conta::USUARIO_ATUAL
+        .lock()
+        .expect("mutex envenenado")
+        .clone()
+        .ok_or("Entre na sua conta primeiro.")?;
+    let pasta = app.path().app_data_dir().map_err(e)?.join("contas").join(conta).join(PASTA_ABERTOS);
+    std::fs::create_dir_all(&pasta).map_err(e)?;
+    Ok(pasta)
+}
+
+/// Grava o anexo em `pasta` e devolve o caminho, para abrir no programa padrão.
+pub(crate) fn gravar_para_abrir(pasta: &std::path::Path, id: &str, nome: &str, conteudo: &[u8]) -> Res<std::path::PathBuf> {
+    let arquivo = nome_para_abrir(id, nome)?;
+    std::fs::create_dir_all(pasta).map_err(e)?;
+    let caminho = pasta.join(arquivo);
+    std::fs::write(&caminho, conteudo).map_err(e)?;
+    Ok(caminho)
+}
+
+/// Apaga a pasta de anexos abertos (o que estiver aberto em outro programa fica
+/// para a próxima limpeza). Devolve quantos arquivos foram apagados.
+pub(crate) fn limpar_pasta_abertos(pasta: &std::path::Path) -> usize {
+    let Ok(entradas) = std::fs::read_dir(pasta) else { return 0 };
+    let mut apagados = 0;
+    for ent in entradas.filter_map(|x| x.ok()) {
+        let p = ent.path();
+        let ok = if p.is_dir() { std::fs::remove_dir_all(&p).is_ok() } else { std::fs::remove_file(&p).is_ok() };
+        if ok {
+            apagados += 1;
+        }
+    }
+    let _ = std::fs::remove_dir(pasta);
+    apagados
+}
+
+/// Limpeza geral: anexos abertos de TODAS as contas (`contas\*\abertos`) e as pastas
+/// temporárias que as versões antigas usavam em `%TEMP%`. Devolve quantos arquivos saíram.
+pub(crate) fn limpar_abertos_de_todas(dados: &std::path::Path, temporario: &std::path::Path) -> usize {
+    let mut n = 0;
+    if let Ok(contas) = std::fs::read_dir(dados.join("contas")) {
+        for conta in contas.filter_map(|x| x.ok()) {
+            n += limpar_pasta_abertos(&conta.path().join(PASTA_ABERTOS));
+        }
+    }
+    for antiga in ["dairus-documentos", "dairus-comprovantes"] {
+        n += limpar_pasta_abertos(&temporario.join(antiga));
+    }
+    n
+}
+
+/// Mesma limpeza, usando as pastas do app. Nunca falha: é só higiene.
+pub(crate) fn limpar_abertos<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    use tauri::Manager;
+    if let Ok(dados) = app.path().app_data_dir() {
+        let n = limpar_abertos_de_todas(&dados, &std::env::temp_dir());
+        if n > 0 {
+            log::info!("{n} arquivo(s) aberto(s) apagado(s) do disco");
+        }
+    }
 }
 
 pub fn anexar(conn: &Connection, documento_id: &str, nome: &str, mime: &str, conteudo: &[u8]) -> Res<InfoArquivo> {
@@ -368,17 +477,17 @@ pub fn ler_arquivo_documento(state: State<AppState>, id: String) -> Res<Vec<u8>>
     conn.query_row("SELECT conteudo FROM documento_arquivos WHERE id = ?1", [&id], |r| r.get(0)).map_err(|_| "Arquivo não encontrado.".to_string())
 }
 
-/// Grava o arquivo numa pasta temporária e devolve o caminho, para abrir no programa padrão.
+/// Grava o arquivo na pasta `abertos` da conta e devolve o caminho, para abrir no programa
+/// padrão. A pasta é apagada ao sair da conta ou do app. Programas e scripts não abrem.
 #[tauri::command]
-pub fn abrir_arquivo_documento(state: State<AppState>, id: String) -> Res<String> {
-    let conn = state.conn.lock().expect("mutex envenenado");
-    let (nome, conteudo): (String, Vec<u8>) = conn
-        .query_row("SELECT nome, conteudo FROM documento_arquivos WHERE id = ?1", [&id], |r| Ok((r.get(0)?, r.get(1)?)))
-        .map_err(|_| "Arquivo não encontrado.".to_string())?;
-    let pasta = std::env::temp_dir().join("dairus-documentos");
-    std::fs::create_dir_all(&pasta).map_err(e)?;
-    let caminho = pasta.join(format!("{}-{}", &id[..8.min(id.len())], nome_seguro(&nome, "arquivo")));
-    std::fs::write(&caminho, conteudo).map_err(e)?;
+pub fn abrir_arquivo_documento(app: tauri::AppHandle, state: State<AppState>, id: String) -> Res<String> {
+    let (nome, conteudo): (String, Vec<u8>) = {
+        let conn = state.conn.lock().expect("mutex envenenado");
+        conn.query_row("SELECT nome, conteudo FROM documento_arquivos WHERE id = ?1", [&id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|_| "Arquivo não encontrado.".to_string())?
+    };
+    nome_para_abrir(&id, &nome)?; // recusa antes de criar qualquer pasta
+    let caminho = gravar_para_abrir(&pasta_abertos(&app)?, &id, &nome, &conteudo)?;
     Ok(caminho.to_string_lossy().to_string())
 }
 
@@ -495,5 +604,70 @@ mod testes {
         conn.execute("DELETE FROM documentos WHERE id = ?1", [&ipva.id]).unwrap();
         let sobrou: i64 = conn.query_row("SELECT COUNT(*) FROM documento_arquivos", [], |r| r.get(0)).unwrap();
         assert_eq!(sobrou, 0);
+    }
+
+    fn pasta_temp(nome: &str) -> std::path::PathBuf {
+        let p = std::env::temp_dir().join(format!("dairus-teste-{nome}-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    #[test]
+    fn recusa_abrir_programas_e_scripts() {
+        for nome in [
+            "setup.exe", "a.BAT", "x.cmd", "y.com", "z.scr", "i.msi", "s.ps1", "s.vbs", "s.js", "s.jse", "s.wsf", "s.hta", "a.lnk", "a.reg",
+            "a.dll", "nota.pdf.exe", "nota.pdf.exe.", "nota.pdf.exe ", "NOTA.PDF.ExE",
+        ] {
+            assert!(nome_para_abrir("abcdef12-0000", nome).is_err(), "{nome} deveria ser recusado");
+        }
+        for nome in ["nota.pdf", "foto.JPG", "contrato.docx", "sem-extensao", "exe", "arquivo.exe.pdf", "relatorio.js.pdf"] {
+            assert!(nome_para_abrir("abcdef12-0000", nome).is_ok(), "{nome} deveria abrir");
+        }
+        assert_eq!(extensao_executavel("setup.EXE").as_deref(), Some("exe"));
+        assert_eq!(extensao_executavel("nota.pdf"), None);
+    }
+
+    #[test]
+    fn nome_para_abrir_nao_entra_em_panico_com_id_curto_ou_estranho() {
+        assert_eq!(nome_para_abrir("ab", "nota.pdf").unwrap(), "ab-nota.pdf");
+        assert_eq!(nome_para_abrir("", "nota.pdf").unwrap(), "arquivo-nota.pdf");
+        // Id com caracteres de caminho e acentos: só letras/números entram no prefixo.
+        assert_eq!(nome_para_abrir("../../é1", "nota.pdf").unwrap(), "1-nota.pdf");
+        assert_eq!(nome_para_abrir("12345678-aaaa", "../../Windows/x.pdf").unwrap(), "12345678-Windowsx.pdf");
+    }
+
+    #[test]
+    fn grava_na_pasta_da_conta_e_limpa_tudo() {
+        let dados = pasta_temp("abertos");
+        let temp = pasta_temp("abertos-temp");
+        let conta_a = dados.join("contas").join("aaaaaaaa-0000-4000-8000-000000000001").join(PASTA_ABERTOS);
+        let conta_b = dados.join("contas").join("bbbbbbbb-0000-4000-8000-000000000002").join(PASTA_ABERTOS);
+        let a = gravar_para_abrir(&conta_a, "11111111-x", "nota.pdf", b"%PDF-conta-a").unwrap();
+        let b = gravar_para_abrir(&conta_b, "22222222-x", "recibo.png", b"png-conta-b").unwrap();
+        assert!(a.starts_with(&conta_a) && b.starts_with(&conta_b));
+        assert_eq!(std::fs::read(&a).unwrap(), b"%PDF-conta-a");
+        // O que as versões antigas deixaram em %TEMP%.
+        std::fs::create_dir_all(temp.join("dairus-documentos")).unwrap();
+        std::fs::write(temp.join("dairus-documentos").join("12345678-velho.pdf"), b"velho").unwrap();
+        std::fs::create_dir_all(temp.join("dairus-comprovantes")).unwrap();
+        std::fs::write(temp.join("dairus-comprovantes").join("12345678-velho.pdf"), b"velho").unwrap();
+        // Outra pasta do usuário em %TEMP% não é tocada.
+        std::fs::write(temp.join("meu-arquivo.txt"), b"nao mexe").unwrap();
+
+        assert_eq!(limpar_abertos_de_todas(&dados, &temp), 4);
+        assert!(!a.exists() && !b.exists());
+        assert!(!conta_a.exists() && !conta_b.exists());
+        assert!(!temp.join("dairus-documentos").exists() && !temp.join("dairus-comprovantes").exists());
+        assert!(temp.join("meu-arquivo.txt").exists());
+        // Sem nada para limpar, não falha.
+        assert_eq!(limpar_abertos_de_todas(&dados, &temp), 0);
+        assert_eq!(limpar_pasta_abertos(&dados.join("nao-existe")), 0);
+
+        // Extensão executável não grava nada em disco.
+        let pasta = dados.join("contas").join("cccccccc-0000-4000-8000-000000000003").join(PASTA_ABERTOS);
+        assert!(gravar_para_abrir(&pasta, "33333333", "instalador.exe", b"MZ").is_err());
+        assert!(!pasta.exists());
+        let _ = std::fs::remove_dir_all(&dados);
+        let _ = std::fs::remove_dir_all(&temp);
     }
 }

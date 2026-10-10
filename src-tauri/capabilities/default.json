@@ -21,6 +21,9 @@
           "path": "$DOCUMENT/Dairus/**"
         },
         {
+          "path": "$APPDATA/contas/*/abertos/**"
+        },
+        {
           "path": "$APPLOG/**"
         },
         {
@@ -38,7 +41,6 @@
     "core:event:default",
     "notification:default",
     "log:default",
-    "autostart:default",
-    "global-shortcut:default"
+    "autostart:default"
   ]
 }
