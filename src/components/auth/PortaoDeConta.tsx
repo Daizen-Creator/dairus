@@ -137,7 +137,7 @@ export function PreparandoConta() {
       <h1 className="mt-4 text-lg font-semibold text-texto-primario">Primeiro acesso desta conta</h1>
       <p className="mt-1 text-sm text-texto-secundario">{sessao?.user.email}</p>
       <p className="mt-4 text-sm text-texto-primario">
-        Encontramos dados de antes do login neste computador ({situacao.lancamentos_legado} lançamento(s)). Eles são seus?
+        Encontramos dados de antes do login neste computador ({situacao.lancamentos_legado} lançamento(s)). Eles são seus? Leve-os só se forem.
       </p>
       <div className="mt-5 space-y-2">
         <button onClick={() => abrir(true)} className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primaria to-destaque text-sm font-semibold text-primaria-texto">
@@ -147,7 +147,10 @@ export function PreparandoConta() {
           <Sparkles size={15} /> Não, começar do zero
         </button>
       </div>
-      <p className="mt-4 text-xs text-texto-secundario">Os dados antigos continuam guardados; a outra pessoa que usar este computador pode escolher “começar do zero”.</p>
+      <p className="mt-4 text-xs text-texto-secundario">
+        Ao levar, os dados antigos passam a ser só desta conta (ficam num backup dela) e nenhuma outra conta deste computador os verá.
+        Se escolher “começar do zero”, eles continuam guardados e serão oferecidos à próxima conta que entrar aqui.
+      </p>
     </Moldura>
   );
 }
