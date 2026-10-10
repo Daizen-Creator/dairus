@@ -174,6 +174,14 @@ pub fn criar_lancamento(conn: &mut Connection, input: NovoLancamentoInput) -> Re
     Ok(lancamento)
 }
 
+/// Grava um lançamento dentro de uma transação que já está aberta. Para quem
+/// grava o lançamento e mais alguma coisa ligada a ele (fatura, parcela,
+/// operação...): o chamador faz tudo na mesma transação e só então dá
+/// `commit` — se a segunda parte falhar, o lançamento também não fica.
+pub fn inserir_lancamento(tx: &Transaction, input: &NovoLancamentoInput) -> Resultado<Lancamento> {
+    inserir_lancamento_na_transacao(tx, input, None, None)
+}
+
 /// Dados de um lançamento que podem ser estornados: devolve a origem e as
 /// partidas, ou erro se ele não existe, já é um estorno ou já foi estornado.
 fn carregar_estornavel(tx: &Transaction, lancamento_id: &str) -> Resultado<(LancamentoOriginal, Vec<PartidaInput>)> {
@@ -261,16 +269,129 @@ fn gravar_estorno(
 
 pub fn estornar_lancamento(conn: &mut Connection, lancamento_id: &str) -> Resultado<Lancamento> {
     let tx = conn.transaction()?;
-    let (original, partidas) = carregar_estornavel(&tx, lancamento_id)?;
-    let estorno = gravar_estorno(
-        &tx,
-        lancamento_id,
-        &original.descricao,
-        &partidas,
-        hoje_brasilia(),
+    let de_investimento: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM operacoes_invest WHERE lancamento_id = ?1)",
+        [lancamento_id],
+        |row| row.get(0),
     )?;
+    if de_investimento {
+        // A posição do ativo vem das operações: estornar só o dinheiro deixaria a
+        // carteira dizendo que o ativo ainda existe.
+        return Err(AccountingError::DadoInvalido(
+            "Este lançamento é de uma operação de investimento: exclua a operação na tela Investimentos.".into(),
+        ));
+    }
+    let estorno = estornar_na_transacao(&tx, lancamento_id)?;
     tx.commit()?;
     Ok(estorno)
+}
+
+/// Estorna dentro de uma transação já aberta e desfaz, na mesma transação, o
+/// que dependia do lançamento: a conta agendada volta a ficar em aberto, a
+/// parcela do empréstimo volta a ficar devendo, o valor recebido de uma pessoa
+/// volta a ser a receber, os encargos da fatura podem ser lançados de novo.
+pub fn estornar_na_transacao(tx: &Transaction, lancamento_id: &str) -> Resultado<Lancamento> {
+    let (original, partidas) = carregar_estornavel(tx, lancamento_id)?;
+    impedir_estorno_com_dependentes(tx, lancamento_id)?;
+    let estorno = gravar_estorno(tx, lancamento_id, &original.descricao, &partidas, hoje_brasilia())?;
+    desfazer_vinculos(tx, lancamento_id)?;
+    Ok(estorno)
+}
+
+/// Casos em que estornar deixaria outro registro pela metade: antes é preciso
+/// desfazer o que veio depois (o reembolso, o recebimento).
+fn impedir_estorno_com_dependentes(tx: &Transaction, lancamento_id: &str) -> Resultado<()> {
+    let com_reembolso: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM reembolsos r WHERE r.compra_id = ?1
+            AND NOT EXISTS (SELECT 1 FROM lancamentos x WHERE x.estornado_de = r.reembolso_id))",
+        [lancamento_id],
+        |row| row.get(0),
+    )?;
+    if com_reembolso {
+        return Err(AccountingError::DadoInvalido(
+            "Esta compra tem reembolso lançado. Estorne o reembolso antes de estornar a compra.".into(),
+        ));
+    }
+    let divisao_recebida: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM a_receber WHERE lancamento_id = ?1 AND (recebido_em IS NOT NULL OR perdoado <> 0))",
+        [lancamento_id],
+        |row| row.get(0),
+    )?;
+    if divisao_recebida {
+        return Err(AccountingError::DadoInvalido(
+            "Parte desta divisão já foi recebida ou perdoada. Estorne o recebimento antes.".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Reabre o que o lançamento estornado tinha quitado.
+fn desfazer_vinculos(tx: &Transaction, lancamento_id: &str) -> Resultado<()> {
+    // Conta agendada volta a ficar em aberto. Se era automática, deixa de ser
+    // (só esta ocorrência): senão o app lançaria de novo, sozinho, o que a
+    // pessoa acabou de estornar.
+    tx.execute(
+        "UPDATE agendamentos SET pago_em = NULL, lancamento_id = NULL, automatico = 0 WHERE lancamento_id = ?1",
+        [lancamento_id],
+    )?;
+    // Parcela do empréstimo volta a ser devida.
+    tx.execute("DELETE FROM emprestimo_parcelas WHERE lancamento_id = ?1", [lancamento_id])?;
+    // Valor recebido (ou perdoado) de uma pessoa volta a ser a receber.
+    tx.execute(
+        "UPDATE a_receber SET recebido_em = NULL, perdoado = 0, recebimento_lancamento_id = NULL
+         WHERE recebimento_lancamento_id = ?1",
+        [lancamento_id],
+    )?;
+    // A divisão estornada não deixa ninguém devendo (nada dela foi recebido:
+    // `impedir_estorno_com_dependentes` já garantiu).
+    tx.execute("DELETE FROM a_receber WHERE lancamento_id = ?1", [lancamento_id])?;
+    // Encargos da fatura podem ser lançados de novo.
+    tx.execute(
+        "UPDATE faturas SET encargos_lancamento_id = NULL WHERE encargos_lancamento_id = ?1",
+        [lancamento_id],
+    )?;
+    // Aporte de meta desfeito sai do histórico da meta.
+    tx.execute("DELETE FROM metas_aportes WHERE lancamento_id = ?1", [lancamento_id])?;
+    Ok(())
+}
+
+/// Na correção, o lançamento novo passa a ser o que vale: quem apontava para o
+/// original (conta agendada paga, encargos da fatura, quem usou o cartão)
+/// passa a apontar para o novo — assim um estorno futuro do novo reabre tudo.
+fn repontar_vinculos(tx: &Transaction, antigo: &str, novo: &str) -> Resultado<()> {
+    tx.execute("UPDATE agendamentos SET lancamento_id = ?2 WHERE lancamento_id = ?1", [antigo, novo])?;
+    tx.execute("UPDATE faturas SET encargos_lancamento_id = ?2 WHERE encargos_lancamento_id = ?1", [antigo, novo])?;
+    tx.execute("UPDATE OR IGNORE lancamento_portador SET lancamento_id = ?2 WHERE lancamento_id = ?1", [antigo, novo])?;
+    Ok(())
+}
+
+/// Lançamentos cujo valor está amarrado a outro registro: corrigir só o valor
+/// deixaria os dois diferentes. Nesses casos o caminho é estornar e refazer.
+fn impedir_correcao_com_vinculo(tx: &Transaction, lancamento_id: &str) -> Resultado<()> {
+    let casos: [(&str, &str); 6] = [
+        ("SELECT EXISTS(SELECT 1 FROM operacoes_invest WHERE lancamento_id = ?1)", "uma operação de investimento"),
+        ("SELECT EXISTS(SELECT 1 FROM emprestimo_parcelas WHERE lancamento_id = ?1)", "uma parcela de empréstimo"),
+        (
+            "SELECT EXISTS(SELECT 1 FROM a_receber WHERE lancamento_id = ?1 OR recebimento_lancamento_id = ?1)",
+            "uma divisão ou um recebimento de valores a receber",
+        ),
+        ("SELECT EXISTS(SELECT 1 FROM reembolsos WHERE compra_id = ?1 OR reembolso_id = ?1)", "uma compra com reembolso"),
+        ("SELECT EXISTS(SELECT 1 FROM metas_aportes WHERE lancamento_id = ?1)", "um aporte de meta"),
+        (
+            "SELECT EXISTS(SELECT 1 FROM contas_contabeis c JOIN partidas p ON p.conta_id = c.id
+                WHERE p.lancamento_id = ?1 AND c.subtipo = 'EMPRESTIMO')",
+            "um empréstimo",
+        ),
+    ];
+    for (sql, oque) in casos {
+        let ligado: bool = tx.query_row(sql, [lancamento_id], |row| row.get(0))?;
+        if ligado {
+            return Err(AccountingError::DadoInvalido(format!(
+                "Este lançamento é de {oque}: para mudar o valor, estorne e lance de novo."
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Reparte `novo_total` entre os valores de um lado do lançamento (débitos ou
@@ -323,6 +444,7 @@ pub fn corrigir_lancamento(conn: &mut Connection, input: CorrecaoInput) -> Resul
             "O saldo inicial não é corrigido por aqui: ajuste a conta com um lançamento manual.".into(),
         ));
     }
+    impedir_correcao_com_vinculo(&tx, &input.lancamento_id)?;
 
     let valor_atual: i64 = partidas.iter().filter(|p| p.tipo == TipoPartida::Debito).map(|p| p.valor_centavos).sum();
     let descricao = input
@@ -366,6 +488,7 @@ pub fn corrigir_lancamento(conn: &mut Connection, input: CorrecaoInput) -> Resul
         partidas: novas_partidas,
     };
     let corrigido = inserir_lancamento_na_transacao(&tx, &novo, None, Some(&input.lancamento_id))?;
+    repontar_vinculos(&tx, &input.lancamento_id, &corrigido.id)?;
     registrar_auditoria(&tx, "CORRIGIR_LANCAMENTO", "lancamento", &input.lancamento_id)?;
     tx.commit()?;
     Ok(corrigido)
@@ -967,7 +1090,18 @@ pub fn pagar_agendamento(
     registrar_auditoria(&tx, "PAGAR_AGENDAMENTO", "agendamento", agendamento_id)?;
 
     // Recorrente: já deixa a próxima agendada (com reajuste anual, se houver).
-    if let (Some(venc), Some(rec)) = (proximo, recorrencia) {
+    // Se a próxima já existe (o pagamento foi estornado e agora é refeito),
+    // não cria outra igual.
+    let proxima_ja_existe = match (&proximo, &recorrencia) {
+        (Some(venc), Some(rec)) => tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM agendamentos WHERE pago_em IS NULL AND descricao = ?1 AND categoria_despesa_id = ?2
+                AND tipo = ?3 AND recorrencia = ?4 AND vencimento = ?5)",
+            params![descricao, categoria, tipo, rec, venc],
+            |row| row.get::<_, bool>(0),
+        )?,
+        _ => false,
+    };
+    if let (Some(venc), Some(rec), false) = (proximo, recorrencia, proxima_ja_existe) {
         let novo_valor = valor_com_reajuste(valor, &vencimento, &venc, reajuste, mes_reajuste);
         let novo_id = Uuid::new_v4().to_string();
         tx.execute(
@@ -1095,6 +1229,109 @@ mod testes_agendamento {
         let ag = criar_agendamento(&mut conn, novo(100, None)).unwrap();
         excluir_agendamento(&mut conn, &ag.id).unwrap();
         assert!(listar_agendamentos(&conn).unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod testes_estorno_vinculos {
+    use super::*;
+    use crate::db::{abrir_conexao, executar_migracoes};
+
+    fn banco() -> Connection {
+        let conn = abrir_conexao(std::path::Path::new(":memory:")).unwrap();
+        executar_migracoes(&conn).unwrap();
+        conn
+    }
+
+    fn aluguel(conn: &mut Connection, recorrencia: Option<&str>, automatico: bool) -> Agendamento {
+        criar_agendamento(
+            conn,
+            NovoAgendamentoInput {
+                descricao: "Aluguel".into(),
+                valor_centavos: 150_000,
+                vencimento: "2026-10-05".into(),
+                categoria_despesa_id: "despesa-moradia".into(),
+                etiqueta: None,
+                recorrencia: recorrencia.map(String::from),
+                tipo: "PAGAR".into(),
+                automatico,
+                conta_id: Some("ativo-dinheiro".into()),
+                reajuste_anual: None,
+                mes_reajuste: None,
+                pessoa: None,
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn estornar_pagamento_reabre_a_conta_agendada_e_devolve_o_saldo() {
+        let mut conn = banco();
+        let ag = aluguel(&mut conn, None, false);
+        let lanc = pagar_agendamento(&mut conn, &ag.id, "ativo-dinheiro", "2026-10-05").unwrap();
+        assert_eq!(saldo_conta(&conn, "ativo-dinheiro").unwrap(), -150_000);
+
+        estornar_lancamento(&mut conn, &lanc.id).unwrap();
+        assert_eq!(saldo_conta(&conn, "ativo-dinheiro").unwrap(), 0);
+        assert_eq!(saldo_conta(&conn, "despesa-moradia").unwrap(), 0);
+        let todos = listar_agendamentos(&conn).unwrap();
+        assert_eq!(todos.len(), 1);
+        assert!(todos[0].pago_em.is_none(), "a conta volta a aparecer em aberto");
+        assert!(todos[0].lancamento_id.is_none());
+
+        // E pode ser paga de novo.
+        pagar_agendamento(&mut conn, &ag.id, "ativo-dinheiro", "2026-10-06").unwrap();
+        assert_eq!(saldo_conta(&conn, "ativo-dinheiro").unwrap(), -150_000);
+    }
+
+    #[test]
+    fn refazer_pagamento_recorrente_nao_duplica_a_proxima() {
+        let mut conn = banco();
+        let ag = aluguel(&mut conn, Some("MENSAL"), false);
+        let lanc = pagar_agendamento(&mut conn, &ag.id, "ativo-dinheiro", "2026-10-05").unwrap();
+        estornar_lancamento(&mut conn, &lanc.id).unwrap();
+        let abertos = |conn: &Connection| -> Vec<String> {
+            listar_agendamentos(conn).unwrap().into_iter().filter(|a| a.pago_em.is_none()).map(|a| a.vencimento).collect()
+        };
+        assert_eq!(abertos(&conn), vec!["2026-10-05".to_string(), "2026-11-05".to_string()]);
+
+        pagar_agendamento(&mut conn, &ag.id, "ativo-dinheiro", "2026-10-05").unwrap();
+        assert_eq!(listar_agendamentos(&conn).unwrap().len(), 2);
+        assert_eq!(abertos(&conn), vec!["2026-11-05".to_string()]);
+    }
+
+    #[test]
+    fn estorno_de_automatico_nao_e_lancado_de_novo_sozinho() {
+        let mut conn = banco();
+        aluguel(&mut conn, None, true);
+        let feitos = processar_automaticos(&mut conn, "2026-10-10").unwrap();
+        assert_eq!(feitos.len(), 1);
+        estornar_lancamento(&mut conn, &feitos[0].id).unwrap();
+
+        assert!(processar_automaticos(&mut conn, "2026-10-10").unwrap().is_empty());
+        assert_eq!(saldo_conta(&conn, "ativo-dinheiro").unwrap(), 0);
+        let ag = &listar_agendamentos(&conn).unwrap()[0];
+        assert!(ag.pago_em.is_none());
+        assert!(!ag.automatico);
+    }
+
+    #[test]
+    fn correcao_leva_o_vinculo_para_o_lancamento_novo() {
+        let mut conn = banco();
+        let ag = aluguel(&mut conn, None, false);
+        let lanc = pagar_agendamento(&mut conn, &ag.id, "ativo-dinheiro", "2026-10-05").unwrap();
+        let novo = corrigir_lancamento(
+            &mut conn,
+            CorrecaoInput { lancamento_id: lanc.id, nova_data: "2026-10-05".into(), novo_valor_centavos: 140_000, nova_descricao: None },
+        )
+        .unwrap();
+        let pago = &listar_agendamentos(&conn).unwrap()[0];
+        assert_eq!(pago.lancamento_id.as_deref(), Some(novo.id.as_str()));
+        assert!(pago.pago_em.is_some(), "corrigir não reabre a conta");
+
+        estornar_lancamento(&mut conn, &novo.id).unwrap();
+        assert!(listar_agendamentos(&conn).unwrap()[0].pago_em.is_none());
+        assert_eq!(saldo_conta(&conn, "ativo-dinheiro").unwrap(), 0);
     }
 }
 

@@ -359,6 +359,17 @@ mod testes {
     }
 
     #[test]
+    fn compra_com_reembolso_so_estorna_depois_do_reembolso() {
+        let (mut conn, cartao, compra) = preparar();
+        let r = reembolsar(&mut conn, &compra.id, 4_000, "2026-09-20", None).unwrap();
+        assert!(engine::estornar_lancamento(&mut conn, &compra.id).unwrap_err().to_string().contains("reembolso"));
+        engine::estornar_lancamento(&mut conn, &r.id).unwrap();
+        engine::estornar_lancamento(&mut conn, &compra.id).unwrap();
+        assert_eq!(engine::saldo_conta(&conn, &cartao).unwrap(), 0);
+        assert_eq!(engine::saldo_conta(&conn, "despesa-vestuario").unwrap(), 0);
+    }
+
+    #[test]
     fn fatura_congela_uma_vez_e_encargos_entram_no_cartao() {
         let (conn, cartao, _) = preparar();
         assert!(congelar(&conn, &cartao, "2026-08-06", "2026-09-05", "2026-09-12", 10_000).unwrap());

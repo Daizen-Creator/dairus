@@ -639,6 +639,53 @@ mod testes {
     }
 
     #[test]
+    fn estornar_parcela_volta_a_dever() {
+        let mut conn = banco();
+        let id = criar(
+            &mut conn,
+            EmprestimoInput { nome: "Carro".into(), sistema: "PRICE".into(), principal_centavos: 1_000_000, taxa_mensal: 0.02, parcelas: 12, primeiro_vencimento: "2026-11-10".into(), conta_destino_id: Some("ativo-dinheiro".into()), data_contratacao: Some("2026-10-01".into()) },
+        )
+        .unwrap();
+        let lanc = pagar_parcela(&mut conn, &id, "ativo-dinheiro", "2026-11-10").unwrap();
+        engine::estornar_lancamento(&mut conn, &lanc.id).unwrap();
+        let emp = listar(&conn).unwrap().pop().unwrap();
+        assert!(emp.pagas.is_empty(), "a parcela estornada volta a ficar em aberto");
+        assert_eq!(emp.saldo_devedor_centavos, 1_000_000);
+        assert_eq!(engine::saldo_conta(&conn, JUROS).unwrap(), 0);
+        assert_eq!(engine::saldo_conta(&conn, "ativo-dinheiro").unwrap(), 1_000_000);
+        let de_novo = pagar_parcela(&mut conn, &id, "ativo-dinheiro", "2026-11-11").unwrap();
+        assert!(de_novo.descricao.starts_with("Parcela 1/12"));
+    }
+
+    #[test]
+    fn estornar_recebimento_volta_a_receber_e_divisao_so_depois() {
+        let mut conn = banco();
+        let div = dividir(
+            &mut conn,
+            DivisaoInput {
+                descricao: "Show".into(), data: "2026-10-01".into(), conta_id: "ativo-dinheiro".into(), categoria_id: None,
+                minha_parte_centavos: 0, partes: vec![ParteDivisao { pessoa: "Ana".into(), valor_centavos: 3_000 }],
+            },
+        )
+        .unwrap();
+        let ids: Vec<String> = conn.prepare("SELECT id FROM a_receber").unwrap().query_map([], |r| r.get(0)).unwrap().map(|x| x.unwrap()).collect();
+        let rec = receber(&mut conn, &ids, "ativo-dinheiro", "2026-10-05").unwrap();
+        assert!(engine::estornar_lancamento(&mut conn, &div.id).unwrap_err().to_string().contains("recebida"));
+
+        engine::estornar_lancamento(&mut conn, &rec.id).unwrap();
+        let recebido: Option<String> = conn.query_row("SELECT recebido_em FROM a_receber WHERE id = ?1", [&ids[0]], |r| r.get(0)).unwrap();
+        assert!(recebido.is_none(), "o valor volta a ser a receber");
+        assert_eq!(engine::saldo_conta(&conn, A_RECEBER).unwrap(), 3_000);
+
+        // Sem nada recebido, a divisão pode ser estornada e ninguém fica devendo.
+        engine::estornar_lancamento(&mut conn, &div.id).unwrap();
+        let abertos: i64 = conn.query_row("SELECT COUNT(*) FROM a_receber", [], |r| r.get(0)).unwrap();
+        assert_eq!(abertos, 0);
+        assert_eq!(engine::saldo_conta(&conn, A_RECEBER).unwrap(), 0);
+        assert_eq!(engine::saldo_conta(&conn, "ativo-dinheiro").unwrap(), 0);
+    }
+
+    #[test]
     fn racha_conta_recebe_e_perdoa() {
         let mut conn = banco();
         dividir(
