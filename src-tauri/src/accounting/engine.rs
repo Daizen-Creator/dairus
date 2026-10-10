@@ -892,11 +892,14 @@ fn validar_recorrencia(recorrencia: &Option<String>) -> Resultado<()> {
     }
 }
 
-/// Próxima data de uma conta recorrente. Mensal/anual mantêm o dia, ajustando
-/// ao último dia do mês quando ele não existe (ex.: 31/01 -> 28/02).
-pub fn proximo_vencimento(vencimento: &str, recorrencia: &str) -> Option<String> {
+/// Próxima data de uma conta recorrente. Mensal/anual partem do dia-âncora (o
+/// dia em que a conta foi criada para vencer), limitado ao último dia do mês:
+/// 31/01 → 28/02 → 31/03, em vez de ficar presa no dia 28. `None` usa o dia
+/// do próprio vencimento.
+pub fn proximo_vencimento_ancorado(vencimento: &str, recorrencia: &str, dia_original: Option<u32>) -> Option<String> {
     use chrono::{Datelike, Duration, NaiveDate};
     let data = NaiveDate::parse_from_str(vencimento, "%Y-%m-%d").ok()?;
+    let dia = dia_original.filter(|d| (1..=31).contains(d)).unwrap_or(data.day());
     let proxima = match recorrencia {
         "SEMANAL" => data + Duration::days(7),
         "MENSAL" | "ANUAL" => {
@@ -906,7 +909,7 @@ pub fn proximo_vencimento(vencimento: &str, recorrencia: &str) -> Option<String>
             let ultimo = NaiveDate::from_ymd_opt(if mes == 12 { ano + 1 } else { ano }, if mes == 12 { 1 } else { mes + 1 }, 1)?
                 .pred_opt()?
                 .day();
-            NaiveDate::from_ymd_opt(ano, mes, data.day().min(ultimo))?
+            NaiveDate::from_ymd_opt(ano, mes, dia.min(ultimo))?
         }
         _ => return None,
     };
@@ -960,8 +963,8 @@ pub fn criar_agendamento(conn: &mut Connection, input: NovoAgendamentoInput) -> 
     let id = Uuid::new_v4().to_string();
     tx.execute(
         "INSERT INTO agendamentos (id, descricao, valor_centavos, vencimento, categoria_despesa_id, etiqueta, recorrencia,
-                                   tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                                   tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa, dia_original)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, CAST(substr(?4, 9, 2) AS INTEGER))",
         params![
             id,
             input.descricao.trim(),
@@ -1065,7 +1068,7 @@ pub fn pagar_agendamento(
     let tx = conn.transaction()?;
 
     #[allow(clippy::type_complexity)]
-    let (descricao, valor, categoria, etiqueta, pago_em, vencimento, recorrencia, tipo, automatico, conta_id, reajuste, mes_reajuste, pessoa): (
+    let (descricao, valor, categoria, etiqueta, pago_em, vencimento, recorrencia, tipo, automatico, conta_id, reajuste, mes_reajuste, pessoa, dia_original): (
         String,
         i64,
         String,
@@ -1079,16 +1082,17 @@ pub fn pagar_agendamento(
         Option<f64>,
         Option<i32>,
         Option<String>,
+        Option<u32>,
     ) = tx
         .query_row(
             "SELECT descricao, valor_centavos, categoria_despesa_id, etiqueta, pago_em, vencimento, recorrencia,
-                    tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa
+                    tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa, dia_original
              FROM agendamentos WHERE id = ?1",
             [agendamento_id],
             |row| {
                 Ok((
                     row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?,
-                    row.get(7)?, row.get(8)?, row.get(9)?, row.get(10)?, row.get(11)?, row.get(12)?,
+                    row.get(7)?, row.get(8)?, row.get(9)?, row.get(10)?, row.get(11)?, row.get(12)?, row.get(13)?,
                 ))
             },
         )
@@ -1099,7 +1103,10 @@ pub fn pagar_agendamento(
         return Err(AccountingError::AgendamentoJaPago(agendamento_id.to_string()));
     }
 
-    let proximo = recorrencia.as_deref().and_then(|r| proximo_vencimento(&vencimento, r));
+    // Dia-âncora: a próxima parte do dia em que a conta foi criada para vencer
+    // (31/01 → 28/02 → 31/03), não do vencimento já ajustado ao mês curto.
+    let dia_ancora = dia_original.or_else(|| vencimento.get(8..10).and_then(|d| d.parse().ok()));
+    let proximo = recorrencia.as_deref().and_then(|r| proximo_vencimento_ancorado(&vencimento, r, dia_ancora));
     let receber = tipo == "RECEBER";
     let input = NovoLancamentoInput {
         data: data_pagamento.to_string(),
@@ -1145,9 +1152,9 @@ pub fn pagar_agendamento(
         let novo_id = Uuid::new_v4().to_string();
         tx.execute(
             "INSERT INTO agendamentos (id, descricao, valor_centavos, vencimento, categoria_despesa_id, etiqueta, recorrencia,
-                                       tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-            params![novo_id, descricao, novo_valor, venc, categoria, etiqueta, rec, tipo, automatico, conta_id, reajuste, mes_reajuste, pessoa],
+                                       tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa, dia_original)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![novo_id, descricao, novo_valor, venc, categoria, etiqueta, rec, tipo, automatico, conta_id, reajuste, mes_reajuste, pessoa, dia_ancora],
         )?;
         registrar_auditoria(&tx, "CRIAR_AGENDAMENTO", "agendamento", &novo_id)?;
     }
@@ -1454,12 +1461,79 @@ mod testes_recorrencia {
 
     #[test]
     fn proximo_vencimento_respeita_fim_de_mes_e_virada_de_ano() {
-        assert_eq!(proximo_vencimento("2026-01-31", "MENSAL").as_deref(), Some("2026-02-28"));
-        assert_eq!(proximo_vencimento("2028-01-31", "MENSAL").as_deref(), Some("2028-02-29"));
-        assert_eq!(proximo_vencimento("2026-12-15", "MENSAL").as_deref(), Some("2027-01-15"));
-        assert_eq!(proximo_vencimento("2026-10-10", "SEMANAL").as_deref(), Some("2026-10-17"));
-        assert_eq!(proximo_vencimento("2028-02-29", "ANUAL").as_deref(), Some("2029-02-28"));
-        assert_eq!(proximo_vencimento("2026-10-10", "QUINZENAL"), None);
+        assert_eq!(proximo_vencimento_ancorado("2026-01-31", "MENSAL", None).as_deref(), Some("2026-02-28"));
+        assert_eq!(proximo_vencimento_ancorado("2028-01-31", "MENSAL", None).as_deref(), Some("2028-02-29"));
+        assert_eq!(proximo_vencimento_ancorado("2026-12-15", "MENSAL", None).as_deref(), Some("2027-01-15"));
+        assert_eq!(proximo_vencimento_ancorado("2026-10-10", "SEMANAL", None).as_deref(), Some("2026-10-17"));
+        assert_eq!(proximo_vencimento_ancorado("2028-02-29", "ANUAL", None).as_deref(), Some("2029-02-28"));
+        assert_eq!(proximo_vencimento_ancorado("2026-10-10", "QUINZENAL", None), None);
+    }
+
+    #[test]
+    fn dia_ancora_volta_ao_dia_original_depois_do_mes_curto() {
+        assert_eq!(proximo_vencimento_ancorado("2026-02-28", "MENSAL", Some(31)).as_deref(), Some("2026-03-31"));
+        assert_eq!(proximo_vencimento_ancorado("2026-03-31", "MENSAL", Some(31)).as_deref(), Some("2026-04-30"));
+        assert_eq!(proximo_vencimento_ancorado("2026-04-30", "MENSAL", Some(31)).as_deref(), Some("2026-05-31"));
+        assert_eq!(proximo_vencimento_ancorado("2029-02-28", "ANUAL", Some(29)).as_deref(), Some("2030-02-28"));
+        assert_eq!(proximo_vencimento_ancorado("2031-02-28", "ANUAL", Some(29)).as_deref(), Some("2032-02-29"));
+        assert_eq!(proximo_vencimento_ancorado("2026-10-10", "SEMANAL", Some(31)).as_deref(), Some("2026-10-17"));
+        // Sem âncora (ou âncora inválida), vale o dia do vencimento — o comportamento antigo.
+        assert_eq!(proximo_vencimento_ancorado("2026-02-28", "MENSAL", None).as_deref(), Some("2026-03-28"));
+        assert_eq!(proximo_vencimento_ancorado("2026-02-28", "MENSAL", Some(0)).as_deref(), Some("2026-03-28"));
+    }
+
+    #[test]
+    fn conta_do_dia_31_volta_ao_31_depois_de_fevereiro() {
+        use crate::db::{abrir_conexao, executar_migracoes};
+        let mut conn = abrir_conexao(std::path::Path::new(":memory:")).unwrap();
+        executar_migracoes(&conn).unwrap();
+        criar_agendamento(
+            &mut conn,
+            NovoAgendamentoInput {
+                descricao: "Condomínio".into(),
+                valor_centavos: 50_000,
+                vencimento: "2027-01-31".into(),
+                categoria_despesa_id: "despesa-moradia".into(),
+                etiqueta: None,
+                recorrencia: Some("MENSAL".into()),
+                tipo: "PAGAR".into(),
+                automatico: true,
+                conta_id: Some("ativo-dinheiro".into()),
+                reajuste_anual: None,
+                mes_reajuste: None,
+                pessoa: None,
+            },
+        )
+        .unwrap();
+        let feitos = processar_automaticos(&mut conn, "2027-05-01").unwrap();
+        let datas: Vec<&str> = feitos.iter().map(|l| l.data.as_str()).collect();
+        assert_eq!(datas, vec!["2027-01-31", "2027-02-28", "2027-03-31", "2027-04-30"]);
+        let aberto = listar_agendamentos(&conn).unwrap().into_iter().find(|a| a.pago_em.is_none()).unwrap();
+        assert_eq!(aberto.vencimento, "2027-05-31");
+    }
+
+    #[test]
+    fn dia_ancora_no_banco_ao_criar_e_ao_editar() {
+        use crate::db::{abrir_conexao, executar_migracoes};
+        let conn = abrir_conexao(std::path::Path::new(":memory:")).unwrap();
+        executar_migracoes(&conn).unwrap();
+        let dia = |conn: &Connection| -> Option<i64> {
+            conn.query_row("SELECT dia_original FROM agendamentos WHERE id = 'a'", [], |r| r.get(0)).unwrap()
+        };
+        // Quem grava sem informar o dia (código antigo, importação) fica com o dia do vencimento.
+        conn.execute(
+            "INSERT INTO agendamentos (id, descricao, valor_centavos, vencimento, categoria_despesa_id, recorrencia)
+             VALUES ('a', 'Luz', 100, '2026-01-30', 'despesa-moradia', 'MENSAL')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(dia(&conn), Some(30));
+        // Editar sem mudar a data mantém a âncora; mudar a data troca.
+        conn.execute("UPDATE agendamentos SET dia_original = 31 WHERE id = 'a'", []).unwrap();
+        conn.execute("UPDATE agendamentos SET vencimento = '2026-01-30', valor_centavos = 200 WHERE id = 'a'", []).unwrap();
+        assert_eq!(dia(&conn), Some(31));
+        conn.execute("UPDATE agendamentos SET vencimento = '2026-01-15' WHERE id = 'a'", []).unwrap();
+        assert_eq!(dia(&conn), Some(15));
     }
 
     #[test]

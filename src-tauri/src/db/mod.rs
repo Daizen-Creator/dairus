@@ -21,6 +21,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("0014_documentos", include_str!("migrations/0014_documentos.sql")),
     ("0015_dashboards", include_str!("migrations/0015_dashboards.sql")),
     ("0016_preferencias_conta", include_str!("migrations/0016_preferencias_conta.sql")),
+    ("0017_integridade", include_str!("migrations/0017_integridade.sql")),
 ];
 
 pub fn abrir_conexao(caminho_banco: &Path) -> rusqlite::Result<Connection> {
