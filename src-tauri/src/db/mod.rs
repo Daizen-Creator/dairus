@@ -35,6 +35,10 @@ pub fn abrir_conexao(caminho_banco: &Path) -> rusqlite::Result<Connection> {
 }
 
 pub fn executar_migracoes(conn: &Connection) -> rusqlite::Result<()> {
+    aplicar_migracoes(conn, MIGRATIONS)
+}
+
+fn aplicar_migracoes(conn: &Connection, migracoes: &[(&str, &str)]) -> rusqlite::Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (
             nome TEXT PRIMARY KEY,
@@ -42,7 +46,7 @@ pub fn executar_migracoes(conn: &Connection) -> rusqlite::Result<()> {
         );",
     )?;
 
-    for (nome, sql) in MIGRATIONS {
+    for (nome, sql) in migracoes {
         let ja_aplicada: bool = conn
             .query_row(
                 "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE nome = ?1)",
@@ -55,11 +59,47 @@ pub fn executar_migracoes(conn: &Connection) -> rusqlite::Result<()> {
             continue;
         }
 
-        // Cada migração roda numa transação: ou aplica inteira, ou nada.
-        conn.execute_batch(&format!("BEGIN;\n{sql}\nINSERT INTO schema_migrations (nome) VALUES ('{nome}');\nCOMMIT;"))?;
+        // Cada migração roda numa transação: ou aplica inteira, ou nada. Se
+        // falhar, a `Transaction` desfaz tudo ao sair (ROLLBACK) e a conexão
+        // não fica presa numa transação aberta.
+        let tx = conn.unchecked_transaction()?;
+        tx.execute_batch(sql)?;
+        tx.execute("INSERT INTO schema_migrations (nome) VALUES (?1)", [nome])?;
+        tx.commit()?;
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod testes_migracoes {
+    use super::*;
+
+    #[test]
+    fn migracao_com_erro_desfaz_tudo_e_solta_a_conexao() {
+        let conn = abrir_conexao(Path::new(":memory:")).unwrap();
+        let lista: &[(&str, &str)] = &[
+            ("a_boa", "CREATE TABLE boa (x INTEGER);"),
+            ("b_ruim", "CREATE TABLE meio_caminho (x INTEGER); INSERT INTO boa VALUES (1); ISTO NAO E SQL;"),
+        ];
+        assert!(aplicar_migracoes(&conn, lista).is_err());
+        assert!(conn.is_autocommit(), "a conexão não pode ficar presa numa transação aberta");
+        let existe = |t: &str| -> bool {
+            conn.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = ?1)", [t], |r| r.get(0)).unwrap()
+        };
+        assert!(existe("boa"));
+        assert!(!existe("meio_caminho"), "a migração com erro não aplica nada");
+        let linhas: i64 = conn.query_row("SELECT COUNT(*) FROM boa", [], |r| r.get(0)).unwrap();
+        assert_eq!(linhas, 0);
+        let aplicadas: Vec<String> =
+            conn.prepare("SELECT nome FROM schema_migrations").unwrap().query_map([], |r| r.get(0)).unwrap().map(|x| x.unwrap()).collect();
+        assert_eq!(aplicadas, vec!["a_boa".to_string()]);
+
+        // Corrigida, a migração é aplicada na próxima abertura.
+        let corrigida: &[(&str, &str)] = &[("a_boa", "CREATE TABLE boa (x INTEGER);"), ("b_ruim", "CREATE TABLE meio_caminho (x INTEGER);")];
+        aplicar_migracoes(&conn, corrigida).unwrap();
+        assert!(existe("meio_caminho"));
+    }
 }
 
 #[cfg(test)]
