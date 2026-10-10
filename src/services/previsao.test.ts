@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { preverSaldo, vencimentoDaCompra } from "./previsao";
+import { preverSaldo, vencimentoDaCompra, vencimentoDaFaturaFechada } from "./previsao";
 import { gerarIcs } from "./calendarioIcs";
 import { proximoVencimentoTS } from "./recorrencia";
 import { agendamento, conta, CONTAS, lancamento } from "../testes/dados";
@@ -32,6 +32,74 @@ describe("previsão de saldo", () => {
     const salarios = ["2026-07-05", "2026-08-05", "2026-09-05"].map((d, i) => lancamento({ id: `s${i}`, data: d, descricao: "Salário" }, 300_000, "receita-salario", "ativo-dinheiro"));
     const p = preverSaldo({ hoje: "2026-10-02", dias: 30, contas, lancamentos: salarios, agendamentos: [] });
     expect(p.eventos[0]).toMatchObject({ data: "2026-10-05", valor: 300_000 });
+  });
+});
+
+// Conta com muito dinheiro (para o saldo não atrapalhar), cartão que fecha dia 5 e vence dia 12.
+const BANCO = conta({ id: "ativo-dinheiro", nome: "Conta", tipo: "ATIVO", subtipo: "BANCO", saldo_atual_centavos: 1_000_000 });
+const cartao = (saldo: number) => conta({ id: "cartao-nu", nome: "Nubank", tipo: "PASSIVO", subtipo: "CARTAO_CREDITO", dia_fechamento_fatura: 5, dia_vencimento_fatura: 12, saldo_atual_centavos: saldo });
+const faturas = (p: ReturnType<typeof preverSaldo>) => p.eventos.filter((e) => e.descricao === "Fatura Nubank").map((e) => [e.data, e.valor]);
+
+describe("previsão: o que já venceu e não foi pago", () => {
+  it("vencimento da fatura que fechou por último", () => {
+    expect(vencimentoDaFaturaFechada("2026-10-08", 5, 12)).toBe("2026-10-12"); // fechou dia 5, vence dia 12
+    expect(vencimentoDaFaturaFechada("2026-10-20", 5, 12)).toBe("2026-10-12"); // já passou: atrasada
+    expect(vencimentoDaFaturaFechada("2026-10-03", 5, 12)).toBe("2026-09-12"); // ainda não fechou este mês
+    expect(vencimentoDaFaturaFechada("2026-01-03", 5, 12)).toBe("2025-12-12"); // virada de ano
+    expect(vencimentoDaFaturaFechada("2026-10-05", 5, 12)).toBe("2026-10-12"); // no dia do fechamento
+    // Fecha dia 28, vence dia 5: o vencimento é no mês seguinte ao fechamento.
+    expect(vencimentoDaFaturaFechada("2026-10-30", 28, 5)).toBe("2026-11-05");
+    // Fechamento dia 31 em mês curto fecha no último dia (30/11).
+    expect(vencimentoDaFaturaFechada("2026-12-02", 31, 10)).toBe("2026-12-10");
+  });
+
+  it("fatura fechada ainda a vencer entra no vencimento dela, não no da compra de hoje", () => {
+    // Hoje 08/10: a fatura fechou dia 5 e vence dia 12 deste mês (antes caía em 12/11).
+    const p = preverSaldo({ hoje: "2026-10-08", dias: 60, contas: [BANCO, cartao(95_000)], lancamentos: [], agendamentos: [] });
+    expect(faturas(p)).toEqual([["2026-10-12", -95_000]]);
+    expect(p.serie.find((x) => x.data === "2026-10-11")!.saldo).toBe(1_000_000);
+    expect(p.serie.find((x) => x.data === "2026-10-12")!.saldo).toBe(1_000_000 - 95_000);
+  });
+
+  it("fatura atrasada entra amanhã e não apaga as faturas futuras", () => {
+    // Hoje 20/10: a de 12/10 está atrasada (75.000). A compra de 15/10 (20.000) vence em 12/11.
+    const compras = new Map([["cartao-nu", [{ data: "2026-10-15", valor: 20_000 }]]]);
+    const p = preverSaldo({ hoje: "2026-10-20", dias: 60, contas: [BANCO, cartao(95_000)], lancamentos: [], agendamentos: [], comprasCartao: compras });
+    expect(faturas(p)).toEqual([["2026-10-21", -75_000], ["2026-11-12", -20_000]]);
+    expect(p.serie.find((x) => x.data === "2026-10-21")!.saldo).toBe(1_000_000 - 75_000);
+  });
+
+  it("fatura que vence hoje junta com o restante em um único evento amanhã", () => {
+    const compras = new Map([["cartao-nu", [{ data: "2026-09-20", valor: 30_000 }]]]); // vence 12/10 (hoje)
+    const p = preverSaldo({ hoje: "2026-10-12", dias: 30, contas: [BANCO, cartao(95_000)], lancamentos: [], agendamentos: [], comprasCartao: compras });
+    expect(faturas(p)).toEqual([["2026-10-13", -95_000]]);
+  });
+
+  it("fatura atrasada na virada de ano", () => {
+    const p = preverSaldo({ hoje: "2026-01-03", dias: 30, contas: [BANCO, cartao(40_000)], lancamentos: [], agendamentos: [] });
+    expect(faturas(p)).toEqual([["2026-01-04", -40_000]]);
+  });
+
+  it("parcela de empréstimo atrasada ou que vence hoje ainda entra, amanhã", () => {
+    const parcelas = [
+      { data: "2026-09-25", valor: 50_000, descricao: "Parcela Carro" }, // atrasada
+      { data: "2026-10-02", valor: 30_000, descricao: "Parcela Moto" }, // vence hoje
+      { data: "2026-10-20", valor: 10_000, descricao: "Parcela Carro" },
+      { data: "2027-03-01", valor: 99_999, descricao: "Parcela Carro" }, // fora do horizonte
+    ];
+    const p = preverSaldo({ hoje: "2026-10-02", dias: 30, contas: [BANCO], lancamentos: [], agendamentos: [], parcelas });
+    expect(p.eventos.map((e) => [e.data, e.valor])).toEqual([["2026-10-03", -50_000], ["2026-10-03", -30_000], ["2026-10-20", -10_000]]);
+    expect(p.serie.find((x) => x.data === "2026-10-03")!.saldo).toBe(1_000_000 - 80_000);
+  });
+
+  it("conta agendada vencida entra amanhã, a que vence hoje também, sem repetir as repetições passadas", () => {
+    const ags = [
+      agendamento({ id: "al", descricao: "Aluguel", vencimento: "2026-08-10", valor_centavos: 100_000, recorrencia: "MENSAL" }), // atrasado 2 meses
+      agendamento({ id: "luz", descricao: "Luz", vencimento: "2026-10-02", valor_centavos: 20_000 }), // vence hoje
+    ];
+    const p = preverSaldo({ hoje: "2026-10-02", dias: 60, contas: [BANCO], lancamentos: [], agendamentos: ags });
+    expect(p.eventos.filter((e) => e.descricao === "Aluguel").map((e) => e.data)).toEqual(["2026-10-03", "2026-10-10", "2026-11-10"]);
+    expect(p.eventos.filter((e) => e.descricao === "Luz").map((e) => e.data)).toEqual(["2026-10-03"]);
   });
 });
 

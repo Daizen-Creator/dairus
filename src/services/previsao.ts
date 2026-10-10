@@ -46,6 +46,21 @@ export function vencimentoDaCompra(data: string, diaFechamento: number, diaVenci
   return new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), Math.min(diaVencimento, ultimo(base.getUTCFullYear(), base.getUTCMonth())))).toISOString().slice(0, 10);
 }
 
+/**
+ * Vencimento da fatura que fechou por último (a mais recente com fechamento até `hoje`).
+ * Pode já ter passado: aí a fatura está atrasada.
+ */
+export function vencimentoDaFaturaFechada(hoje: string, diaFechamento: number, diaVencimento: number): string {
+  const [a, m] = hoje.split("-").map(Number);
+  const ultimo = (ano: number, mes0: number) => new Date(Date.UTC(ano, mes0 + 1, 0)).getUTCDate();
+  const diaEsteMes = Math.min(diaFechamento, ultimo(a, m - 1));
+  const fechamento =
+    +hoje.slice(8, 10) >= diaEsteMes
+      ? new Date(Date.UTC(a, m - 1, diaEsteMes))
+      : new Date(Date.UTC(a, m - 2, Math.min(diaFechamento, ultimo(a, m - 2))));
+  return vencimentoDaCompra(fechamento.toISOString().slice(0, 10), diaFechamento, diaVencimento);
+}
+
 export interface EntradaPrevisao {
   hoje: string;
   dias: number;
@@ -65,14 +80,18 @@ export function preverSaldo(e: EntradaPrevisao): Previsao {
   const saldoInicial = liquidas.reduce((s, c) => s + c.saldo_atual_centavos, 0);
   const eventos: Evento[] = [];
 
-  // Agendamentos (com repetições dentro do horizonte).
+  // Agendamentos (com repetições dentro do horizonte). O que já venceu (ou vence hoje) e não foi
+  // pago entra "amanhã": o saldo de hoje é o ponto de partida e não conta eventos do próprio dia.
+  const amanha = somarDias(hoje, 1);
   for (const a of agendamentos.filter((x) => !x.pago_em)) {
-    let venc = a.vencimento < hoje ? somarDias(hoje, 1) : a.vencimento;
+    let venc = a.vencimento <= hoje ? amanha : a.vencimento;
     let original = a.vencimento;
     for (let i = 0; i < 60 && venc <= fim; i++) {
       eventos.push({ data: venc, valor: a.tipo === "RECEBER" ? a.valor_centavos : -a.valor_centavos, descricao: a.descricao });
       if (!a.recorrencia) break;
-      const prox = proximoVencimentoTS(original, a.recorrencia);
+      // Repetições que já ficaram para trás não são eventos futuros: pula até a primeira que ainda vai vencer.
+      let prox = proximoVencimentoTS(original, a.recorrencia);
+      for (let j = 0; prox && prox <= hoje && j < 400; j++) prox = proximoVencimentoTS(prox, a.recorrencia);
       if (!prox) break;
       original = prox;
       venc = prox;
@@ -90,19 +109,25 @@ export function preverSaldo(e: EntradaPrevisao): Previsao {
     }
     const somaFutura = [...porVenc.values()].reduce((s, v) => s + v, 0);
     let restante = c.saldo_atual_centavos;
-    // O que não está nas compras futuras (fatura fechada em aberto) vence no próximo vencimento.
-    const proxVenc = vencimentoDaCompra(hoje, fech, vencDia);
+    // O que não está nas compras futuras é fatura que já fechou e segue em aberto. Ela vence no
+    // vencimento da fatura FECHADA (não no da compra de hoje, que é a fatura seguinte). Se esse
+    // vencimento já passou, está atrasada e entra amanhã.
+    const vencFechada = vencimentoDaFaturaFechada(hoje, fech, vencDia);
     const fechadaEmAberto = Math.max(0, restante - somaFutura);
-    if (fechadaEmAberto > 0) porVenc.set(proxVenc < hoje ? somarDias(hoje, 1) : proxVenc, (porVenc.get(proxVenc) ?? 0) + fechadaEmAberto);
+    if (fechadaEmAberto > 0) {
+      const chave = vencFechada < hoje ? amanha : vencFechada;
+      porVenc.set(chave, (porVenc.get(chave) ?? 0) + fechadaEmAberto);
+    }
     for (const [data, valor] of [...porVenc.entries()].sort()) {
       const v = Math.min(valor, restante);
       if (v <= 0) break;
       restante -= v;
-      if (data <= fim) eventos.push({ data: data <= hoje ? somarDias(hoje, 1) : data, valor: -v, descricao: `Fatura ${c.nome}` });
+      if (data <= fim) eventos.push({ data: data <= hoje ? amanha : data, valor: -v, descricao: `Fatura ${c.nome}` });
     }
   }
 
-  for (const p of e.parcelas ?? []) if (p.data > hoje && p.data <= fim) eventos.push({ data: p.data, valor: -p.valor, descricao: p.descricao });
+  // Parcelas de empréstimo (já filtradas as pagas). A atrasada ainda precisa ser paga: entra amanhã.
+  for (const p of e.parcelas ?? []) if (p.data <= fim) eventos.push({ data: p.data <= hoje ? amanha : p.data, valor: -p.valor, descricao: p.descricao });
 
   // Gasto do dia a dia: despesas dos últimos 90 dias que não vieram de contas agendadas.
   const inicio90 = somarDias(hoje, -90);
