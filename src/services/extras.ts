@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { guardarPreferenciasNoBanco, restaurarPreferenciasDoBanco } from "./preferenciasConta";
+import { guardarPreferenciasSemParar, restaurarPreferenciasDoBanco } from "./preferenciasConta";
+import { registrarNoLog } from "./sistema";
 import type { InfoBanco, RegistroAuditoria, AporteComMeta, AporteMeta, Bem, InfoBackup, ItemRadar, Meta, Orcamento, TipoBem } from "../types/extras";
 
 // Porta de entrada para os módulos de src-tauri/src/extras.rs.
@@ -99,15 +100,21 @@ export const extras = {
 
   /** O backup leva junto as preferências da conta (nome, perfil de renda, notas...). */
   criarBackup: async () => {
-    await guardarPreferenciasNoBanco().catch(() => 0);
+    // Se falhar, o backup sai sem as preferências atualizadas (fica registrado no log e na tela).
+    await guardarPreferenciasSemParar();
     return invoke<InfoBackup>("criar_backup");
   },
   listarBackups: () => invoke<InfoBackup[]>("listar_backups"),
-  /** Restaura o banco e traz de volta as preferências que vieram nele (a cópia "antes de restaurar" leva as atuais). */
-  restaurarBackup: async (nome: string) => {
-    await guardarPreferenciasNoBanco().catch(() => 0);
-    const seguranca = await invoke<InfoBackup>("restaurar_backup", { nome });
-    await restaurarPreferenciasDoBanco().catch(() => 0);
+  /**
+   * Restaura o banco e traz de volta as preferências que vieram nele (a cópia "antes de restaurar" leva as atuais).
+   * `impressaoEsperada` (sincronização): se os dados mudaram desde então, nada é trocado e o erro começa com "DADOS_MUDARAM".
+   */
+  restaurarBackup: async (nome: string, impressaoEsperada?: string) => {
+    await guardarPreferenciasSemParar();
+    const seguranca = await invoke<InfoBackup>("restaurar_backup", { nome, impressaoEsperada: impressaoEsperada ?? null });
+    await restaurarPreferenciasDoBanco().catch((e) =>
+      registrarNoLog("warn", `preferências: não foi possível trazer as preferências do banco restaurado: ${e instanceof Error ? e.message : String(e)}`),
+    );
     return seguranca;
   },
   salvarExportacaoBinaria: (nomeArquivo: string, conteudo: Uint8Array) =>

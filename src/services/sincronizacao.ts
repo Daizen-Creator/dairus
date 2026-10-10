@@ -10,7 +10,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { lerPreferencia, salvarPreferencia } from "./armazenamento";
 import { extras } from "./extras";
-import { guardarPreferenciasNoBanco } from "./preferenciasConta";
+import { guardarPreferenciasSemParar } from "./preferenciasConta";
 import { supabase } from "./supabase";
 
 const BUCKET = "backups";
@@ -29,6 +29,9 @@ export function traduzirErroSync(erro: unknown): string {
   return msg;
 }
 
+/** A nuvem respondeu que o arquivo não existe (ainda). */
+const naoExiste = (msg: string) => /not.?found|404|Object not found/i.test(msg);
+
 export interface ErroSync {
   mensagem: string;
   em: string;
@@ -40,6 +43,22 @@ export interface EstadoNuvem {
   alterado_em: string;
   dispositivo_id: string;
   dispositivo_nome: string;
+  /** Versão do esquema do banco enviado (número da última migração). Ausente nos envios até a v0.2.5. */
+  esquema?: number;
+}
+
+export const MSG_ATUALIZE = "A nuvem tem dados de uma versão mais nova do Dairus. Atualize o Dairus neste computador para sincronizar.";
+
+let esquemaApp: Promise<number> | null = null;
+/** Versão do esquema que este app entende. */
+const esquemaDoApp = () => (esquemaApp ??= invoke<number>("versao_esquema_app").catch((e) => {
+  esquemaApp = null;
+  throw e;
+}));
+
+/** Para tudo se a nuvem tem um banco de versão mais nova: baixar ou sobrescrever estragaria dados. */
+async function conferirEsquema(remoto: EstadoNuvem | null): Promise<void> {
+  if (remoto?.esquema && remoto.esquema > (await esquemaDoApp())) throw new Error(MSG_ATUALIZE);
 }
 
 export interface EstadoLocal {
@@ -95,7 +114,7 @@ async function lerEstadoNuvem(base: string): Promise<EstadoNuvem | null> {
   const { data, error } = await supabase.storage.from(BUCKET).download(`${base}/estado.json`);
   if (error || !data) {
     // Ainda não existe (primeira sincronização da conta).
-    if (error && !/not.?found|404|Object not found/i.test(error.message)) throw new Error(error.message);
+    if (error && !naoExiste(error.message)) throw new Error(error.message);
     return null;
   }
   return JSON.parse(await data.text()) as EstadoNuvem;
@@ -103,41 +122,92 @@ async function lerEstadoNuvem(base: string): Promise<EstadoNuvem | null> {
 
 export const impressaoDados = () => invoke<string>("impressao_dados");
 
-async function enviar(base: string, versaoAnterior: number): Promise<EstadoNuvem> {
-  await guardarPreferenciasNoBanco().catch(() => 0);
-  const copia = new Uint8Array(await invoke<number[]>("gerar_copia_sync"));
+/** Cópia do banco e impressão dos mesmos dados, tiradas juntas no Rust (sob o mesmo lock). */
+interface CopiaSync {
+  copia: number[];
+  impressao: string;
+  esquema: number;
+}
+
+/** Começo do erro de `restaurar_backup` quando os dados daqui mudaram depois da decisão de baixar. */
+const DADOS_MUDARAM = "DADOS_MUDARAM";
+
+/** Identifica uma gravação do estado da nuvem (dois PCs podem gravar a mesma versão). */
+const assinatura = (e: EstadoNuvem | null) => (e ? `${e.versao}|${e.alterado_em}|${e.dispositivo_id}` : "vazia");
+
+/** Resultado de um envio: gravado, ou a nuvem mudou no meio (conflito; o estado local não muda). */
+type Envio = { ok: true; estado: EstadoNuvem } | { ok: false; remoto: EstadoNuvem | null };
+
+/**
+ * Envia os dados deste computador. `lido` é o estado da nuvem que originou a decisão:
+ * se outro computador gravou depois dele, nada é gravado (conflito). Supabase Storage não
+ * tem gravação condicional, então confere antes de cada gravação e lê de novo no fim.
+ */
+async function enviar(base: string, lido: EstadoNuvem | null): Promise<Envio> {
+  const mudouDesdeALeitura = async () => {
+    const agora = await lerEstadoNuvem(base);
+    return assinatura(agora) === assinatura(lido) ? null : { ok: false as const, remoto: agora };
+  };
+  await guardarPreferenciasSemParar();
+  // A impressão gravada no estado local descreve exatamente a cópia enviada: uma edição
+  // feita durante o envio fica de fora das duas e vai na próxima rodada.
+  const tirada = await invoke<CopiaSync>("copia_e_impressao_sync");
+  const copia = new Uint8Array(tirada.copia);
+  const impressao = tirada.impressao;
   if (copia.byteLength > LIMITE_NUVEM_BYTES) {
     throw new Error(`O banco tem ${(copia.byteLength / 1_048_576).toFixed(1).replace(".", ",")} MB e o limite da nuvem é 50 MB. Apague anexos grandes (em Garantias e documentos) ou use backup local.`);
   }
-  const impressao = await impressaoDados();
+  const antesDoBanco = await mudouDesdeALeitura();
+  if (antesDoBanco) return antesDoBanco;
   const { error: e1 } = await supabase.storage
     .from(BUCKET)
     .upload(`${base}/atual.db`, new Blob([copia], { type: BINARIO }), { upsert: true, contentType: BINARIO });
   if (e1) throw new Error(e1.message);
   const estado: EstadoNuvem = {
-    versao: versaoAnterior + 1,
+    versao: (lido?.versao ?? 0) + 1,
     alterado_em: new Date().toISOString(),
     dispositivo_id: await idDoDispositivo(),
     dispositivo_nome: nomeDoDispositivo(),
+    esquema: tirada.esquema,
   };
+  const antesDoEstado = await mudouDesdeALeitura();
+  if (antesDoEstado) return antesDoEstado;
   const { error: e2 } = await supabase.storage
     .from(BUCKET)
     .upload(`${base}/estado.json`, new Blob([JSON.stringify(estado)], { type: BINARIO }), { upsert: true, contentType: BINARIO });
   if (e2) throw new Error(e2.message);
+  // Confere: se outro computador gravou ao mesmo tempo, não marca como sincronizado.
+  const conferido = await lerEstadoNuvem(base);
+  if (assinatura(conferido) !== assinatura(estado)) return { ok: false, remoto: conferido };
   await salvarEstadoLocal({ versao_vista: estado.versao, impressao, sincronizado_em: estado.alterado_em });
-  return estado;
+  return { ok: true, estado };
 }
 
-async function baixar(base: string, remoto: EstadoNuvem): Promise<void> {
+/**
+ * Baixa a versão da nuvem e troca os dados deste computador por ela.
+ * Com `impressaoEsperada` (sincronização automática), o Rust confere, já com o banco
+ * travado, se os dados daqui continuam como estavam na decisão; se mudaram, nada é
+ * substituído e devolve false (é um conflito).
+ */
+async function baixar(base: string, remoto: EstadoNuvem, impressaoEsperada?: string): Promise<boolean> {
   const { data, error } = await supabase.storage.from(BUCKET).download(`${base}/atual.db`);
   if (error || !data) throw new Error(error?.message ?? "Falha ao baixar a cópia da nuvem.");
   const carimbo = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
   const info = await extras.gravarBackupBaixado(`sincronizado-${carimbo}.db`, new Uint8Array(await data.arrayBuffer()));
   // restaurar_backup guarda antes uma cópia "antes-de-restaurar" do estado atual.
-  await extras.restaurarBackup(info.nome);
+  try {
+    await extras.restaurarBackup(info.nome, impressaoEsperada);
+  } catch (e) {
+    if (String(e instanceof Error ? e.message : e).startsWith(DADOS_MUDARAM)) {
+      await extras.excluirBackup(info.nome).catch(() => {});
+      return false;
+    }
+    throw e;
+  }
   await extras.excluirBackup(info.nome).catch(() => {});
   await extras.aplicarRetencao((await lerPreferencia<number>("backup_retencao")) ?? 10).catch(() => 0);
   await salvarEstadoLocal({ versao_vista: remoto.versao, impressao: await impressaoDados(), sincronizado_em: new Date().toISOString() });
+  return true;
 }
 
 export const lerEstadoLocal = () => lerPreferencia<EstadoLocal>("sync_estado");
@@ -148,9 +218,13 @@ let emAndamento: Promise<ResultadoSync> | null = null;
 /** Sincroniza agora. Em conflito não mexe em nada: devolve "CONFLITO" para a tela perguntar. */
 export function sincronizar(): Promise<ResultadoSync> {
   if (emAndamento) return emAndamento;
+  const inicio = new Date().toISOString();
   emAndamento = sincronizarDeVerdade()
     .then(async (r) => {
-      await salvarPreferencia("sync_ultimo_erro", null);
+      // Deu certo: limpa o erro anterior, mas mantém um aviso registrado nesta rodada
+      // (ex.: as preferências não foram copiadas para o banco).
+      const aviso = await lerUltimoErroSync().catch(() => null);
+      if (!aviso || aviso.em < inicio) await salvarPreferencia("sync_ultimo_erro", null);
       return r;
     })
     .catch(async (e) => {
@@ -168,18 +242,24 @@ function sincronizarDeVerdade(): Promise<ResultadoSync> {
   return (async () => {
     const base = await pasta();
     // As preferências da conta vão no banco: copia antes de comparar, para a mudança contar.
-    await guardarPreferenciasNoBanco().catch(() => 0);
+    // Se falhar, segue com os lançamentos e registra o aviso (log e tela).
+    await guardarPreferenciasSemParar();
     const remoto = await lerEstadoNuvem(base);
+    // Nuvem com banco de versão mais nova: não baixa nem envia (pede para atualizar o app).
+    await conferirEsquema(remoto);
     const local = await lerEstadoLocal();
     const impressaoAtual = await impressaoDados();
     const localVazio = (await extras.infoBanco()).lancamentos === 0;
     const decisao = decidir({ local, remoto, impressaoAtual, localVazio });
     if (decisao === "ENVIAR") {
-      const novo = await enviar(base, remoto?.versao ?? 0);
-      return { decisao, remoto: novo, aplicouRemoto: false };
+      const envio = await enviar(base, remoto);
+      // Outro computador gravou na nuvem depois da leitura: os dois lados mudaram.
+      if (!envio.ok) return { decisao: "CONFLITO", remoto: envio.remoto, aplicouRemoto: false };
+      return { decisao, remoto: envio.estado, aplicouRemoto: false };
     }
     if (decisao === "BAIXAR" && remoto) {
-      await baixar(base, remoto);
+      // Os dados daqui mudaram entre a decisão e a troca: os dois lados mudaram, é conflito.
+      if (!(await baixar(base, remoto, impressaoAtual))) return { decisao: "CONFLITO", remoto, aplicouRemoto: false };
       return { decisao, remoto, aplicouRemoto: true };
     }
     if (decisao === "NADA" && local) await salvarEstadoLocal({ ...local, sincronizado_em: new Date().toISOString() });
@@ -187,25 +267,42 @@ function sincronizarDeVerdade(): Promise<ResultadoSync> {
   })();
 }
 
+/**
+ * Guarda a cópia da nuvem como backup local ("nuvem-substituida-..."), antes de substituí-la.
+ * Se não conseguir baixar ou gravar, lança erro e o envio é cancelado. Só segue sem cópia
+ * quando a nuvem não tem o arquivo (não há o que perder).
+ */
+async function guardarCopiaDaNuvem(base: string): Promise<void> {
+  const cancelado = "Nada foi enviado: não foi possível guardar antes uma cópia dos dados da nuvem neste computador";
+  const { data, error } = await supabase.storage.from(BUCKET).download(`${base}/atual.db`);
+  if (error && naoExiste(error.message)) return;
+  if (error || !data) throw new Error(`${cancelado} (${traduzirErroSync(error?.message ?? "arquivo vazio")}). Tente de novo.`);
+  const carimbo = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
+  try {
+    await extras.gravarBackupBaixado(`nuvem-substituida-${carimbo}.db`, new Uint8Array(await data.arrayBuffer()));
+  } catch (e) {
+    throw new Error(`${cancelado} (${e instanceof Error ? e.message : String(e)}). Os dados da nuvem continuam lá.`);
+  }
+}
+
 /** Resolve um conflito: "NUVEM" troca os dados deste computador pelos da nuvem; "LOCAL" sobrescreve a nuvem. */
 export async function resolverConflito(lado: "NUVEM" | "LOCAL"): Promise<ResultadoSync> {
   const base = await pasta();
   const remoto = await lerEstadoNuvem(base);
+  await conferirEsquema(remoto);
   if (lado === "NUVEM") {
     if (!remoto) throw new Error("Não há dados na nuvem.");
     await baixar(base, remoto);
     return { decisao: "BAIXAR", remoto, aplicouRemoto: true };
   }
   // Antes de sobrescrever a nuvem, guarda a versão dela como backup local.
-  if (remoto) {
-    const { data } = await supabase.storage.from(BUCKET).download(`${base}/atual.db`);
-    if (data) {
-      const carimbo = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
-      await extras.gravarBackupBaixado(`nuvem-substituida-${carimbo}.db`, new Uint8Array(await data.arrayBuffer())).catch(() => {});
-    }
+  // Sem essa cópia, nada é enviado: a versão da nuvem se perderia.
+  if (remoto) await guardarCopiaDaNuvem(base);
+  const envio = await enviar(base, remoto);
+  if (!envio.ok) {
+    throw new Error("Outro computador enviou dados para a nuvem enquanto você escolhia. Nada foi marcado como sincronizado: escolha de novo na próxima sincronização.");
   }
-  const novo = await enviar(base, remoto?.versao ?? 0);
-  return { decisao: "ENVIAR", remoto: novo, aplicouRemoto: false };
+  return { decisao: "ENVIAR", remoto: envio.estado, aplicouRemoto: false };
 }
 
 /** Há alterações deste computador que ainda não foram para a nuvem? */

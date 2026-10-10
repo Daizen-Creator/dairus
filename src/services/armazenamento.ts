@@ -10,6 +10,7 @@
 type LojaTauri = {
   get<T>(chave: string): Promise<T | null | undefined>;
   set(chave: string, valor: unknown): Promise<void>;
+  delete(chave: string): Promise<boolean>;
   save(): Promise<void>;
   entries<T>(): Promise<Array<[string, T]>>;
 };
@@ -103,6 +104,21 @@ export async function salvarPreferencia(chave: string, valor: unknown): Promise<
     }
   }
   localStorage.setItem(prefixoLocal + chave, JSON.stringify(valor));
+}
+
+/** Apaga uma preferência da conta atual (ex.: apagada em outro computador e sincronizada). */
+export async function removerPreferencia(chave: string): Promise<void> {
+  if (estaNoTauri()) {
+    try {
+      const loja = await obterLoja();
+      await loja.delete(chave);
+      await loja.save();
+      return;
+    } catch {
+      // segue para o fallback abaixo
+    }
+  }
+  localStorage.removeItem(prefixoLocal + chave);
 }
 
 /** Esvazia as preferências da conta atual (usado ao excluir a conta). */

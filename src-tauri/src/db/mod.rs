@@ -23,6 +23,47 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("0016_preferencias_conta", include_str!("migrations/0016_preferencias_conta.sql")),
 ];
 
+/// Número de uma migração pelo prefixo do nome ("0016_preferencias_conta" → 16).
+fn numero_da_migracao(nome: &str) -> Option<u32> {
+    nome.split('_').next()?.parse().ok()
+}
+
+/// Versão do esquema que este app conhece: o número da última migração da lista.
+/// Vai no `estado.json` da nuvem para outro computador saber se precisa atualizar o app.
+pub fn versao_esquema_app() -> u32 {
+    MIGRATIONS.iter().filter_map(|(nome, _)| numero_da_migracao(nome)).max().unwrap_or(0)
+}
+
+/// Migrações registradas no banco que este app não conhece: o banco foi criado ou
+/// atualizado por uma versão mais nova do Dairus. Banco sem `schema_migrations` → nenhuma.
+pub fn migracoes_desconhecidas(conn: &Connection) -> rusqlite::Result<Vec<String>> {
+    let tem_tabela: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations')",
+        [],
+        |r| r.get(0),
+    )?;
+    if !tem_tabela {
+        return Ok(Vec::new());
+    }
+    let mut st = conn.prepare("SELECT nome FROM schema_migrations ORDER BY nome")?;
+    let nomes = st.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<String>>>()?;
+    Ok(nomes.into_iter().filter(|n| !MIGRATIONS.iter().any(|(conhecida, _)| conhecida == n)).collect())
+}
+
+/// Recusa um banco de versão mais nova (com migrações que este app não conhece): usá-lo
+/// aqui poderia estragar dados que só a versão nova entende.
+pub fn recusar_banco_mais_novo(conn: &Connection) -> Result<(), String> {
+    let desconhecidas = migracoes_desconhecidas(conn).map_err(|e| e.to_string())?;
+    if desconhecidas.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Estes dados foram gravados por uma versão mais nova do Dairus ({}). Atualize o Dairus neste computador para usá-los.",
+            desconhecidas.join(", ")
+        ))
+    }
+}
+
 pub fn abrir_conexao(caminho_banco: &Path) -> rusqlite::Result<Connection> {
     let conn = Connection::open(caminho_banco)?;
     // `journal_mode` é especial: o PRAGMA devolve uma linha com o modo
@@ -59,6 +100,43 @@ pub fn executar_migracoes(conn: &Connection) -> rusqlite::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod testes_versao {
+    use super::*;
+
+    fn banco() -> Connection {
+        let conn = abrir_conexao(Path::new(":memory:")).unwrap();
+        executar_migracoes(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn versao_do_esquema_e_a_da_ultima_migracao() {
+        let ultima = MIGRATIONS.last().unwrap().0;
+        assert_eq!(versao_esquema_app(), ultima[..4].parse::<u32>().unwrap());
+        assert!(versao_esquema_app() >= 16);
+    }
+
+    #[test]
+    fn banco_deste_app_nao_tem_migracao_desconhecida() {
+        let conn = banco();
+        assert!(migracoes_desconhecidas(&conn).unwrap().is_empty());
+        assert!(recusar_banco_mais_novo(&conn).is_ok());
+        // Banco sem a tabela de controle (vazio ou muito antigo) também passa.
+        let vazio = Connection::open_in_memory().unwrap();
+        assert!(migracoes_desconhecidas(&vazio).unwrap().is_empty());
+    }
+
+    #[test]
+    fn banco_de_versao_mais_nova_e_recusado() {
+        let conn = banco();
+        conn.execute("INSERT INTO schema_migrations (nome) VALUES ('9999_do_futuro')", []).unwrap();
+        assert_eq!(migracoes_desconhecidas(&conn).unwrap(), vec!["9999_do_futuro".to_string()]);
+        let erro = recusar_banco_mais_novo(&conn).unwrap_err();
+        assert!(erro.contains("Atualize o Dairus"), "{erro}");
+    }
 }
 
 #[cfg(test)]
