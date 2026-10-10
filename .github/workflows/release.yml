@@ -1,9 +1,12 @@
 name: Publicar versão
 
-# Para publicar: atualize a versão em package.json, src-tauri/tauri.conf.json e
-# src-tauri/Cargo.toml (ou rode `npm run versao -- 0.2.0`), escreva o que mudou
-# em CHANGELOG.md, faça commit e crie a tag:  git tag v0.2.0 && git push --tags
+# Para publicar: atualize a versão em package.json, package-lock.json, src-tauri/tauri.conf.json,
+# src-tauri/Cargo.toml e src-tauri/Cargo.lock (ou rode `npm run versao -- 0.2.0`), escreva o que mudou
+# em CHANGELOG.md numa seção "## 0.2.0", faça commit e crie a tag:  git tag v0.2.0 && git push --tags
 # O Dairus instalado nos computadores encontra a versão nova sozinho.
+#
+# Antes de gerar o instalador, o job "verificar" confere se a tag bate com a versão dos arquivos,
+# se o CHANGELOG tem a seção da versão e se TypeScript, Vitest e cargo test passam.
 
 on:
   push:
@@ -12,8 +15,42 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  verificar:
+    name: Conferir a versão e rodar os testes
+    runs-on: windows-latest
+    env:
+      # O .cargo/config.toml aponta a pasta de build para o D: deste computador.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/target
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: A tag bate com a versão dos arquivos e com o CHANGELOG
+        shell: bash
+        run: node scripts/conferir-versao.mjs "$GITHUB_REF_NAME"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Telas (Vitest)
+        run: npx vitest run
+      - name: Motor (cargo test)
+        working-directory: src-tauri
+        run: cargo test
+
   windows:
+    name: Gerar e publicar o instalador
+    needs: verificar
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +59,9 @@ jobs:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
       - run: npm ci
       - name: Notas da versão (CHANGELOG.md)
         shell: bash
