@@ -8,6 +8,8 @@ const nuvem = vi.hoisted(() => ({
   falhaDownload: new Map<string, string>(),
   falhaUpload: new Map<string, string>(),
   uploads: [] as string[],
+  /** Chamado depois de cada upload (simula outro computador gravando ao mesmo tempo). */
+  aposEnviar: null as null | ((caminho: string) => void),
 }));
 vi.mock("./supabase", () => ({
   supabase: {
@@ -26,6 +28,7 @@ vi.mock("./supabase", () => ({
           if (falha) return { data: null, error: { message: falha } };
           nuvem.uploads.push(caminho);
           nuvem.arquivos.set(caminho, new Uint8Array(await blob.arrayBuffer()));
+          nuvem.aposEnviar?.(caminho);
           return { data: {}, error: null };
         },
       }),
@@ -50,12 +53,16 @@ let impressaoDaCopia: string | null = null;
 let falhaGravarBackup: string | null = null;
 /** Simula uma edição feita pela pessoa enquanto o download acontece. */
 let editarDuranteODownload = false;
+/** Simula outro computador gravando na nuvem enquanto este prepara a cópia. */
+let outroPcGravaAoTirarCopia = false;
 
 beforeEach(() => {
   nuvem.arquivos.clear();
   nuvem.falhaDownload.clear();
   nuvem.falhaUpload.clear();
   nuvem.uploads.length = 0;
+  nuvem.aposEnviar = null;
+  outroPcGravaAoTirarCopia = false;
   chamados = [];
   impressaoLocal = "local-1";
   impressaoDaCopia = null;
@@ -72,6 +79,7 @@ beforeEach(() => {
       case "impressao_dados":
         return impressaoLocal;
       case "copia_e_impressao_sync":
+        if (outroPcGravaAoTirarCopia) gravarEstadoNuvem({ versao: 9, dispositivo_id: "pc-2", alterado_em: "2026-10-10T10:00:00Z" });
         return { copia: Array.from(texto("banco-local")), impressao: impressaoDaCopia ?? impressaoLocal, esquema: 16 };
       case "gravar_backup_baixado":
         if (falhaGravarBackup) throw falhaGravarBackup;
@@ -145,6 +153,48 @@ describe("sincronização atômica", () => {
     const r = await sincronizar();
     expect(r).toMatchObject({ decisao: "BAIXAR", aplicouRemoto: true });
     expect(estadoLocal()).toMatchObject({ versao_vista: 2, impressao: "da-nuvem" });
+  });
+});
+
+describe("envio com controle de concorrência", () => {
+  it("se outro computador gravou na nuvem depois da leitura, não envia nada e vira conflito", async () => {
+    gravarEstadoNuvem({ versao: 1 });
+    guardarEstadoLocal({ versao_vista: 1, impressao: "antiga", sincronizado_em: "" });
+    outroPcGravaAoTirarCopia = true;
+    const r = await sincronizar();
+    expect(r.decisao).toBe("CONFLITO");
+    expect(r.remoto?.dispositivo_id).toBe("pc-2");
+    expect(nuvem.uploads).toEqual([]);
+    expect(estadoLocal()?.versao_vista).toBe(1);
+  });
+
+  it("confere depois de enviar: se outro computador gravou junto, não marca como sincronizado", async () => {
+    gravarEstadoNuvem({ versao: 1 });
+    guardarEstadoLocal({ versao_vista: 1, impressao: "antiga", sincronizado_em: "" });
+    nuvem.aposEnviar = (caminho) => {
+      if (caminho === ESTADO) gravarEstadoNuvem({ versao: 2, dispositivo_id: "pc-2", alterado_em: "2026-10-10T10:00:00Z" });
+    };
+    const r = await sincronizar();
+    expect(r.decisao).toBe("CONFLITO");
+    expect(estadoLocal()).toMatchObject({ versao_vista: 1, impressao: "antiga" });
+  });
+
+  it("envio normal grava banco e estado com a versão seguinte à lida", async () => {
+    gravarEstadoNuvem({ versao: 7 });
+    guardarEstadoLocal({ versao_vista: 7, impressao: "antiga", sincronizado_em: "" });
+    const r = await sincronizar();
+    expect(r.decisao).toBe("ENVIAR");
+    expect(nuvem.uploads).toEqual([ATUAL, ESTADO]);
+    expect(estadoNaNuvem().versao).toBe(8);
+    expect(estadoLocal()?.versao_vista).toBe(8);
+  });
+
+  it("\"manter este computador\" com a nuvem mudando no meio avisa e não envia", async () => {
+    gravarEstadoNuvem({ versao: 4 });
+    nuvem.arquivos.set(ATUAL, texto("banco-da-nuvem"));
+    outroPcGravaAoTirarCopia = true;
+    await expect(resolverConflito("LOCAL")).rejects.toThrow(/Outro computador/);
+    expect(nuvem.uploads).toEqual([]);
   });
 });
 

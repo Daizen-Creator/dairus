@@ -116,7 +116,22 @@ interface CopiaSync {
 /** Começo do erro de `restaurar_backup` quando os dados daqui mudaram depois da decisão de baixar. */
 const DADOS_MUDARAM = "DADOS_MUDARAM";
 
-async function enviar(base: string, versaoAnterior: number): Promise<EstadoNuvem> {
+/** Identifica uma gravação do estado da nuvem (dois PCs podem gravar a mesma versão). */
+const assinatura = (e: EstadoNuvem | null) => (e ? `${e.versao}|${e.alterado_em}|${e.dispositivo_id}` : "vazia");
+
+/** Resultado de um envio: gravado, ou a nuvem mudou no meio (conflito; o estado local não muda). */
+type Envio = { ok: true; estado: EstadoNuvem } | { ok: false; remoto: EstadoNuvem | null };
+
+/**
+ * Envia os dados deste computador. `lido` é o estado da nuvem que originou a decisão:
+ * se outro computador gravou depois dele, nada é gravado (conflito). Supabase Storage não
+ * tem gravação condicional, então confere antes de cada gravação e lê de novo no fim.
+ */
+async function enviar(base: string, lido: EstadoNuvem | null): Promise<Envio> {
+  const mudouDesdeALeitura = async () => {
+    const agora = await lerEstadoNuvem(base);
+    return assinatura(agora) === assinatura(lido) ? null : { ok: false as const, remoto: agora };
+  };
   await guardarPreferenciasNoBanco().catch(() => 0);
   // A impressão gravada no estado local descreve exatamente a cópia enviada: uma edição
   // feita durante o envio fica de fora das duas e vai na próxima rodada.
@@ -126,22 +141,29 @@ async function enviar(base: string, versaoAnterior: number): Promise<EstadoNuvem
   if (copia.byteLength > LIMITE_NUVEM_BYTES) {
     throw new Error(`O banco tem ${(copia.byteLength / 1_048_576).toFixed(1).replace(".", ",")} MB e o limite da nuvem é 50 MB. Apague anexos grandes (em Garantias e documentos) ou use backup local.`);
   }
+  const antesDoBanco = await mudouDesdeALeitura();
+  if (antesDoBanco) return antesDoBanco;
   const { error: e1 } = await supabase.storage
     .from(BUCKET)
     .upload(`${base}/atual.db`, new Blob([copia], { type: BINARIO }), { upsert: true, contentType: BINARIO });
   if (e1) throw new Error(e1.message);
   const estado: EstadoNuvem = {
-    versao: versaoAnterior + 1,
+    versao: (lido?.versao ?? 0) + 1,
     alterado_em: new Date().toISOString(),
     dispositivo_id: await idDoDispositivo(),
     dispositivo_nome: nomeDoDispositivo(),
   };
+  const antesDoEstado = await mudouDesdeALeitura();
+  if (antesDoEstado) return antesDoEstado;
   const { error: e2 } = await supabase.storage
     .from(BUCKET)
     .upload(`${base}/estado.json`, new Blob([JSON.stringify(estado)], { type: BINARIO }), { upsert: true, contentType: BINARIO });
   if (e2) throw new Error(e2.message);
+  // Confere: se outro computador gravou ao mesmo tempo, não marca como sincronizado.
+  const conferido = await lerEstadoNuvem(base);
+  if (assinatura(conferido) !== assinatura(estado)) return { ok: false, remoto: conferido };
   await salvarEstadoLocal({ versao_vista: estado.versao, impressao, sincronizado_em: estado.alterado_em });
-  return estado;
+  return { ok: true, estado };
 }
 
 /**
@@ -206,8 +228,10 @@ function sincronizarDeVerdade(): Promise<ResultadoSync> {
     const localVazio = (await extras.infoBanco()).lancamentos === 0;
     const decisao = decidir({ local, remoto, impressaoAtual, localVazio });
     if (decisao === "ENVIAR") {
-      const novo = await enviar(base, remoto?.versao ?? 0);
-      return { decisao, remoto: novo, aplicouRemoto: false };
+      const envio = await enviar(base, remoto);
+      // Outro computador gravou na nuvem depois da leitura: os dois lados mudaram.
+      if (!envio.ok) return { decisao: "CONFLITO", remoto: envio.remoto, aplicouRemoto: false };
+      return { decisao, remoto: envio.estado, aplicouRemoto: false };
     }
     if (decisao === "BAIXAR" && remoto) {
       // Os dados daqui mudaram entre a decisão e a troca: os dois lados mudaram, é conflito.
@@ -249,8 +273,11 @@ export async function resolverConflito(lado: "NUVEM" | "LOCAL"): Promise<Resulta
   // Antes de sobrescrever a nuvem, guarda a versão dela como backup local.
   // Sem essa cópia, nada é enviado: a versão da nuvem se perderia.
   if (remoto) await guardarCopiaDaNuvem(base);
-  const novo = await enviar(base, remoto?.versao ?? 0);
-  return { decisao: "ENVIAR", remoto: novo, aplicouRemoto: false };
+  const envio = await enviar(base, remoto);
+  if (!envio.ok) {
+    throw new Error("Outro computador enviou dados para a nuvem enquanto você escolhia. Nada foi marcado como sincronizado: escolha de novo na próxima sincronização.");
+  }
+  return { decisao: "ENVIAR", remoto: envio.estado, aplicouRemoto: false };
 }
 
 /** Há alterações deste computador que ainda não foram para a nuvem? */
