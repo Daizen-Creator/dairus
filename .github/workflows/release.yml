@@ -1,9 +1,12 @@
 name: Publicar versão
 
-# Para publicar: atualize a versão em package.json, src-tauri/tauri.conf.json e
-# src-tauri/Cargo.toml (ou rode `npm run versao -- 0.2.0`), escreva o que mudou
-# em CHANGELOG.md, faça commit e crie a tag:  git tag v0.2.0 && git push --tags
+# Para publicar: atualize a versão em package.json, package-lock.json, src-tauri/tauri.conf.json,
+# src-tauri/Cargo.toml e src-tauri/Cargo.lock (ou rode `npm run versao -- 0.2.0`), escreva o que mudou
+# em CHANGELOG.md numa seção "## 0.2.0", faça commit e crie a tag:  git tag v0.2.0 && git push --tags
 # O Dairus instalado nos computadores encontra a versão nova sozinho.
+#
+# Antes de gerar o instalador, o job "verificar" confere se a tag bate com a versão dos arquivos,
+# se o CHANGELOG tem a seção da versão e se TypeScript, Vitest e cargo test passam.
 
 on:
   push:
@@ -12,8 +15,42 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  verificar:
+    name: Conferir a versão e rodar os testes
+    runs-on: windows-latest
+    env:
+      # O .cargo/config.toml aponta a pasta de build para o D: deste computador.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/target
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: A tag bate com a versão dos arquivos e com o CHANGELOG
+        shell: bash
+        run: node scripts/conferir-versao.mjs "$GITHUB_REF_NAME"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Telas (Vitest)
+        run: npx vitest run
+      - name: Motor (cargo test)
+        working-directory: src-tauri
+        run: cargo test
+
   windows:
+    name: Gerar e publicar o instalador
+    needs: verificar
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,16 +59,25 @@ jobs:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
       - run: npm ci
       - name: Notas da versão (CHANGELOG.md)
         shell: bash
         run: |
           versao="${GITHUB_REF_NAME#v}"
-          awk -v v="$versao" '
-            /^## / { dentro = index($0, v) > 0; next }
+          # Título EXATO: "## 0.2.5" não casa com "## 0.2.50" nem com "## 0.2.5-beta.1".
+          awk -v titulo="## $versao" '
+            { sub(/[ \t\r]+$/, "") }
+            $0 == titulo { dentro = 1; next }
+            /^## / { dentro = 0 }
             dentro { print }
           ' CHANGELOG.md > notas.md
-          [ -s notas.md ] || echo "Versão $versao." > notas.md
+          if ! grep -q '[^[:space:]]' notas.md; then
+            echo "::error::CHANGELOG.md não tem a seção \"## $versao\" com texto."
+            exit 1
+          fi
           {
             echo "NOTAS<<FIM_DAS_NOTAS"
             cat notas.md
@@ -46,16 +92,20 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: Dairus ${{ github.ref_name }}
           releaseBody: ${{ env.NOTAS }}
-          releaseDraft: false
-          prerelease: false
+          # Rascunho até o fim: só vira pública depois do .sha256 e da reserva no Supabase.
+          releaseDraft: true
+          # Tag com "-" (v0.3.0-beta.1) vira pré-lançamento: só chega a quem ligou o canal beta.
+          prerelease: ${{ contains(github.ref_name, '-') }}
 
       # SHA-256 do instalador: o app confere antes de instalar (o arquivo .sha256 vai junto na release).
+      # A release ainda é rascunho aqui, então ninguém recebe a versão sem o .sha256.
       - name: Assinatura SHA-256 do instalador
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           instalador=$(find src-tauri/target/release/bundle/nsis -name "*-setup.exe" | head -n 1)
+          [ -n "$instalador" ] || { echo "::error::Instalador (*-setup.exe) não encontrado em src-tauri/target/release/bundle/nsis."; exit 1; }
           nome=$(basename "$instalador")
           sha256sum "$instalador" | awk -v n="$nome" '{print $1 "  " n}' > "$nome.sha256"
           gh release upload "$GITHUB_REF_NAME" "$nome.sha256" --clobber
@@ -63,8 +113,10 @@ jobs:
           echo "NOME_INSTALADOR=$nome" >> "$GITHUB_ENV"
           echo "SHA_INSTALADOR=$(cut -d' ' -f1 "$nome.sha256")" >> "$GITHUB_ENV"
 
-      # Reserva no Supabase (opcional): só roda se o segredo SUPABASE_SERVICE_ROLE_KEY existir.
+      # Reserva no Supabase (opcional): só roda se o segredo SUPABASE_SERVICE_ROLE_KEY existir
+      # e só em versão estável (o latest.json do Supabase nunca anuncia pré-lançamento).
       - name: Espelhar no Supabase Storage
+        if: ${{ !contains(github.ref_name, '-') }}
         shell: bash
         env:
           CHAVE: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -75,3 +127,11 @@ jobs:
           tamanho=$(stat -c%s "$INSTALADOR")
           node -e 'const fs=require("fs");fs.writeFileSync("latest.json",JSON.stringify({versao:process.env.GITHUB_REF_NAME.replace(/^v/,""),titulo:"Dairus "+process.env.GITHUB_REF_NAME,notas:fs.readFileSync("notas.md","utf8"),publicada_em:new Date().toISOString(),instalador:"https://wcxfjmifikmnydfpepiq.supabase.co/storage/v1/object/public/atualizacoes/"+process.env.NOME_INSTALADOR,tamanho_bytes:Number(process.argv[1]),sha256:process.env.SHA_INSTALADOR}))' "$tamanho"
           curl -sf -X POST "$base/latest.json" -H "Authorization: Bearer $CHAVE" -H "x-upsert: true" -H "Content-Type: application/json" -H "Cache-Control: max-age=60" --data-binary "@latest.json"
+
+      # Último passo: só agora a release deixa de ser rascunho e o app instalado passa a enxergá-la.
+      # Se qualquer passo acima falhar, ela continua rascunho (nada chega aos usuários).
+      - name: Publicar a release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false

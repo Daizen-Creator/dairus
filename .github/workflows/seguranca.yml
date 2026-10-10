@@ -1,10 +1,11 @@
 name: Segurança
 
 # Procura vulnerabilidades conhecidas nas bibliotecas (npm e Rust) e segredos
-# vazados no código. Roda a cada push, em pull requests e todo dia (bibliotecas
+# vazados no código. Roda em pull requests, em pushes na main e todo dia (bibliotecas
 # ganham alertas novos mesmo sem o código mudar).
 on:
   push:
+    branches: [main]
   pull_request:
   schedule:
     - cron: "17 9 * * *"
@@ -12,6 +13,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: seguranca-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   npm:
@@ -32,9 +37,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Instalar cargo-audit
-        run: cargo install cargo-audit --locked
+      # Binário pronto (segundos), em vez de compilar o cargo-audit do zero a cada execução.
+      # Ele só lê o Cargo.lock e o src-tauri/.cargo/audit.toml; não compila o app, então
+      # não há cache de compilação (Swatinem/rust-cache) para aproveitar aqui.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
       - name: cargo audit
         working-directory: src-tauri
         run: cargo audit
