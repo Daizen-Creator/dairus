@@ -82,7 +82,7 @@ export function filtrosAtivos(f: Filtros): number {
     f.categoriaId !== "TODAS",
     f.contaId !== "TODAS",
     f.etiqueta !== "TODAS",
-    f.inicio !== null,
+    f.inicio !== null || f.fim !== null,
     !f.mostrarEstornados,
     (f.tag ?? "TODAS") !== "TODAS",
   ].filter(Boolean).length;
@@ -97,8 +97,11 @@ export function aplicarFiltros(
 ): Array<{ l: Lancamento; a: AnaliseLancamento }> {
   // Filtrar por uma categoria inclui as subcategorias dela.
   const dentroDe = (c: Conta | null, alvo: string): boolean => {
-    for (let atual = c; atual; atual = atual.categoria_pai_id ? contaPorId.get(atual.categoria_pai_id) ?? null : null) {
+    // Limite de profundidade: um ciclo de pais (A -> B -> A) não pode travar a tela.
+    let atual = c;
+    for (let nivel = 0; atual && nivel < 20; nivel++) {
       if (atual.id === alvo) return true;
+      atual = atual.categoria_pai_id ? contaPorId.get(atual.categoria_pai_id) ?? null : null;
     }
     return false;
   };
