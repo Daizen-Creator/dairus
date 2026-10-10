@@ -1,12 +1,23 @@
 name: Testes
 
+# Roda em pull requests e em pushes na main. Um push numa branch que já tem pull request
+# roda uma vez só (pelo pull request). Uma execução nova na mesma branch cancela a anterior.
 on:
   push:
+    branches: [main]
   pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testes-${{ github.head_ref || github.ref }}
+  # Na main cada commit é testado até o fim; nas outras branches a execução antiga é cancelada.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   telas:
-    name: Telas (Vitest) e TypeScript
+    name: Telas (Vitest), TypeScript e build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,9 +28,11 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit -p .
       - run: npm test
+      - name: Build do front-end (vite build)
+        run: npx vite build
 
   motor:
-    name: Motor (cargo test)
+    name: Motor (clippy e cargo test) no Linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,12 +41,37 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> /tmp/dairus-target
-      - name: cargo test
+      # Sem -D warnings por enquanto: os avisos aparecem no log, mas não derrubam o CI.
+      - name: cargo clippy
         working-directory: src-tauri
         env:
           # O .cargo/config.toml aponta a pasta de build para o D: do Windows.
           CARGO_TARGET_DIR: /tmp/dairus-target
+        run: cargo clippy
+      - name: cargo test
+        working-directory: src-tauri
+        env:
+          CARGO_TARGET_DIR: /tmp/dairus-target
+        run: cargo test
+
+  motor-windows:
+    name: Motor (cargo test) no Windows
+    # O app é só para Windows e há testes #[cfg(windows)] que o Linux não roda.
+    runs-on: windows-latest
+    env:
+      # O .cargo/config.toml aponta a pasta de build para o D: do computador do dono.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/target
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: cargo test
+        working-directory: src-tauri
         run: cargo test
