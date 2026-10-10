@@ -139,7 +139,6 @@ pub fn run() {
             lancamentos_extras::anexar_arquivo,
             lancamentos_extras::listar_anexos,
             lancamentos_extras::abrir_anexo,
-            lancamentos_extras::ler_anexo,
             lancamentos_extras::excluir_anexo,
             lancamentos_extras::listar_regras,
             lancamentos_extras::salvar_regra,

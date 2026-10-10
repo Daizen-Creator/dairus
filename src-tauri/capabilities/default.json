@@ -21,6 +21,9 @@
           "path": "$DOCUMENT/Dairus/**"
         },
         {
+          "path": "$APPDATA/contas/*/abertos/**"
+        },
+        {
           "path": "$APPLOG/**"
         },
         {

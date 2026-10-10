@@ -65,7 +65,10 @@ pub fn criar_bandeja<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         .on_menu_event(|app, evento| match evento.id.as_ref() {
             "abrir" => mostrar_janela(app),
             "lancar" => abrir_lancamento_rapido(app),
-            "sair" => app.exit(0),
+            "sair" => {
+                crate::documentos::limpar_abertos(app);
+                app.exit(0)
+            }
             _ => {}
         })
         .on_tray_icon_event(|bandeja, evento| {
@@ -77,7 +80,21 @@ pub fn criar_bandeja<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         construtor = construtor.icon(icone.clone());
     }
     construtor.build(app)?;
+    limpar_anexos_abertos_ao_fechar(app);
     Ok(())
+}
+
+/// Ao fechar a janela principal (fim do app), apaga do disco os anexos que foram
+/// abertos no programa padrão (ficam decifrados em `contas\<id>\abertos`).
+fn limpar_anexos_abertos_ao_fechar<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(janela) = app.get_webview_window("main") {
+        let alca = app.clone();
+        janela.on_window_event(move |evento| {
+            if matches!(evento, tauri::WindowEvent::Destroyed) {
+                crate::documentos::limpar_abertos(&alca);
+            }
+        });
+    }
 }
 
 /// Texto do ícone da bandeja (ex.: saldo do dia e próxima conta).
