@@ -93,6 +93,8 @@ beforeEach(() => {
       }
       case "info_banco":
         return { lancamentos: 3 };
+      case "versao_esquema_app":
+        return 16;
       default:
         return null;
     }
@@ -195,6 +197,38 @@ describe("envio com controle de concorrência", () => {
     outroPcGravaAoTirarCopia = true;
     await expect(resolverConflito("LOCAL")).rejects.toThrow(/Outro computador/);
     expect(nuvem.uploads).toEqual([]);
+  });
+});
+
+describe("versão do esquema na nuvem", () => {
+  it("o envio grava no estado.json a versão do esquema do banco", async () => {
+    await sincronizar();
+    expect(estadoNaNuvem().esquema).toBe(16);
+  });
+
+  it("nuvem com banco de versão mais nova: não baixa e pede para atualizar o app", async () => {
+    gravarEstadoNuvem({ versao: 2, esquema: 17 });
+    nuvem.arquivos.set(ATUAL, texto("banco-novo"));
+    guardarEstadoLocal({ versao_vista: 1, impressao: "local-1", sincronizado_em: "" });
+    await expect(sincronizar()).rejects.toThrow(/Atualize o Dairus neste computador para sincronizar/);
+    expect(chamados.some(([c]) => c === "restaurar_backup" || c === "gravar_backup_baixado")).toBe(false);
+    expect(JSON.parse(localStorage.getItem("sync_ultimo_erro") ?? "{}").mensagem).toMatch(/Atualize o Dairus/);
+  });
+
+  it("nuvem com banco de versão mais nova: também não envia por cima", async () => {
+    gravarEstadoNuvem({ versao: 2, esquema: 99 });
+    guardarEstadoLocal({ versao_vista: 2, impressao: "antiga", sincronizado_em: "" });
+    await expect(sincronizar()).rejects.toThrow(/Atualize o Dairus/);
+    await expect(resolverConflito("LOCAL")).rejects.toThrow(/Atualize o Dairus/);
+    await expect(resolverConflito("NUVEM")).rejects.toThrow(/Atualize o Dairus/);
+    expect(nuvem.uploads).toEqual([]);
+  });
+
+  it("estado antigo (sem esquema) e esquema igual continuam sincronizando", async () => {
+    gravarEstadoNuvem({ versao: 2, esquema: 16 });
+    nuvem.arquivos.set(ATUAL, texto("banco"));
+    guardarEstadoLocal({ versao_vista: 1, impressao: "local-1", sincronizado_em: "" });
+    expect((await sincronizar()).decisao).toBe("BAIXAR");
   });
 });
 

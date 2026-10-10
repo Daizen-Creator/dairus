@@ -43,6 +43,22 @@ export interface EstadoNuvem {
   alterado_em: string;
   dispositivo_id: string;
   dispositivo_nome: string;
+  /** Versão do esquema do banco enviado (número da última migração). Ausente nos envios até a v0.2.5. */
+  esquema?: number;
+}
+
+export const MSG_ATUALIZE = "A nuvem tem dados de uma versão mais nova do Dairus. Atualize o Dairus neste computador para sincronizar.";
+
+let esquemaApp: Promise<number> | null = null;
+/** Versão do esquema que este app entende. */
+const esquemaDoApp = () => (esquemaApp ??= invoke<number>("versao_esquema_app").catch((e) => {
+  esquemaApp = null;
+  throw e;
+}));
+
+/** Para tudo se a nuvem tem um banco de versão mais nova: baixar ou sobrescrever estragaria dados. */
+async function conferirEsquema(remoto: EstadoNuvem | null): Promise<void> {
+  if (remoto?.esquema && remoto.esquema > (await esquemaDoApp())) throw new Error(MSG_ATUALIZE);
 }
 
 export interface EstadoLocal {
@@ -152,6 +168,7 @@ async function enviar(base: string, lido: EstadoNuvem | null): Promise<Envio> {
     alterado_em: new Date().toISOString(),
     dispositivo_id: await idDoDispositivo(),
     dispositivo_nome: nomeDoDispositivo(),
+    esquema: tirada.esquema,
   };
   const antesDoEstado = await mudouDesdeALeitura();
   if (antesDoEstado) return antesDoEstado;
@@ -223,6 +240,8 @@ function sincronizarDeVerdade(): Promise<ResultadoSync> {
     // As preferências da conta vão no banco: copia antes de comparar, para a mudança contar.
     await guardarPreferenciasNoBanco().catch(() => 0);
     const remoto = await lerEstadoNuvem(base);
+    // Nuvem com banco de versão mais nova: não baixa nem envia (pede para atualizar o app).
+    await conferirEsquema(remoto);
     const local = await lerEstadoLocal();
     const impressaoAtual = await impressaoDados();
     const localVazio = (await extras.infoBanco()).lancamentos === 0;
@@ -265,6 +284,7 @@ async function guardarCopiaDaNuvem(base: string): Promise<void> {
 export async function resolverConflito(lado: "NUVEM" | "LOCAL"): Promise<ResultadoSync> {
   const base = await pasta();
   const remoto = await lerEstadoNuvem(base);
+  await conferirEsquema(remoto);
   if (lado === "NUVEM") {
     if (!remoto) throw new Error("Não há dados na nuvem.");
     await baixar(base, remoto);
