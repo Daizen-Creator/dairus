@@ -435,13 +435,6 @@ pub fn ao_sair() {
     }
 }
 
-/// Compatibilidade: baixa e instala em seguida.
-#[tauri::command]
-pub async fn instalar_atualizacao(app: AppHandle, url: String) -> Result<(), String> {
-    let caminho = baixar_atualizacao(app.clone(), url, None).await?;
-    instalar_baixada(app, caminho)
-}
-
 #[cfg(test)]
 mod testes {
     use super::*;

@@ -190,7 +190,6 @@ pub fn run() {
             lancamentos_extras::marcar_extrato_importado,
             lancamentos_extras::caminho_pasta_importar,
             atualizacao::verificar_atualizacao,
-            atualizacao::instalar_atualizacao,
             atualizacao::baixar_atualizacao,
             atualizacao::instalar_baixada,
             atualizacao::instalar_ao_sair,

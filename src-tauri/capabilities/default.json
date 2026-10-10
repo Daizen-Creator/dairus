@@ -41,7 +41,6 @@
     "core:event:default",
     "notification:default",
     "log:default",
-    "autostart:default",
-    "global-shortcut:default"
+    "autostart:default"
   ]
 }
