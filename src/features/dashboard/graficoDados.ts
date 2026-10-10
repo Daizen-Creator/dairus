@@ -71,6 +71,7 @@ const diasEntre = (a: string, b: string) => Math.round((utc(b) - utc(a)) / 86_40
 const inicioDoMes = (d: string) => `${d.slice(0, 7)}-01`;
 const fimDoMes = (d: string) => iso(Date.UTC(+d.slice(0, 4), +d.slice(5, 7), 0) + 12 * 3_600_000);
 const somarMeses = (d: string, n: number) => iso(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1 + n, 1, 12));
+const menorData = (a: string, b: string) => (a < b ? a : b);
 
 export interface Intervalo {
   inicio: string;
@@ -90,10 +91,14 @@ export function intervaloDoPeriodo(p: Periodo, hoje: string): Intervalo & { ante
     case "ano": inicio = `${hoje.slice(0, 4)}-01-01`; break;
   }
   const dias = diasEntre(inicio, hoje) + 1;
-  // Mês e ano comparam com o mesmo trecho do mês/ano anterior (1º a dia de hoje).
+  // Mês e ano comparam com o mesmo trecho do mês/ano anterior (1º a dia de hoje),
+  // sem invadir o mês atual: em 31/03 o "mês anterior" termina em 28/02, não em 03/03.
+  const mesAnterior = somarMeses(hoje, -1);
+  const anoAnterior = +hoje.slice(0, 4) - 1;
   const anterior =
-    p === "mes" ? { inicio: somarMeses(hoje, -1), fim: somarDias(somarMeses(hoje, -1), dias - 1) }
-    : p === "ano" ? { inicio: `${+hoje.slice(0, 4) - 1}-01-01`, fim: `${+hoje.slice(0, 4) - 1}${hoje.slice(4)}` }
+    p === "mes" ? { inicio: mesAnterior, fim: menorData(somarDias(mesAnterior, dias - 1), fimDoMes(mesAnterior)) }
+    // 29/02 num ano sem bissexto vira 28/02 (nunca uma data inexistente).
+    : p === "ano" ? { inicio: `${anoAnterior}-01-01`, fim: menorData(`${anoAnterior}${hoje.slice(4)}`, fimDoMes(`${anoAnterior}-${hoje.slice(5, 7)}-01`)) }
     : { inicio: somarDias(inicio, -dias), fim: somarDias(inicio, -1) };
   return { inicio, fim: hoje, anterior };
 }

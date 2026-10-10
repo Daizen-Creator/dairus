@@ -17,4 +17,18 @@ describe("widgets do início", () => {
     const l = { ...lancamento({ id: "n", data: "2026-10-02", descricao: "Netflix" }, 3990), etiqueta: "ASSINATURA" as const };
     expect(assinaturasDoMes([l], "2026-10-07")).toEqual({ total: 3990, quantidade: 1 });
   });
+
+  it("assinatura estornada (e o estorno dela) não entra na soma do mês", () => {
+    const assin = (id: string, valor: number, extra: Partial<Parameters<typeof lancamento>[0]> = {}) =>
+      ({ ...lancamento({ id, data: "2026-10-02", descricao: id, ...extra }, valor), etiqueta: "ASSINATURA" as const });
+    const netflix = assin("netflix", 3990);
+    const spotify = assin("spotify", 2190);
+    const cobrancaIndevida = assin("indevida", 5000);
+    // O estorno copia a etiqueta da cobrança original, mas não pode contar como assinatura.
+    const estorno = { ...assin("est", 5000, { origem: "ESTORNO", estornado_de: "indevida" }), origem: "ESTORNO" };
+    expect(assinaturasDoMes([netflix, spotify, cobrancaIndevida, estorno], "2026-10-07")).toEqual({ total: 3990 + 2190, quantidade: 2 });
+    // Estorno de outro mês também tira a cobrança: o que vale é o vínculo, não a data do estorno.
+    const estornoDepois = { ...assin("est2", 3990, { origem: "ESTORNO", estornado_de: "netflix", data: "2026-11-02" }) };
+    expect(assinaturasDoMes([netflix, spotify, estornoDepois], "2026-10-07")).toEqual({ total: 2190, quantidade: 1 });
+  });
 });
