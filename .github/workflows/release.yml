@@ -67,11 +67,17 @@ jobs:
         shell: bash
         run: |
           versao="${GITHUB_REF_NAME#v}"
-          awk -v v="$versao" '
-            /^## / { dentro = index($0, v) > 0; next }
+          # Título EXATO: "## 0.2.5" não casa com "## 0.2.50" nem com "## 0.2.5-beta.1".
+          awk -v titulo="## $versao" '
+            { sub(/[ \t\r]+$/, "") }
+            $0 == titulo { dentro = 1; next }
+            /^## / { dentro = 0 }
             dentro { print }
           ' CHANGELOG.md > notas.md
-          [ -s notas.md ] || echo "Versão $versao." > notas.md
+          if ! grep -q '[^[:space:]]' notas.md; then
+            echo "::error::CHANGELOG.md não tem a seção \"## $versao\" com texto."
+            exit 1
+          fi
           {
             echo "NOTAS<<FIM_DAS_NOTAS"
             cat notas.md
@@ -88,7 +94,8 @@ jobs:
           releaseBody: ${{ env.NOTAS }}
           # Rascunho até o fim: só vira pública depois do .sha256 e da reserva no Supabase.
           releaseDraft: true
-          prerelease: false
+          # Tag com "-" (v0.3.0-beta.1) vira pré-lançamento: só chega a quem ligou o canal beta.
+          prerelease: ${{ contains(github.ref_name, '-') }}
 
       # SHA-256 do instalador: o app confere antes de instalar (o arquivo .sha256 vai junto na release).
       # A release ainda é rascunho aqui, então ninguém recebe a versão sem o .sha256.
@@ -106,8 +113,10 @@ jobs:
           echo "NOME_INSTALADOR=$nome" >> "$GITHUB_ENV"
           echo "SHA_INSTALADOR=$(cut -d' ' -f1 "$nome.sha256")" >> "$GITHUB_ENV"
 
-      # Reserva no Supabase (opcional): só roda se o segredo SUPABASE_SERVICE_ROLE_KEY existir.
+      # Reserva no Supabase (opcional): só roda se o segredo SUPABASE_SERVICE_ROLE_KEY existir
+      # e só em versão estável (o latest.json do Supabase nunca anuncia pré-lançamento).
       - name: Espelhar no Supabase Storage
+        if: ${{ !contains(github.ref_name, '-') }}
         shell: bash
         env:
           CHAVE: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

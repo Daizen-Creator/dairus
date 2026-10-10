@@ -53,10 +53,41 @@ só funcionam em compilação de desenvolvimento; o app instalado as ignora.
 ### 3. Ponta a ponta, com segurança (versão beta)
 
 1. Instale a versão atual pelo instalador da release.
-2. Publique uma versão de teste como pré-lançamento: tag `v0.2.4-beta.1`, marcada como *pre-release*.
+2. Prepare a versão de teste, com o sufixo `-beta.N` e **maior que a instalada**:
+   `npm run versao -- 0.2.6-beta.1` (atualiza `package.json`, `package-lock.json`, `tauri.conf.json`,
+   `Cargo.toml` e `Cargo.lock`). No `CHANGELOG.md`, crie a seção com o título exato `## 0.2.6-beta.1`.
+   Faça commit e `git tag v0.2.6-beta.1 && git push --tags`.
+3. O workflow "Publicar versão" confere a tag, roda os testes e publica a release como **pré-lançamento**
+   (qualquer tag com `-` é pré-lançamento) e **não** copia nada para o Supabase nem atualiza o `latest.json`.
    Quem não ligou o canal beta não recebe.
-3. No Dairus instalado, ligue Configurações → "Receber versões de teste (beta)" e reabra o app.
-4. Confira a tela: baixar → conferir → backup → instalar → reabrir. Depois, em Configurações, veja a versão nova.
+4. No Dairus instalado, ligue Configurações → "Receber versões de teste (beta)" e reabra o app.
+5. Confira a tela: baixar → conferir → backup → instalar → reabrir. Depois, em Configurações, veja a versão nova.
+
+**Limitação conhecida:** o app compara só `X.Y.Z` e descarta o sufixo (`versao()` em `atualizacao.rs`;
+`0.3.0-beta.1` conta como `0.3.0`). Por isso:
+
+- `0.3.0-beta.1` → `0.3.0-beta.2` **não** é oferecida como atualização, e quem está num beta de `0.3.0` **não**
+  recebe a estável `0.3.0`. Nesses casos instale o instalador da release manualmente por cima (os dados ficam).
+- Para o beta ser oferecido, o `X.Y.Z` dele precisa ser maior que o da versão instalada
+  (de `0.2.5` para `0.2.6-beta.1`, sim).
+
+Corrigir isso exige comparar o sufixo no Rust (`versao()` e `novidade_de()`); fica para uma versão futura.
+
+## Publicar uma versão (workflow `release.yml`)
+
+A tag `vX.Y.Z` (ou `vX.Y.Z-beta.N`) dispara o workflow **Publicar versão**, em dois jobs:
+
+1. **verificar** (falha cedo, sem gerar instalador): confere se a tag é igual à versão de `package.json`,
+   `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` e `src-tauri/tauri.conf.json`; se o
+   `CHANGELOG.md` tem a seção `## X.Y.Z` (título exato) com texto; e roda `tsc`, `vitest` e `cargo test`.
+   O mesmo teste de versão roda no seu computador: `node scripts/conferir-versao.mjs vX.Y.Z`.
+2. **windows** (só roda se o anterior passou): gera o instalador, cria a release como **rascunho**, envia o
+   `.sha256`, copia para o Supabase (só em versão estável) e, por último, torna a release pública
+   (`gh release edit --draft=false`).
+
+Se um passo falhar, a release fica como rascunho: o app instalado não a enxerga e ninguém recebe uma versão sem
+`.sha256`. Corrija a causa e use "Re-run failed jobs" na execução (ou apague o rascunho e a tag e publique de
+novo). Depois de repetir, confira em Releases se não sobrou um rascunho duplicado.
 
 ## Diagnóstico
 
