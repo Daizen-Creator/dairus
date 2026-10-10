@@ -11,8 +11,17 @@ function normalizar(texto: string): string {
   return texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 }
 
-/** Converte "1.234,56", "1234.56", "-R$ 10,00" ou "(10,00)" em centavos com sinal. */
-export function valorTextoParaCentavos(bruto: string): number | null {
+/**
+ * Converte "1.234,56", "1234.56", "1.234", "-R$ 10,00" ou "(10,00)" em centavos com sinal.
+ *
+ * Regras (a tabela de casos está em importacao.test.ts):
+ *  - vírgula é sempre decimal ("1,234" = R$ 1,23);
+ *  - com vírgula e ponto juntos, o último é o decimal ("1.234,56" e "1,234.56");
+ *  - ponto repetido é milhar ("1.234.567");
+ *  - ponto único com exatamente 3 dígitos depois e 1 a 3 antes (fora "0") é milhar no CSV
+ *    ("1.234" = R$ 1.234,00); no OFX o ponto é sempre decimal ("1.234" = R$ 1,23).
+ */
+export function valorTextoParaCentavos(bruto: string, formato: "csv" | "ofx" = "csv"): number | null {
   let t = bruto.trim();
   if (!t) return null;
   let negativo = false;
@@ -22,14 +31,37 @@ export function valorTextoParaCentavos(bruto: string): number | null {
   }
   if (/-/.test(t)) negativo = true;
   t = t.replace(/[^\d.,]/g, "");
-  if (!t) return null;
+  if (!/\d/.test(t)) return null;
+
   const ultimaVirgula = t.lastIndexOf(",");
   const ultimoPonto = t.lastIndexOf(".");
-  if (ultimaVirgula > ultimoPonto) t = t.replace(/\./g, "").replace(",", ".");
-  else t = t.replace(/,/g, "");
-  const n = Number.parseFloat(t);
-  if (!Number.isFinite(n)) return null;
-  const centavos = Math.round(n * 100);
+  const pontos = (t.match(/\./g) ?? []).length;
+  let inteira: string;
+  let decimal = "";
+  if (ultimaVirgula >= 0 && ultimoPonto >= 0) {
+    // Os dois aparecem: o que vem por último é o decimal, o outro é milhar.
+    const sep = Math.max(ultimaVirgula, ultimoPonto);
+    inteira = t.slice(0, sep).replace(/[.,]/g, "");
+    decimal = t.slice(sep + 1).replace(/[.,]/g, "");
+  } else if (ultimaVirgula >= 0) {
+    // Só vírgula: decimal (repetida, não faz sentido; usa a última).
+    inteira = t.slice(0, ultimaVirgula).replace(/,/g, "");
+    decimal = t.slice(ultimaVirgula + 1);
+  } else if (ultimoPonto >= 0) {
+    const antes = t.slice(0, ultimoPonto);
+    const depois = t.slice(ultimoPonto + 1);
+    const milhar = pontos > 1 || (formato === "csv" && /^\d{3}$/.test(depois) && /^[1-9]\d{0,2}$/.test(antes));
+    if (milhar) inteira = t.replace(/\./g, "");
+    else {
+      inteira = antes;
+      decimal = depois;
+    }
+  } else inteira = t;
+
+  if (!/^\d*$/.test(inteira) || !/^\d*$/.test(decimal)) return null;
+  // Aritmética de inteiros: sem erro de ponto flutuante (0,285 -> 29 centavos, arredonda para cima).
+  const centavos = Number(inteira || "0") * 100 + Number(decimal.slice(0, 2).padEnd(2, "0")) + (Number(decimal[2] ?? "0") >= 5 ? 1 : 0);
+  if (!Number.isFinite(centavos)) return null;
   return negativo ? -centavos : centavos;
 }
 
@@ -50,7 +82,7 @@ export function lerOfx(texto: string): LinhaExtrato[] {
   for (const bloco of blocos) {
     const campo = (tag: string) => bloco.match(new RegExp(`<${tag}>([^<\\r\\n]*)`, "i"))?.[1]?.trim() ?? "";
     const data = dataTextoParaISO(campo("DTPOSTED"));
-    const valor = valorTextoParaCentavos(campo("TRNAMT"));
+    const valor = valorTextoParaCentavos(campo("TRNAMT"), "ofx");
     const descricao = campo("MEMO") || campo("NAME") || "Lançamento importado";
     if (data && valor !== null && valor !== 0) linhas.push({ data, descricao, valorCentavos: valor });
   }

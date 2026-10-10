@@ -33,7 +33,9 @@ export function proximosRecebimentos(agendamentos: Agendamento[], hoje: string, 
 
 export function assinaturasDoMes(lancamentos: Lancamento[], hoje: string): { total: number; quantidade: number } {
   const mes = hoje.slice(0, 7);
-  const ls = lancamentos.filter((l) => l.etiqueta === "ASSINATURA" && l.data.startsWith(mes) && l.origem !== "ESTORNO");
+  // Assinatura estornada (cobrança cancelada) e o próprio estorno não contam.
+  const estornados = new Set(lancamentos.map((l) => l.estornado_de).filter(Boolean));
+  const ls = lancamentos.filter((l) => l.etiqueta === "ASSINATURA" && l.data.startsWith(mes) && l.origem !== "ESTORNO" && !l.estornado_de && !estornados.has(l.id));
   return { total: ls.reduce((s, l) => s + l.partidas.filter((p) => p.tipo === "DEBITO").reduce((a, p) => a + p.valor_centavos, 0), 0), quantidade: ls.length };
 }
 
