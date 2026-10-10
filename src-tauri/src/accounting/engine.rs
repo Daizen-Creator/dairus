@@ -776,28 +776,67 @@ pub fn listar_lancamentos(conn: &Connection, limite: i64) -> Resultado<Vec<Lanca
         })?
         .collect::<rusqlite::Result<_>>()?;
     drop(stmt);
+    montar_lancamentos(conn, cabecalhos)
+}
+
+/// Um lançamento pelo id (com as partidas), sem carregar o banco inteiro.
+pub fn carregar_lancamento(conn: &Connection, lancamento_id: &str) -> Resultado<Option<Lancamento>> {
+    let cabecalho: Option<CabecalhoLancamento> = conn
+        .query_row(
+            "SELECT id, data, descricao, observacao, origem, estornado_de, etiqueta, parcelas, corrige
+             FROM lancamentos WHERE id = ?1",
+            [lancamento_id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                ))
+            },
+        )
+        .optional()?;
+    Ok(cabecalho.map(|c| montar_lancamentos(conn, vec![c])).transpose()?.and_then(|mut v| v.pop()))
+}
+
+/// Junta as partidas aos cabeçalhos com UMA consulta (em vez de uma por
+/// lançamento), mantendo a ordem dos cabeçalhos e a ordem de gravação das partidas.
+fn montar_lancamentos(conn: &Connection, cabecalhos: Vec<CabecalhoLancamento>) -> Resultado<Vec<Lancamento>> {
+    let ids: Vec<&str> = cabecalhos.iter().map(|c| c.0.as_str()).collect();
+    let ids_json = serde_json::to_string(&ids).map_err(|e| AccountingError::DadoInvalido(e.to_string()))?;
+    let mut por_lancamento: std::collections::HashMap<String, Vec<Partida>> = std::collections::HashMap::with_capacity(ids.len());
+    {
+        let mut stmt = conn.prepare_cached(
+            "SELECT lancamento_id, id, conta_id, tipo, valor_centavos FROM partidas
+             WHERE lancamento_id IN (SELECT value FROM json_each(?1))
+             ORDER BY rowid",
+        )?;
+        let linhas = stmt.query_map([&ids_json], |row| {
+            let tipo_str: String = row.get(3)?;
+            Ok((
+                row.get::<_, String>(0)?,
+                Partida {
+                    id: row.get(1)?,
+                    conta_id: row.get(2)?,
+                    tipo: if tipo_str == "DEBITO" { TipoPartida::Debito } else { TipoPartida::Credito },
+                    valor_centavos: row.get(4)?,
+                },
+            ))
+        })?;
+        for linha in linhas {
+            let (lancamento_id, partida) = linha?;
+            por_lancamento.entry(lancamento_id).or_default().push(partida);
+        }
+    }
 
     let mut resultado = Vec::with_capacity(cabecalhos.len());
     for (id, data, descricao, observacao, origem, estornado_de, etiqueta, parcelas, corrige) in cabecalhos {
-        let mut stmt_partidas = conn.prepare(
-            "SELECT id, conta_id, tipo, valor_centavos FROM partidas WHERE lancamento_id = ?1",
-        )?;
-        let partidas: Vec<Partida> = stmt_partidas
-            .query_map([&id], |row| {
-                let tipo_str: String = row.get(2)?;
-                Ok(Partida {
-                    id: row.get(0)?,
-                    conta_id: row.get(1)?,
-                    tipo: if tipo_str == "DEBITO" {
-                        TipoPartida::Debito
-                    } else {
-                        TipoPartida::Credito
-                    },
-                    valor_centavos: row.get(3)?,
-                })
-            })?
-            .collect::<rusqlite::Result<_>>()?;
-
+        let partidas = por_lancamento.remove(&id).unwrap_or_default();
         resultado.push(Lancamento {
             id,
             data,
@@ -1229,6 +1268,80 @@ mod testes_agendamento {
         let ag = criar_agendamento(&mut conn, novo(100, None)).unwrap();
         excluir_agendamento(&mut conn, &ag.id).unwrap();
         assert!(listar_agendamentos(&conn).unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod testes_listagem {
+    use super::*;
+    use crate::db::{abrir_conexao, executar_migracoes};
+
+    /// A versão antiga (uma consulta de partidas por lançamento), para comparar.
+    fn listar_um_a_um(conn: &Connection, limite: i64) -> Vec<Lancamento> {
+        let ids: Vec<String> = conn
+            .prepare("SELECT id FROM lancamentos ORDER BY data DESC, criado_em DESC LIMIT ?1")
+            .unwrap()
+            .query_map([limite], |r| r.get(0))
+            .unwrap()
+            .map(|x| x.unwrap())
+            .collect();
+        ids.iter()
+            .map(|id| {
+                let mut l = carregar_lancamento(conn, id).unwrap().unwrap();
+                l.partidas = conn
+                    .prepare("SELECT id, conta_id, tipo, valor_centavos FROM partidas WHERE lancamento_id = ?1")
+                    .unwrap()
+                    .query_map([id], |row| {
+                        let t: String = row.get(2)?;
+                        Ok(Partida {
+                            id: row.get(0)?,
+                            conta_id: row.get(1)?,
+                            tipo: if t == "DEBITO" { TipoPartida::Debito } else { TipoPartida::Credito },
+                            valor_centavos: row.get(3)?,
+                        })
+                    })
+                    .unwrap()
+                    .map(|x| x.unwrap())
+                    .collect();
+                l
+            })
+            .collect()
+    }
+
+    #[test]
+    fn listagem_com_uma_consulta_e_igual_a_antiga() {
+        let mut conn = abrir_conexao(std::path::Path::new(":memory:")).unwrap();
+        executar_migracoes(&conn).unwrap();
+        for (i, valor) in [1_000, 2_500, 333, 7_700, 12].into_iter().enumerate() {
+            let l = criar_lancamento(
+                &mut conn,
+                NovoLancamentoInput {
+                    data: format!("2026-09-{:02}", 10 + i % 3),
+                    descricao: format!("Compra {i}"),
+                    observacao: None,
+                    origem: "MANUAL".into(),
+                    etiqueta: None,
+                    parcelas: None,
+                    partidas: vec![
+                        PartidaInput { conta_id: "despesa-alimentacao".into(), tipo: TipoPartida::Debito, valor_centavos: valor },
+                        PartidaInput { conta_id: "despesa-outras".into(), tipo: TipoPartida::Debito, valor_centavos: 1 },
+                        PartidaInput { conta_id: "ativo-dinheiro".into(), tipo: TipoPartida::Credito, valor_centavos: valor + 1 },
+                    ],
+                },
+            )
+            .unwrap();
+            if i == 2 {
+                estornar_lancamento(&mut conn, &l.id).unwrap();
+            }
+        }
+        for limite in [0, 1, 3, 100, i64::MAX] {
+            let nova = serde_json::to_value(listar_lancamentos(&conn, limite).unwrap()).unwrap();
+            let antiga = serde_json::to_value(listar_um_a_um(&conn, limite)).unwrap();
+            assert_eq!(nova, antiga, "limite {limite}");
+        }
+        assert_eq!(listar_lancamentos(&conn, 100).unwrap().len(), 6);
+        assert!(listar_lancamentos(&conn, 100).unwrap().iter().all(|l| l.partidas.len() == 3));
+        assert!(carregar_lancamento(&conn, "nao-existe").unwrap().is_none());
     }
 }
 

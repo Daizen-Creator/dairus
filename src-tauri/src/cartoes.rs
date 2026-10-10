@@ -257,11 +257,7 @@ pub fn reembolsar(conn: &mut Connection, compra_id: &str, valor: i64, data: &str
     chrono::NaiveDate::parse_from_str(data, "%Y-%m-%d").map_err(|_| "Data inválida.".to_string())?;
     // Leitura, lançamento e vínculo na mesma transação: tudo ou nada.
     let tx = conn.transaction().map_err(e)?;
-    let compra = engine::listar_lancamentos(&tx, i64::MAX)
-        .map_err(String::from)?
-        .into_iter()
-        .find(|l| l.id == compra_id)
-        .ok_or("Compra não encontrada.")?;
+    let compra = engine::carregar_lancamento(&tx, compra_id).map_err(String::from)?.ok_or("Compra não encontrada.")?;
     let estornada: bool = tx
         .query_row("SELECT EXISTS(SELECT 1 FROM lancamentos WHERE estornado_de = ?1)", [compra_id], |r| r.get(0))
         .map_err(e)?;
