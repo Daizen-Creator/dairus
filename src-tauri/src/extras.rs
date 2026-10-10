@@ -1159,8 +1159,10 @@ fn validar_arquivo_backup(caminho: &Path) -> Res<()> {
 
 /// Restaura um backup da pasta de backups. Valida a integridade antes e
 /// guarda uma cópia de segurança do estado atual, para poder desfazer.
+/// Na sincronização, `impressao_esperada` é a impressão dos dados quando se decidiu baixar:
+/// se mudaram desde então, nada é substituído (erro começando com `DADOS_MUDARAM`).
 #[tauri::command]
-pub fn restaurar_backup(app: AppHandle, state: State<AppState>, nome: String) -> Res<InfoBackup> {
+pub fn restaurar_backup(app: AppHandle, state: State<AppState>, nome: String, impressao_esperada: Option<String>) -> Res<InfoBackup> {
     let nome = nome_seguro(&nome)?;
     let pasta = pasta_dairus(&app, "Backups")?;
     let origem = pasta.join(nome);
@@ -1170,7 +1172,7 @@ pub fn restaurar_backup(app: AppHandle, state: State<AppState>, nome: String) ->
     validar_arquivo_backup(&origem)?;
 
     let mut conn = state.conn.lock().expect("mutex envenenado");
-    let seguranca = restaurar_na_conexao(&mut conn, &origem, &pasta)?;
+    let seguranca = restaurar_na_conexao(&mut conn, &origem, &pasta, impressao_esperada.as_deref())?;
     crate::cripto::persistir(&conn, true)?;
     Ok(seguranca)
 }
@@ -1178,11 +1180,21 @@ pub fn restaurar_backup(app: AppHandle, state: State<AppState>, nome: String) ->
 /// O miolo de `restaurar_backup` (testável sem o app): confere a origem, guarda a cópia
 /// "antes-de-restaurar" e só então substitui o banco aberto. Gravar o arquivo cifrado
 /// (se a criptografia estiver ligada) fica com quem chama.
-fn restaurar_na_conexao(conn: &mut Connection, origem: &Path, pasta: &Path) -> Res<InfoBackup> {
+fn restaurar_na_conexao(conn: &mut Connection, origem: &Path, pasta: &Path, impressao_esperada: Option<&str>) -> Res<InfoBackup> {
     // Funciona com backup cifrado ou não: abre a origem (na memória, se cifrada).
     let fonte = crate::cripto::abrir_arquivo(origem)?;
     // Banco de uma versão mais nova do Dairus: recusa ANTES de mexer no atual.
     crate::db::recusar_banco_mais_novo(&fonte)?;
+    // Sincronização: os dados daqui mudaram depois da decisão de baixar? Então é conflito.
+    // Conferido com a conexão já travada: nenhuma edição entra entre a conferência e a troca.
+    if let Some(esperada) = impressao_esperada {
+        if crate::sincronizacao::calcular_impressao(conn).map_err(e)? != esperada {
+            return Err(format!(
+                "{}: os dados deste computador mudaram durante a sincronização; nada foi substituído.",
+                crate::sincronizacao::DADOS_MUDARAM
+            ));
+        }
+    }
     let seguranca = gravar_backup(conn, pasta, "antes-de-restaurar")?;
     {
         let copia = rusqlite::backup::Backup::new(&fonte, conn).map_err(e)?;
@@ -1283,7 +1295,7 @@ mod testes_backup {
             .unwrap();
         lancar(&mut conn, 2500);
 
-        let erro = restaurar_na_conexao(&mut conn, &origem, &pasta).err().expect("devia recusar");
+        let erro = restaurar_na_conexao(&mut conn, &origem, &pasta, None).err().expect("devia recusar");
         assert!(erro.contains("Atualize o Dairus"), "{erro}");
         assert_eq!(engine::saldo_conta(&conn, "ativo-dinheiro").unwrap(), -3500, "o banco atual não pode mudar");
         let antes: Vec<_> = std::fs::read_dir(&pasta)
@@ -1296,6 +1308,27 @@ mod testes_backup {
     }
 
     #[test]
+    fn restaurar_da_sincronizacao_recusa_se_os_dados_mudaram_depois_da_decisao() {
+        let pasta = pasta_temp("mudou");
+        let mut conn = banco_com_despesa();
+        lancar(&mut conn, 1000);
+        let origem = pasta.join("sincronizado.db");
+        conn.backup(rusqlite::MAIN_DB, &origem, None).unwrap();
+        let na_decisao = crate::sincronizacao::calcular_impressao(&conn).unwrap();
+        lancar(&mut conn, 2500); // edição feita entre a decisão e a troca
+
+        let erro = restaurar_na_conexao(&mut conn, &origem, &pasta, Some(&na_decisao)).err().expect("devia recusar");
+        assert!(erro.starts_with(crate::sincronizacao::DADOS_MUDARAM), "{erro}");
+        assert_eq!(engine::saldo_conta(&conn, "ativo-dinheiro").unwrap(), -3500, "nada foi substituído");
+
+        // Sem mudança, a impressão confere e restaura.
+        let agora = crate::sincronizacao::calcular_impressao(&conn).unwrap();
+        restaurar_na_conexao(&mut conn, &origem, &pasta, Some(&agora)).unwrap();
+        assert_eq!(engine::saldo_conta(&conn, "ativo-dinheiro").unwrap(), -1000);
+        std::fs::remove_dir_all(pasta).ok();
+    }
+
+    #[test]
     fn restaurar_na_conexao_devolve_o_estado_do_backup_e_guarda_o_atual() {
         let pasta = pasta_temp("restaurar");
         let mut conn = banco_com_despesa();
@@ -1303,7 +1336,7 @@ mod testes_backup {
         let origem = pasta.join("dairus-ok.db");
         conn.backup(rusqlite::MAIN_DB, &origem, None).unwrap();
         lancar(&mut conn, 2500);
-        let seguranca = restaurar_na_conexao(&mut conn, &origem, &pasta).unwrap();
+        let seguranca = restaurar_na_conexao(&mut conn, &origem, &pasta, None).unwrap();
         assert!(seguranca.nome.starts_with("antes-de-restaurar"));
         assert_eq!(engine::saldo_conta(&conn, "ativo-dinheiro").unwrap(), -1000);
         std::fs::remove_dir_all(pasta).ok();

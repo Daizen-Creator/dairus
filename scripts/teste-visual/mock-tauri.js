@@ -179,6 +179,9 @@
     pasta_de_logs: () => "C:/logs",
     ler_log: () => "",
     impressao_dados: () => "abc",
+    // Sincronização: cópia do banco + impressão tiradas juntas, e a versão do esquema do app.
+    copia_e_impressao_sync: () => ({ copia: [83, 81, 76, 105, 116, 101], impressao: "abc", esquema: 16 }),
+    versao_esquema_app: () => 16,
     "plugin:app|version": () => "0.2.2",
     "plugin:notification|is_permission_granted": () => true,
     "plugin:autostart|is_enabled": () => false,

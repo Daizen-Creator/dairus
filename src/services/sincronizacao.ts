@@ -106,13 +106,26 @@ async function lerEstadoNuvem(base: string): Promise<EstadoNuvem | null> {
 
 export const impressaoDados = () => invoke<string>("impressao_dados");
 
+/** Cópia do banco e impressão dos mesmos dados, tiradas juntas no Rust (sob o mesmo lock). */
+interface CopiaSync {
+  copia: number[];
+  impressao: string;
+  esquema: number;
+}
+
+/** Começo do erro de `restaurar_backup` quando os dados daqui mudaram depois da decisão de baixar. */
+const DADOS_MUDARAM = "DADOS_MUDARAM";
+
 async function enviar(base: string, versaoAnterior: number): Promise<EstadoNuvem> {
   await guardarPreferenciasNoBanco().catch(() => 0);
-  const copia = new Uint8Array(await invoke<number[]>("gerar_copia_sync"));
+  // A impressão gravada no estado local descreve exatamente a cópia enviada: uma edição
+  // feita durante o envio fica de fora das duas e vai na próxima rodada.
+  const tirada = await invoke<CopiaSync>("copia_e_impressao_sync");
+  const copia = new Uint8Array(tirada.copia);
+  const impressao = tirada.impressao;
   if (copia.byteLength > LIMITE_NUVEM_BYTES) {
     throw new Error(`O banco tem ${(copia.byteLength / 1_048_576).toFixed(1).replace(".", ",")} MB e o limite da nuvem é 50 MB. Apague anexos grandes (em Garantias e documentos) ou use backup local.`);
   }
-  const impressao = await impressaoDados();
   const { error: e1 } = await supabase.storage
     .from(BUCKET)
     .upload(`${base}/atual.db`, new Blob([copia], { type: BINARIO }), { upsert: true, contentType: BINARIO });
@@ -131,16 +144,31 @@ async function enviar(base: string, versaoAnterior: number): Promise<EstadoNuvem
   return estado;
 }
 
-async function baixar(base: string, remoto: EstadoNuvem): Promise<void> {
+/**
+ * Baixa a versão da nuvem e troca os dados deste computador por ela.
+ * Com `impressaoEsperada` (sincronização automática), o Rust confere, já com o banco
+ * travado, se os dados daqui continuam como estavam na decisão; se mudaram, nada é
+ * substituído e devolve false (é um conflito).
+ */
+async function baixar(base: string, remoto: EstadoNuvem, impressaoEsperada?: string): Promise<boolean> {
   const { data, error } = await supabase.storage.from(BUCKET).download(`${base}/atual.db`);
   if (error || !data) throw new Error(error?.message ?? "Falha ao baixar a cópia da nuvem.");
   const carimbo = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
   const info = await extras.gravarBackupBaixado(`sincronizado-${carimbo}.db`, new Uint8Array(await data.arrayBuffer()));
   // restaurar_backup guarda antes uma cópia "antes-de-restaurar" do estado atual.
-  await extras.restaurarBackup(info.nome);
+  try {
+    await extras.restaurarBackup(info.nome, impressaoEsperada);
+  } catch (e) {
+    if (String(e instanceof Error ? e.message : e).startsWith(DADOS_MUDARAM)) {
+      await extras.excluirBackup(info.nome).catch(() => {});
+      return false;
+    }
+    throw e;
+  }
   await extras.excluirBackup(info.nome).catch(() => {});
   await extras.aplicarRetencao((await lerPreferencia<number>("backup_retencao")) ?? 10).catch(() => 0);
   await salvarEstadoLocal({ versao_vista: remoto.versao, impressao: await impressaoDados(), sincronizado_em: new Date().toISOString() });
+  return true;
 }
 
 export const lerEstadoLocal = () => lerPreferencia<EstadoLocal>("sync_estado");
@@ -182,7 +210,8 @@ function sincronizarDeVerdade(): Promise<ResultadoSync> {
       return { decisao, remoto: novo, aplicouRemoto: false };
     }
     if (decisao === "BAIXAR" && remoto) {
-      await baixar(base, remoto);
+      // Os dados daqui mudaram entre a decisão e a troca: os dois lados mudaram, é conflito.
+      if (!(await baixar(base, remoto, impressaoAtual))) return { decisao: "CONFLITO", remoto, aplicouRemoto: false };
       return { decisao, remoto, aplicouRemoto: true };
     }
     if (decisao === "NADA" && local) await salvarEstadoLocal({ ...local, sincronizado_em: new Date().toISOString() });

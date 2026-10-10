@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { decidir, resolverConflito, traduzirErroSync, type EstadoLocal, type EstadoNuvem } from "./sincronizacao";
+import { decidir, resolverConflito, sincronizar, traduzirErroSync, type EstadoLocal, type EstadoNuvem } from "./sincronizacao";
 
 // Nuvem falsa (Supabase Storage) e backend Rust simulado.
 const nuvem = vi.hoisted(() => ({
@@ -45,7 +45,11 @@ const estadoNaNuvem = () => JSON.parse(new TextDecoder().decode(nuvem.arquivos.g
 /** Comandos Rust chamados nesta rodada (nome → argumentos). */
 let chamados: Array<[string, unknown]> = [];
 let impressaoLocal = "local-1";
+/** Impressão que vem junto com a cópia (null = a mesma do banco). */
+let impressaoDaCopia: string | null = null;
 let falhaGravarBackup: string | null = null;
+/** Simula uma edição feita pela pessoa enquanto o download acontece. */
+let editarDuranteODownload = false;
 
 beforeEach(() => {
   nuvem.arquivos.clear();
@@ -54,7 +58,9 @@ beforeEach(() => {
   nuvem.uploads.length = 0;
   chamados = [];
   impressaoLocal = "local-1";
+  impressaoDaCopia = null;
   falhaGravarBackup = null;
+  editarDuranteODownload = false;
   invocar.mockReset();
   invocar.mockImplementation(async (comando: string, args?: unknown) => {
     chamados.push([comando, args]);
@@ -65,11 +71,18 @@ beforeEach(() => {
         return {};
       case "impressao_dados":
         return impressaoLocal;
-      case "gerar_copia_sync":
-        return Array.from(texto("banco-local"));
+      case "copia_e_impressao_sync":
+        return { copia: Array.from(texto("banco-local")), impressao: impressaoDaCopia ?? impressaoLocal, esquema: 16 };
       case "gravar_backup_baixado":
         if (falhaGravarBackup) throw falhaGravarBackup;
+        if (editarDuranteODownload) impressaoLocal = "local-editado";
         return { nome: (args as { nome: string }).nome, tamanho_bytes: 1, criado_em: "" };
+      case "restaurar_backup": {
+        const { impressaoEsperada } = args as { impressaoEsperada: string | null };
+        if (impressaoEsperada && impressaoEsperada !== impressaoLocal) throw "DADOS_MUDARAM: os dados deste computador mudaram";
+        impressaoLocal = "da-nuvem";
+        return { nome: "antes-de-restaurar-x.db", tamanho_bytes: 1, criado_em: "" };
+      }
       case "info_banco":
         return { lancamentos: 3 };
       default:
@@ -93,6 +106,45 @@ describe("decisão da sincronização", () => {
     expect(decidir({ local: local(2, "a"), remoto: remoto(2), impressaoAtual: "b", localVazio: false })).toBe("ENVIAR");
     expect(decidir({ local: local(2, "a"), remoto: remoto(3), impressaoAtual: "a", localVazio: false })).toBe("BAIXAR");
     expect(decidir({ local: local(2, "a"), remoto: remoto(3), impressaoAtual: "b", localVazio: false })).toBe("CONFLITO");
+  });
+});
+
+const guardarEstadoLocal = (e: EstadoLocal) => localStorage.setItem("sync_estado", JSON.stringify(e));
+const estadoLocal = () => JSON.parse(localStorage.getItem("sync_estado") ?? "null") as EstadoLocal | null;
+
+describe("sincronização atômica", () => {
+  it("ao enviar, a impressão guardada é a da cópia enviada (tiradas juntas)", async () => {
+    gravarEstadoNuvem({ versao: 1 });
+    guardarEstadoLocal({ versao_vista: 1, impressao: "antiga", sincronizado_em: "" });
+    impressaoDaCopia = "da-copia";
+    const r = await sincronizar();
+    expect(r.decisao).toBe("ENVIAR");
+    expect(chamados.some(([c]) => c === "gerar_copia_sync")).toBe(false);
+    expect(estadoLocal()?.impressao).toBe("da-copia");
+    expect(estadoLocal()?.versao_vista).toBe(2);
+  });
+
+  it("ao baixar, se os dados daqui mudaram depois da decisão, vira conflito e nada é trocado", async () => {
+    gravarEstadoNuvem({ versao: 2 });
+    nuvem.arquivos.set(ATUAL, texto("banco-da-nuvem"));
+    guardarEstadoLocal({ versao_vista: 1, impressao: "local-1", sincronizado_em: "" });
+    editarDuranteODownload = true;
+    const r = await sincronizar();
+    expect(r).toMatchObject({ decisao: "CONFLITO", aplicouRemoto: false });
+    const restaurar = chamados.find(([c]) => c === "restaurar_backup");
+    expect((restaurar?.[1] as { impressaoEsperada: string }).impressaoEsperada).toBe("local-1");
+    expect(impressaoLocal).toBe("local-editado");
+    expect(chamados.some(([c]) => c === "excluir_backup")).toBe(true);
+    expect(estadoLocal()?.versao_vista).toBe(1);
+  });
+
+  it("ao baixar sem mudança local, aplica a versão da nuvem", async () => {
+    gravarEstadoNuvem({ versao: 2 });
+    nuvem.arquivos.set(ATUAL, texto("banco-da-nuvem"));
+    guardarEstadoLocal({ versao_vista: 1, impressao: "local-1", sincronizado_em: "" });
+    const r = await sincronizar();
+    expect(r).toMatchObject({ decisao: "BAIXAR", aplicouRemoto: true });
+    expect(estadoLocal()).toMatchObject({ versao_vista: 2, impressao: "da-nuvem" });
   });
 });
 

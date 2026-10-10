@@ -197,6 +197,8 @@ pub fn run() {
             atualizacao::instalar_ao_sair,
             sincronizacao::impressao_dados,
             sincronizacao::gerar_copia_sync,
+            sincronizacao::copia_e_impressao_sync,
+            sincronizacao::versao_esquema_app,
             sistema::pasta_de_logs,
             sistema::ler_log,
             extras::salvar_exportacao_binaria,

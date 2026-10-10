@@ -103,10 +103,13 @@ export const extras = {
     return invoke<InfoBackup>("criar_backup");
   },
   listarBackups: () => invoke<InfoBackup[]>("listar_backups"),
-  /** Restaura o banco e traz de volta as preferências que vieram nele (a cópia "antes de restaurar" leva as atuais). */
-  restaurarBackup: async (nome: string) => {
+  /**
+   * Restaura o banco e traz de volta as preferências que vieram nele (a cópia "antes de restaurar" leva as atuais).
+   * `impressaoEsperada` (sincronização): se os dados mudaram desde então, nada é trocado e o erro começa com "DADOS_MUDARAM".
+   */
+  restaurarBackup: async (nome: string, impressaoEsperada?: string) => {
     await guardarPreferenciasNoBanco().catch(() => 0);
-    const seguranca = await invoke<InfoBackup>("restaurar_backup", { nome });
+    const seguranca = await invoke<InfoBackup>("restaurar_backup", { nome, impressaoEsperada: impressaoEsperada ?? null });
     await restaurarPreferenciasDoBanco().catch(() => 0);
     return seguranca;
   },
