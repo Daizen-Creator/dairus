@@ -20,6 +20,22 @@ describe("gráfico personalizável", () => {
     expect(intervaloDoPeriodo("ano", HOJE).anterior).toEqual({ inicio: "2025-01-01", fim: "2025-10-15" });
   });
 
+  it("a comparação de 'este mês' nunca invade o mês atual (dia 31 contra mês curto)", () => {
+    // 31/03 não existe em fevereiro: o trecho anterior vai do dia 1 ao último dia de fevereiro.
+    expect(intervaloDoPeriodo("mes", "2026-03-31")).toMatchObject({ inicio: "2026-03-01", fim: "2026-03-31", anterior: { inicio: "2026-02-01", fim: "2026-02-28" } });
+    expect(intervaloDoPeriodo("mes", "2026-10-15").anterior).toEqual({ inicio: "2026-09-01", fim: "2026-09-15" });
+    // Dia 31 contra mês de 30 dias e virada de ano.
+    expect(intervaloDoPeriodo("mes", "2026-05-31").anterior).toEqual({ inicio: "2026-04-01", fim: "2026-04-30" });
+    expect(intervaloDoPeriodo("mes", "2026-01-31").anterior).toEqual({ inicio: "2025-12-01", fim: "2025-12-31" });
+    // Ano bissexto: 29/02/2028 compara com fevereiro de 2027 (28 dias).
+    expect(intervaloDoPeriodo("mes", "2028-03-31").anterior).toEqual({ inicio: "2028-02-01", fim: "2028-02-29" });
+  });
+
+  it("a comparação de 'este ano' não gera data inexistente em 29/02", () => {
+    expect(intervaloDoPeriodo("ano", "2028-02-29").anterior).toEqual({ inicio: "2027-01-01", fim: "2027-02-28" });
+    expect(intervaloDoPeriodo("ano", "2026-03-31").anterior).toEqual({ inicio: "2025-01-01", fim: "2025-03-31" });
+  });
+
   it("granularidade automática e pedaços do período", () => {
     expect(granularidadeEfetiva("auto", { inicio: "2026-10-01", fim: HOJE })).toBe("dia");
     expect(granularidadeEfetiva("auto", { inicio: "2026-08-01", fim: HOJE })).toBe("semana");
