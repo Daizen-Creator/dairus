@@ -29,6 +29,9 @@ export function traduzirErroSync(erro: unknown): string {
   return msg;
 }
 
+/** A nuvem respondeu que o arquivo não existe (ainda). */
+const naoExiste = (msg: string) => /not.?found|404|Object not found/i.test(msg);
+
 export interface ErroSync {
   mensagem: string;
   em: string;
@@ -95,7 +98,7 @@ async function lerEstadoNuvem(base: string): Promise<EstadoNuvem | null> {
   const { data, error } = await supabase.storage.from(BUCKET).download(`${base}/estado.json`);
   if (error || !data) {
     // Ainda não existe (primeira sincronização da conta).
-    if (error && !/not.?found|404|Object not found/i.test(error.message)) throw new Error(error.message);
+    if (error && !naoExiste(error.message)) throw new Error(error.message);
     return null;
   }
   return JSON.parse(await data.text()) as EstadoNuvem;
@@ -187,6 +190,24 @@ function sincronizarDeVerdade(): Promise<ResultadoSync> {
   })();
 }
 
+/**
+ * Guarda a cópia da nuvem como backup local ("nuvem-substituida-..."), antes de substituí-la.
+ * Se não conseguir baixar ou gravar, lança erro e o envio é cancelado. Só segue sem cópia
+ * quando a nuvem não tem o arquivo (não há o que perder).
+ */
+async function guardarCopiaDaNuvem(base: string): Promise<void> {
+  const cancelado = "Nada foi enviado: não foi possível guardar antes uma cópia dos dados da nuvem neste computador";
+  const { data, error } = await supabase.storage.from(BUCKET).download(`${base}/atual.db`);
+  if (error && naoExiste(error.message)) return;
+  if (error || !data) throw new Error(`${cancelado} (${traduzirErroSync(error?.message ?? "arquivo vazio")}). Tente de novo.`);
+  const carimbo = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
+  try {
+    await extras.gravarBackupBaixado(`nuvem-substituida-${carimbo}.db`, new Uint8Array(await data.arrayBuffer()));
+  } catch (e) {
+    throw new Error(`${cancelado} (${e instanceof Error ? e.message : String(e)}). Os dados da nuvem continuam lá.`);
+  }
+}
+
 /** Resolve um conflito: "NUVEM" troca os dados deste computador pelos da nuvem; "LOCAL" sobrescreve a nuvem. */
 export async function resolverConflito(lado: "NUVEM" | "LOCAL"): Promise<ResultadoSync> {
   const base = await pasta();
@@ -197,13 +218,8 @@ export async function resolverConflito(lado: "NUVEM" | "LOCAL"): Promise<Resulta
     return { decisao: "BAIXAR", remoto, aplicouRemoto: true };
   }
   // Antes de sobrescrever a nuvem, guarda a versão dela como backup local.
-  if (remoto) {
-    const { data } = await supabase.storage.from(BUCKET).download(`${base}/atual.db`);
-    if (data) {
-      const carimbo = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
-      await extras.gravarBackupBaixado(`nuvem-substituida-${carimbo}.db`, new Uint8Array(await data.arrayBuffer())).catch(() => {});
-    }
-  }
+  // Sem essa cópia, nada é enviado: a versão da nuvem se perderia.
+  if (remoto) await guardarCopiaDaNuvem(base);
   const novo = await enviar(base, remoto?.versao ?? 0);
   return { decisao: "ENVIAR", remoto: novo, aplicouRemoto: false };
 }
