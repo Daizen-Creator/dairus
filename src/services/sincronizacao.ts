@@ -10,7 +10,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { lerPreferencia, salvarPreferencia } from "./armazenamento";
 import { extras } from "./extras";
-import { guardarPreferenciasNoBanco } from "./preferenciasConta";
+import { guardarPreferenciasSemParar } from "./preferenciasConta";
 import { supabase } from "./supabase";
 
 const BUCKET = "backups";
@@ -148,7 +148,7 @@ async function enviar(base: string, lido: EstadoNuvem | null): Promise<Envio> {
     const agora = await lerEstadoNuvem(base);
     return assinatura(agora) === assinatura(lido) ? null : { ok: false as const, remoto: agora };
   };
-  await guardarPreferenciasNoBanco().catch(() => 0);
+  await guardarPreferenciasSemParar();
   // A impressão gravada no estado local descreve exatamente a cópia enviada: uma edição
   // feita durante o envio fica de fora das duas e vai na próxima rodada.
   const tirada = await invoke<CopiaSync>("copia_e_impressao_sync");
@@ -218,9 +218,13 @@ let emAndamento: Promise<ResultadoSync> | null = null;
 /** Sincroniza agora. Em conflito não mexe em nada: devolve "CONFLITO" para a tela perguntar. */
 export function sincronizar(): Promise<ResultadoSync> {
   if (emAndamento) return emAndamento;
+  const inicio = new Date().toISOString();
   emAndamento = sincronizarDeVerdade()
     .then(async (r) => {
-      await salvarPreferencia("sync_ultimo_erro", null);
+      // Deu certo: limpa o erro anterior, mas mantém um aviso registrado nesta rodada
+      // (ex.: as preferências não foram copiadas para o banco).
+      const aviso = await lerUltimoErroSync().catch(() => null);
+      if (!aviso || aviso.em < inicio) await salvarPreferencia("sync_ultimo_erro", null);
       return r;
     })
     .catch(async (e) => {
@@ -238,7 +242,8 @@ function sincronizarDeVerdade(): Promise<ResultadoSync> {
   return (async () => {
     const base = await pasta();
     // As preferências da conta vão no banco: copia antes de comparar, para a mudança contar.
-    await guardarPreferenciasNoBanco().catch(() => 0);
+    // Se falhar, segue com os lançamentos e registra o aviso (log e tela).
+    await guardarPreferenciasSemParar();
     const remoto = await lerEstadoNuvem(base);
     // Nuvem com banco de versão mais nova: não baixa nem envia (pede para atualizar o app).
     await conferirEsquema(remoto);

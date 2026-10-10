@@ -8,6 +8,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listarPreferencias, removerPreferencia, salvarPreferencia } from "./armazenamento";
+import { registrarNoLog } from "./sistema";
 
 /**
  * LISTA PERMITIDA: só o que a pessoa escolheu ou preencheu vai para o banco (e daí para o
@@ -125,6 +126,23 @@ export function preferenciasParaOBanco(todas: Record<string, unknown>): Record<s
 export async function guardarPreferenciasNoBanco(): Promise<number> {
   const itens = preferenciasParaOBanco(await listarPreferencias());
   return invoke<number>("gravar_preferencias_conta", { itens });
+}
+
+/**
+ * Como `guardarPreferenciasNoBanco`, mas sem parar o backup/a sincronização se falhar (os
+ * lançamentos continuam indo): a falha vai para o log e para `sync_ultimo_erro`, que aparece
+ * na tela. Devolve a mensagem da falha, ou null se deu certo.
+ */
+export async function guardarPreferenciasSemParar(): Promise<string | null> {
+  try {
+    await guardarPreferenciasNoBanco();
+    return null;
+  } catch (e) {
+    const mensagem = `As preferências da conta (nome, perfil de renda, notas...) não foram copiadas para o banco: ${e instanceof Error ? e.message : String(e)}. Os lançamentos foram normalmente.`;
+    await registrarNoLog("warn", `preferências: ${mensagem}`).catch(() => {});
+    await salvarPreferencia("sync_ultimo_erro", { mensagem, em: new Date().toISOString() }).catch(() => {});
+    return mensagem;
+  }
 }
 
 /**

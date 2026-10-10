@@ -55,6 +55,7 @@ let falhaGravarBackup: string | null = null;
 let editarDuranteODownload = false;
 /** Simula outro computador gravando na nuvem enquanto este prepara a cópia. */
 let outroPcGravaAoTirarCopia = false;
+let falhaPreferencias = false;
 
 beforeEach(() => {
   nuvem.arquivos.clear();
@@ -63,6 +64,7 @@ beforeEach(() => {
   nuvem.uploads.length = 0;
   nuvem.aposEnviar = null;
   outroPcGravaAoTirarCopia = false;
+  falhaPreferencias = false;
   chamados = [];
   impressaoLocal = "local-1";
   impressaoDaCopia = null;
@@ -73,6 +75,7 @@ beforeEach(() => {
     chamados.push([comando, args]);
     switch (comando) {
       case "gravar_preferencias_conta":
+        if (falhaPreferencias) throw "disco cheio";
         return 0;
       case "ler_preferencias_conta":
         return {};
@@ -229,6 +232,23 @@ describe("versão do esquema na nuvem", () => {
     nuvem.arquivos.set(ATUAL, texto("banco"));
     guardarEstadoLocal({ versao_vista: 1, impressao: "local-1", sincronizado_em: "" });
     expect((await sincronizar()).decisao).toBe("BAIXAR");
+  });
+});
+
+describe("preferências que não foram para o banco", () => {
+  it("não param a sincronização, mas ficam registradas na tela (sync_ultimo_erro)", async () => {
+    localStorage.setItem("sync_ultimo_erro", JSON.stringify({ mensagem: "erro velho", em: "2020-01-01T00:00:00Z" }));
+    falhaPreferencias = true;
+    const r = await sincronizar();
+    expect(r.decisao).toBe("ENVIAR");
+    const aviso = JSON.parse(localStorage.getItem("sync_ultimo_erro") ?? "null");
+    expect(aviso.mensagem).toMatch(/preferências da conta.*disco cheio/);
+  });
+
+  it("sem falha, a sincronização limpa o erro anterior", async () => {
+    localStorage.setItem("sync_ultimo_erro", JSON.stringify({ mensagem: "erro velho", em: "2020-01-01T00:00:00Z" }));
+    await sincronizar();
+    expect(JSON.parse(localStorage.getItem("sync_ultimo_erro") ?? "null")).toBeNull();
   });
 });
 
