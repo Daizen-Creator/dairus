@@ -25,6 +25,16 @@ use zeroize::{Zeroize, Zeroizing};
 type Res<T> = Result<T, String>;
 
 const MAGICO: &[u8; 8] = b"DAIRUSC1";
+const NONCE_BYTES: usize = 12;
+const TAG_BYTES: usize = 16;
+
+// Limites dos parâmetros do Argon2 lidos do cabeçalho do arquivo. Um arquivo
+// adulterado poderia pedir gigabytes de memória (e derrubar o app).
+#[cfg(not(test))]
+const MEMORIA_KIB_MAXIMA: u32 = 512 * 1024;
+#[cfg(test)]
+const MEMORIA_KIB_MAXIMA: u32 = 4 * 1024;
+const PASSOS_MAXIMOS: u32 = 16;
 
 #[cfg(not(test))]
 const ARGON_MEMORIA_KIB: u32 = 64 * 1024;
@@ -64,14 +74,32 @@ fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
+/// Hexadecimal vindo de um arquivo que pode estar corrompido: nunca entra em pânico
+/// (o release usa `panic = "abort"`, então um pânico derrubaria o app inteiro).
 fn de_hex(s: &str) -> Res<Vec<u8>> {
-    if s.len() % 2 != 0 {
+    // Só ASCII hexadecimal: fatiar `&s[i..i + 2]` em texto com caractere
+    // multibyte cairia no meio dele e entraria em pânico.
+    if s.len() % 2 != 0 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err("Arquivo criptografado corrompido.".into());
     }
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|_| "Arquivo criptografado corrompido.".to_string()))
+    s.as_bytes()
+        .chunks(2)
+        .map(|par| {
+            // Cada par já é ASCII hexadecimal válido.
+            let alto = (par[0] as char).to_digit(16).ok_or("Arquivo criptografado corrompido.")?;
+            let baixo = (par[1] as char).to_digit(16).ok_or("Arquivo criptografado corrompido.")?;
+            Ok((alto * 16 + baixo) as u8)
+        })
         .collect()
+}
+
+/// Nonce do AES-GCM: precisa ter exatamente 12 bytes (`Nonce::from_slice` entra em pânico se não tiver).
+fn nonce_de(bytes: &[u8]) -> Option<&Nonce<<Aes256Gcm as aes_gcm::AeadCore>::NonceSize>> {
+    if bytes.len() == NONCE_BYTES {
+        Some(Nonce::from_slice(bytes))
+    } else {
+        None
+    }
 }
 
 fn aleatorio<const N: usize>() -> [u8; N] {
@@ -98,9 +126,13 @@ fn embrulhar(dados: &[u8; 32], segredo: &str, memoria_kib: u32, passos: u32) -> 
 }
 
 fn desembrulhar(e: &ChaveEmbrulhada, segredo: &str, memoria_kib: u32, passos: u32) -> Option<Zeroizing<[u8; 32]>> {
+    if !(8..=MEMORIA_KIB_MAXIMA).contains(&memoria_kib) || !(1..=PASSOS_MAXIMOS).contains(&passos) {
+        return None;
+    }
     let kek = derivar(segredo, &de_hex(&e.sal).ok()?, memoria_kib, passos).ok()?;
     let cifra = Aes256Gcm::new_from_slice(kek.as_ref()).ok()?;
-    let mut aberta = cifra.decrypt(Nonce::from_slice(&de_hex(&e.nonce).ok()?), de_hex(&e.cifrada).ok()?.as_ref()).ok()?;
+    let nonce = de_hex(&e.nonce).ok()?;
+    let mut aberta = cifra.decrypt(nonce_de(&nonce)?, de_hex(&e.cifrada).ok()?.as_ref()).ok()?;
     if aberta.len() != 32 {
         aberta.zeroize();
         return None;
@@ -188,19 +220,27 @@ fn separar(bytes: &[u8]) -> Res<Partes<'_>> {
     if !eh_cifrado(bytes) {
         return Err("O arquivo não está criptografado pelo Dairus.".into());
     }
-    let n = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
-    if bytes.len() < 12 + n + 12 + 16 {
-        return Err("Arquivo criptografado incompleto ou corrompido.".into());
+    let incompleto = || "Arquivo criptografado incompleto ou corrompido.".to_string();
+    let n = u32::from_le_bytes(bytes.get(8..12).ok_or_else(incompleto)?.try_into().map_err(|_| incompleto())?) as usize;
+    // Somas com verificação: um tamanho absurdo no cabeçalho não pode estourar nem fatiar fora.
+    let fim_cabecalho = 12usize.checked_add(n).ok_or_else(incompleto)?;
+    let fim_nonce = fim_cabecalho.checked_add(NONCE_BYTES).ok_or_else(incompleto)?;
+    if bytes.len() < fim_nonce.checked_add(TAG_BYTES).ok_or_else(incompleto)? {
+        return Err(incompleto());
     }
-    let cabecalho_bruto = &bytes[12..12 + n];
+    let cabecalho_bruto = &bytes[12..fim_cabecalho];
     let cabecalho: Cabecalho = serde_json::from_slice(cabecalho_bruto).map_err(|_| "Arquivo criptografado corrompido.".to_string())?;
-    Ok(Partes { cabecalho_bruto, cabecalho, nonce: &bytes[12 + n..12 + n + 12], cifrado: &bytes[12 + n + 12..] })
+    if cabecalho.v != 1 {
+        return Err("Arquivo criptografado em formato desconhecido (atualize o Dairus).".into());
+    }
+    Ok(Partes { cabecalho_bruto, cabecalho, nonce: &bytes[fim_cabecalho..fim_nonce], cifrado: &bytes[fim_nonce..] })
 }
 
 fn abrir_com(p: Partes<'_>, dados: Zeroizing<[u8; 32]>) -> Res<(Chaves, Zeroizing<Vec<u8>>)> {
     let cifra = Aes256Gcm::new_from_slice(dados.as_ref()).map_err(|e| e.to_string())?;
+    let nonce = nonce_de(p.nonce).ok_or("Arquivo criptografado corrompido.")?;
     let texto = cifra
-        .decrypt(Nonce::from_slice(p.nonce), Payload { msg: p.cifrado, aad: p.cabecalho_bruto })
+        .decrypt(nonce, Payload { msg: p.cifrado, aad: p.cabecalho_bruto })
         .map_err(|_| "O arquivo foi alterado ou está corrompido.".to_string())?;
     Ok((Chaves { dados, cabecalho: p.cabecalho_bruto.to_vec() }, Zeroizing::new(texto)))
 }
@@ -236,7 +276,7 @@ static SESSAO: Mutex<Option<Sessao>> = Mutex::new(None);
 /// Acesso à sessão. Nos testes ela é por thread, para os testes paralelos não se misturarem.
 #[cfg(not(test))]
 fn com_sessao<R>(f: impl FnOnce(&mut Option<Sessao>) -> R) -> R {
-    f(&mut SESSAO.lock().expect("mutex envenenado"))
+    f(&mut SESSAO.lock().unwrap_or_else(|e| e.into_inner()))
 }
 
 #[cfg(test)]
@@ -489,5 +529,115 @@ mod testes {
         encerrar_sessao();
         assert!(!ativa());
         let _ = std::fs::remove_dir_all(pasta);
+    }
+
+    // --- Arquivos corrompidos: nunca pode haver pânico (o release usa panic = "abort"), só erro. ---
+
+    /// Monta um arquivo no formato DAIRUSC1 com um cabeçalho JSON qualquer.
+    fn arquivo_com_cabecalho(cab: &str, nonce: &[u8], resto: &[u8]) -> Vec<u8> {
+        let mut v = Vec::new();
+        v.extend_from_slice(MAGICO);
+        v.extend_from_slice(&(cab.len() as u32).to_le_bytes());
+        v.extend_from_slice(cab.as_bytes());
+        v.extend_from_slice(nonce);
+        v.extend_from_slice(resto);
+        v
+    }
+
+    fn cabecalho_json(sal: &str, nonce: &str, cifrada: &str, memoria_kib: u32, passos: u32) -> String {
+        let chave = format!(r#"{{"sal":"{sal}","nonce":"{nonce}","cifrada":"{cifrada}"}}"#);
+        format!(r#"{{"v":1,"memoria_kib":{memoria_kib},"passos":{passos},"senha":{chave},"codigo":{chave}}}"#)
+    }
+
+    fn deve_falhar_sem_panico(arquivo: &[u8]) {
+        assert!(abrir_com_senha(arquivo, "senha-forte-1").is_err());
+        assert!(abrir_com_codigo(arquivo, "AAAA-BBBB-CCCC-DDDD-EEEE").is_err());
+    }
+
+    #[test]
+    fn hex_nao_entra_em_panico_com_texto_nao_ascii() {
+        assert_eq!(de_hex("00ff10").unwrap(), vec![0x00, 0xff, 0x10]);
+        assert!(de_hex("é1").is_err()); // 3 bytes, ímpar
+        assert!(de_hex("aé").is_err()); // 3 bytes
+        assert!(de_hex("é€").is_err()); // 5 bytes
+        assert!(de_hex("ééé").is_err()); // 6 bytes pares, caractere multibyte no meio do par
+        assert!(de_hex("+f").is_err());
+        assert!(de_hex("zz").is_err());
+        assert!(de_hex("abc").is_err());
+        assert_eq!(de_hex("").unwrap(), Vec::<u8>::new());
+    }
+
+    #[test]
+    fn nonce_de_tamanho_errado_vira_erro() {
+        assert!(nonce_de(&[0u8; 12]).is_some());
+        assert!(nonce_de(&[0u8; 11]).is_none());
+        assert!(nonce_de(&[0u8; 13]).is_none());
+        assert!(nonce_de(&[]).is_none());
+    }
+
+    #[test]
+    fn cabecalho_corrompido_devolve_erro_sem_panico() {
+        let nonce = [0u8; 12];
+        let resto = [0u8; 40];
+        let bom = "00".repeat(12);
+        let sal = "11".repeat(16);
+        let cif = "22".repeat(48);
+        // sal com caractere multibyte, nonce curto, nonce longo, hex inválido, hex ímpar.
+        for (s, n, c) in [
+            ("é€é€é€é€", bom.as_str(), cif.as_str()),
+            (sal.as_str(), "0011", cif.as_str()),
+            (sal.as_str(), &"00".repeat(13), cif.as_str()),
+            (sal.as_str(), "zz", cif.as_str()),
+            (sal.as_str(), bom.as_str(), "abc"),
+            (sal.as_str(), "ééééééé", "ééé"),
+            ("", "", ""),
+        ] {
+            let arquivo = arquivo_com_cabecalho(&cabecalho_json(s, n, c, 1024, 1), &nonce, &resto);
+            deve_falhar_sem_panico(&arquivo);
+        }
+    }
+
+    #[test]
+    fn parametros_absurdos_do_argon2_sao_recusados() {
+        let sal = "11".repeat(16);
+        let nonce_hex = "00".repeat(12);
+        let cif = "22".repeat(48);
+        for (mem, passos) in [(u32::MAX, 1), (1024, u32::MAX), (0, 0), (1024, 0), (0, 1), (1_000_000, 3)] {
+            let cab = cabecalho_json(&sal, &nonce_hex, &cif, mem, passos);
+            deve_falhar_sem_panico(&arquivo_com_cabecalho(&cab, &[0u8; 12], &[0u8; 40]));
+        }
+    }
+
+    #[test]
+    fn tamanho_de_cabecalho_absurdo_ou_arquivo_truncado_vira_erro() {
+        let mut arquivo = Vec::new();
+        arquivo.extend_from_slice(MAGICO);
+        arquivo.extend_from_slice(&u32::MAX.to_le_bytes());
+        arquivo.extend_from_slice(&[0u8; 64]);
+        deve_falhar_sem_panico(&arquivo);
+
+        // Só a assinatura, e a assinatura mais um byte.
+        deve_falhar_sem_panico(MAGICO);
+        deve_falhar_sem_panico(&[MAGICO.as_slice(), &[1]].concat());
+        deve_falhar_sem_panico(&[]);
+
+        // Todo prefixo de um arquivo válido, e todo byte do começo trocado, dá erro e não pânico.
+        let (ch, _) = Chaves::novas("senha-forte-1").unwrap();
+        let valido = ch.cifrar(b"dados").unwrap();
+        for corte in 0..valido.len() {
+            assert!(abrir_com_senha(&valido[..corte], "senha-forte-1").is_err(), "corte em {corte}");
+        }
+        let cabecalho_ate = 12 + u32::from_le_bytes(valido[8..12].try_into().unwrap()) as usize + 12;
+        for i in 0..cabecalho_ate {
+            for novo in [0x00u8, 0xff, 0xc3, 0x80] {
+                let mut c = valido.clone();
+                c[i] = novo;
+                if c == valido {
+                    continue;
+                }
+                // Alterar o cabeçalho (autenticado) nunca abre o arquivo e nunca causa pânico.
+                assert!(abrir_com_senha(&c, "senha-forte-1").is_err(), "byte {i} = {novo:#x}");
+            }
+        }
     }
 }
