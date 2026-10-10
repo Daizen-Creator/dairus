@@ -5,7 +5,7 @@ mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 
 ## Próxima versão
 
-- Suas preferências agora vão junto no backup e na sincronização entre computadores: nome, perfil de renda (salário, VA, dia do pagamento), FGTS, chave Pix, bloco de notas e foco do mês, perguntas salvas e conversa da IA, metas de economia e patrimônio, modelos de lançamento, configurações dos widgets e outras. Ficam de fora o que é só deste computador (PIN, pastas) e as chaves secretas (Gemini, brapi).
+- Suas preferências vão junto no backup e na sincronização entre computadores: nome, perfil de renda (salário, VA, dia do pagamento), FGTS, chave Pix, bloco de notas e foco do mês, perguntas salvas da IA, metas de economia e patrimônio, modelos de lançamento, configurações dos widgets e outras escolhas suas. Ficam de fora o que é só deste computador (PIN, pastas), a conversa com a IA e as chaves secretas (Gemini, brapi).
 - Widgets também na coluna do lado do Início: no "Editar layout", o botão de painel lateral manda o widget para lá (acima de Metas e Vencimentos), com setas para ordenar e botão para voltar à grade.
 - O card "Sincronização" do Início mostra o estado real (ativa e quando foi a última, falhou e por quê, ou desativada). Antes era um texto fixo "Desativada".
 - Sincronização mais segura: o Dairus confere se o outro computador mexeu no meio do envio e, nesse caso, pergunta em vez de sobrescrever; "Manter este computador" não envia se a cópia de segurança da nuvem falhar; e um banco de versão mais nova é recusado com o aviso "Atualize o Dairus neste computador". As preferências que vão junto agora são só as suas escolhas (a conversa da IA e as chaves ficam de fora).

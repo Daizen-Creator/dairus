@@ -113,8 +113,18 @@ jobs:
           echo "NOME_INSTALADOR=$nome" >> "$GITHUB_ENV"
           echo "SHA_INSTALADOR=$(cut -d' ' -f1 "$nome.sha256")" >> "$GITHUB_ENV"
 
-      # Reserva no Supabase (opcional): só roda se o segredo SUPABASE_SERVICE_ROLE_KEY existir
-      # e só em versão estável (o latest.json do Supabase nunca anuncia pré-lançamento).
+      # Só agora a release deixa de ser rascunho e o app instalado passa a enxergá-la.
+      # Se qualquer passo acima falhar, ela continua rascunho (nada chega aos usuários).
+      - name: Publicar a release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false
+
+      # Reserva no Supabase (opcional), DEPOIS de a release estar pública: o latest.json só anuncia
+      # uma versão que de fato saiu. Só roda se o segredo SUPABASE_SERVICE_ROLE_KEY existir e só em
+      # versão estável (o latest.json do Supabase nunca anuncia pré-lançamento). Se este passo falhar,
+      # a release do GitHub (fonte principal) já está pública; basta rodar de novo só este passo.
       - name: Espelhar no Supabase Storage
         if: ${{ !contains(github.ref_name, '-') }}
         shell: bash
@@ -127,11 +137,3 @@ jobs:
           tamanho=$(stat -c%s "$INSTALADOR")
           node -e 'const fs=require("fs");fs.writeFileSync("latest.json",JSON.stringify({versao:process.env.GITHUB_REF_NAME.replace(/^v/,""),titulo:"Dairus "+process.env.GITHUB_REF_NAME,notas:fs.readFileSync("notas.md","utf8"),publicada_em:new Date().toISOString(),instalador:"https://wcxfjmifikmnydfpepiq.supabase.co/storage/v1/object/public/atualizacoes/"+process.env.NOME_INSTALADOR,tamanho_bytes:Number(process.argv[1]),sha256:process.env.SHA_INSTALADOR}))' "$tamanho"
           curl -sf -X POST "$base/latest.json" -H "Authorization: Bearer $CHAVE" -H "x-upsert: true" -H "Content-Type: application/json" -H "Cache-Control: max-age=60" --data-binary "@latest.json"
-
-      # Último passo: só agora a release deixa de ser rascunho e o app instalado passa a enxergá-la.
-      # Se qualquer passo acima falhar, ela continua rascunho (nada chega aos usuários).
-      - name: Publicar a release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "$GITHUB_REF_NAME" --draft=false
