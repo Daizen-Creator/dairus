@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Banknote,
@@ -86,6 +86,38 @@ export function DashboardPage() {
   const inicioMes = periodo.inicio;
   const fimMes = periodo.fim;
   const ehMesAtual = periodo.id === "este-mes";
+  const mesAtualISO = hoje.slice(0, 7);
+
+  // Cálculos pesados (milhares de lançamentos): só refazem quando os dados ou o período mudam,
+  // e não a cada render do Início (abas, preferências, ocultar valores...).
+  const despesasPorCategoria = useMemo(() => despesasPorCategoriaNoMes(lancamentos, contas, inicioMes, fimMes), [lancamentos, contas, inicioMes, fimMes]);
+  const quantidadeNoPeriodo = useMemo(() => lancamentos.filter((l) => l.data >= inicioMes && l.data <= fimMes).length, [lancamentos, inicioMes, fimMes]);
+  const recebimentoSalario = useMemo(
+    () => lancamentos.filter((l) => l.origem === "SALARIO" && l.data >= inicioMes && l.data <= fimMes).sort((a, b) => a.data.localeCompare(b.data))[0],
+    [lancamentos, inicioMes, fimMes],
+  );
+  const dadosFluxo = useMemo(
+    () =>
+      fluxoCaixaPorAno(lancamentos, contas, anoAtual).map((m) => ({
+        nome: m.mes,
+        Receitas: m.receitasCentavos / 100,
+        Despesas: m.despesasCentavos / 100,
+        Saldo: m.saldoCentavos / 100,
+      })),
+    [lancamentos, contas, anoAtual],
+  );
+  // Previsão do que ainda entra no mês, a partir do perfil de renda (aba Salário e Renda).
+  const aReceber = useMemo(() => {
+    const recebeuNoMes = (contaReceita: string) =>
+      lancamentos.some((l) => l.data.startsWith(mesAtualISO) && l.origem !== "ESTORNO" && l.partidas.some((p) => p.conta_id === contaReceita && p.tipo === "CREDITO"));
+    if (!perfilRenda || perfilRenda.liquido <= 0) return { valor: 0, texto: "Cadastre o perfil de renda em Salário" };
+    const salario = recebeuNoMes("receita-salario") ? 0 : perfilRenda.liquido;
+    const va = perfilRenda.vaMensal > 0 && !recebeuNoMes("receita-beneficios") ? perfilRenda.vaMensal : 0;
+    const valor = salario + va;
+    if (valor === 0) return { valor: 0, texto: "Salário do mês já recebido" };
+    const dia = Math.min(perfilRenda.diaPagamento || 5, Number(fimMes.slice(8, 10)));
+    return { valor, texto: `Previsto para ${String(dia).padStart(2, "0")}/${mesAtualISO.slice(5, 7)}${va && salario ? " (salário + VA)" : va ? " (VA)" : ""}` };
+  }, [lancamentos, perfilRenda, mesAtualISO, fimMes]);
 
   useEffect(() => {
     let cancelado = false;
@@ -137,14 +169,7 @@ export function DashboardPage() {
     return <EmptyState titulo="Não foi possível carregar o painel" descricao={erro} />;
   }
 
-  const despesasPorCategoria = despesasPorCategoriaNoMes(lancamentos, contas, inicioMes, fimMes);
   const maiorDespesa = despesasPorCategoria[0] ?? null;
-
-  const lancamentosDoMes = lancamentos.filter((l) => l.data >= inicioMes && l.data <= fimMes);
-
-  const recebimentoSalario = lancamentos
-    .filter((l) => l.origem === "SALARIO" && l.data >= inicioMes && l.data <= fimMes)
-    .sort((a, b) => a.data.localeCompare(b.data))[0];
 
   const cartoes = contas.filter((c) => c.tipo === "PASSIVO" && c.subtipo === "CARTAO_CREDITO");
   const limiteTotal = cartoes.reduce((soma, c) => soma + (c.limite_centavos ?? 0), 0);
@@ -168,31 +193,11 @@ export function DashboardPage() {
     ...contasAPagar.map((a) => ({ nome: a.descricao, data: a.vencimento, valorCentavos: a.valor_centavos })),
   ].sort((a, b) => a.data.localeCompare(b.data));
 
-  const dadosFluxo = fluxoCaixaPorAno(lancamentos, contas, anoAtual).map((m) => ({
-    nome: m.mes,
-    Receitas: m.receitasCentavos / 100,
-    Despesas: m.despesasCentavos / 100,
-    Saldo: m.saldoCentavos / 100,
-  }));
   const mesAbrev = dadosFluxo[Number(hoje.slice(5, 7)) - 1].nome;
 
   const hora = Number(new Intl.DateTimeFormat("pt-BR", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" }).format(new Date()));
   const saudacao = hora < 5 ? "Boa madrugada" : hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite";
   const dinheiro = (v: number) => (ocultar ? "R$ ••••" : formatarCentavos(v));
-
-  // Previsão do que ainda entra no mês, a partir do perfil de renda (aba Salário e Renda).
-  const mesAtualISO = hoje.slice(0, 7);
-  const recebeuNoMes = (contaReceita: string) =>
-    lancamentos.some((l) => l.data.startsWith(mesAtualISO) && l.origem !== "ESTORNO" && l.partidas.some((p) => p.conta_id === contaReceita && p.tipo === "CREDITO"));
-  const aReceber = (() => {
-    if (!perfilRenda || perfilRenda.liquido <= 0) return { valor: 0, texto: "Cadastre o perfil de renda em Salário" };
-    const salario = recebeuNoMes("receita-salario") ? 0 : perfilRenda.liquido;
-    const va = perfilRenda.vaMensal > 0 && !recebeuNoMes("receita-beneficios") ? perfilRenda.vaMensal : 0;
-    const valor = salario + va;
-    if (valor === 0) return { valor: 0, texto: "Salário do mês já recebido" };
-    const dia = Math.min(perfilRenda.diaPagamento || 5, Number(fimMes.slice(8, 10)));
-    return { valor, texto: `Previsto para ${String(dia).padStart(2, "0")}/${mesAtualISO.slice(5, 7)}${va && salario ? " (salário + VA)" : va ? " (VA)" : ""}` };
-  })();
 
   return (
     <div className="space-y-6">
@@ -273,7 +278,7 @@ export function DashboardPage() {
             <StatCard
               titulo={ehMesAtual ? "Despesas do Mês" : "Despesas no Período"}
               valor={dinheiro(resumo?.despesas_mes_centavos ?? 0)}
-              subtitulo={`${lancamentosDoMes.length} lançamento(s) ${ehMesAtual ? "este mês" : "no período"}`}
+              subtitulo={`${quantidadeNoPeriodo} lançamento(s) ${ehMesAtual ? "este mês" : "no período"}`}
               icone={Receipt}
               corIcone="alerta"
             />
