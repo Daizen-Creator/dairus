@@ -8,6 +8,16 @@ mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 - Suas preferências agora vão junto no backup e na sincronização entre computadores: nome, perfil de renda (salário, VA, dia do pagamento), FGTS, chave Pix, bloco de notas e foco do mês, perguntas salvas e conversa da IA, metas de economia e patrimônio, modelos de lançamento, configurações dos widgets e outras. Ficam de fora o que é só deste computador (PIN, pastas) e as chaves secretas (Gemini, brapi).
 - Widgets também na coluna do lado do Início: no "Editar layout", o botão de painel lateral manda o widget para lá (acima de Metas e Vencimentos), com setas para ordenar e botão para voltar à grade.
 - O card "Sincronização" do Início mostra o estado real (ativa e quando foi a última, falhou e por quê, ou desativada). Antes era um texto fixo "Desativada".
+- Sincronização mais segura: o Dairus confere se o outro computador mexeu no meio do envio e, nesse caso, pergunta em vez de sobrescrever; "Manter este computador" não envia se a cópia de segurança da nuvem falhar; e um banco de versão mais nova é recusado com o aviso "Atualize o Dairus neste computador". As preferências que vão junto agora são só as suas escolhas (a conversa da IA e as chaves ficam de fora).
+- Estornar um lançamento agora desfaz também o que estava ligado a ele: a conta volta a aparecer em aberto, a parcela do empréstimo volta a ser devida e o valor a receber volta a pendente. O Dairus recusa, com uma explicação, estornar compra que já tem reembolso ou divisão já recebida.
+- Operações em duas etapas (reembolso, encargos de fatura, investimentos, empréstimos, divisão e recebimento) passaram a ser tudo ou nada: uma falha no meio não deixa mais lançamento solto nem cobra duas vezes.
+- Contas mensais mantêm o dia original: uma conta do dia 31 vai para 28/02, depois 31/03 e 30/04 (antes ficava presa no 28).
+- Datas no horário de Brasília: depois das 21h, estornos e saldos iniciais não caem mais no dia seguinte.
+- "Saldo em conta" no Início soma só bancos, carteiras, dinheiro e benefícios (antes incluía investimentos e valores a receber).
+- Previsão de saldo: faturas e parcelas atrasadas entram "amanhã" em vez de sumirem ou irem para o mês seguinte; o gráfico "Este mês" compara com o mesmo trecho do mês anterior sem invadir o mês atual.
+- Importador de extrato: "1.234" agora é R$ 1.234,00 (antes virava R$ 1,23).
+- Segurança: um backup corrompido não fecha mais o app; os anexos que você abre somem do disco ao fechar a conta ou o app e arquivos executáveis não são abertos; o token da brapi não aparece mais em mensagens de erro e no log; dados de antes do login deixam de ser oferecidos a outras contas depois de importados (uma cópia fica em Backups, como "antes-do-login").
+- Publicação das versões: o instalador só é publicado depois dos testes e da conferência de versão e do SHA-256.
 
 ## 0.2.5
 
