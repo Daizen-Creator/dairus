@@ -100,6 +100,14 @@ mod testes {
     }
 
     #[test]
+    fn guarda_a_marca_de_conjunto_completo() {
+        // O front grava "_preferencias_v1" junto: sem ela, a restauração não apaga preferências.
+        let mut c = banco();
+        gravar_db(&mut c, mapa(&[("nome_usuario", "\"Daniel\""), ("_preferencias_v1", "\"1\"")])).unwrap();
+        assert_eq!(ler_db(&c).unwrap().get("_preferencias_v1").map(String::as_str), Some("\"1\""));
+    }
+
+    #[test]
     fn ignora_chave_invalida_valor_que_nao_e_json_e_valor_enorme() {
         let mut c = banco();
         let grande = format!("\"{}\"", "x".repeat(MAX_VALOR + 1));

@@ -7,7 +7,7 @@
 // depois de baixar a versão da nuvem ou restaurar um backup.
 
 import { invoke } from "@tauri-apps/api/core";
-import { listarPreferencias, salvarPreferencia } from "./armazenamento";
+import { listarPreferencias, removerPreferencia, salvarPreferencia } from "./armazenamento";
 
 /**
  * LISTA PERMITIDA: só o que a pessoa escolheu ou preencheu vai para o banco (e daí para o
@@ -89,18 +89,35 @@ export const PREFERENCIAS_DA_CONTA: ReadonlySet<string> = new Set([
   "modo_viagem",
 ]);
 
-/** Esta preferência vai junto com os dados da conta? */
+/** Esta preferência vai junto com os dados da conta? (Chaves com "_" na frente são internas, nunca.) */
 export function vaiNaSincronizacao(chave: string): boolean {
-  return PREFERENCIAS_DA_CONTA.has(chave);
+  return !chave.startsWith("_") && PREFERENCIAS_DA_CONTA.has(chave);
 }
+
+/**
+ * Marca gravada junto com as preferências: diz que a tabela tem o conjunto COMPLETO desta
+ * versão. Só com ela a restauração apaga daqui o que foi apagado no outro computador (um
+ * backup antigo, sem a tabela preenchida, não pode apagar preferências).
+ */
+export const SENTINELA = "_preferencias_v1";
+/** Mesmo limite do Rust (preferencias_conta.rs): valor maior é descartado lá. */
+const MAX_VALOR_BYTES = 256 * 1024;
 
 /** Conjunto (chave → JSON) que vai para o banco. Valores nulos ficam de fora. */
 export function preferenciasParaOBanco(todas: Record<string, unknown>): Record<string, string> {
   const saida: Record<string, string> = {};
+  let completo = true;
   for (const [chave, valor] of Object.entries(todas)) {
     if (valor === null || valor === undefined || !vaiNaSincronizacao(chave)) continue;
-    saida[chave] = JSON.stringify(valor);
+    const json = JSON.stringify(valor);
+    if (new TextEncoder().encode(json).length > MAX_VALOR_BYTES) {
+      // Grande demais para o banco: fica de fora, e sem a marca o outro computador não apaga a dele.
+      completo = false;
+      continue;
+    }
+    saida[chave] = json;
   }
+  if (completo) saida[SENTINELA] = JSON.stringify("1");
   return saida;
 }
 
@@ -113,6 +130,8 @@ export async function guardarPreferenciasNoBanco(): Promise<number> {
 /**
  * Traz para este computador as preferências que vieram no banco (depois de baixar da
  * nuvem ou restaurar um backup). Não mexe nas do computador nem nos segredos.
+ * Se o banco tem a marca `_preferencias_v1`, também apaga daqui as preferências da lista
+ * que não estão nele (foram apagadas no outro computador). Devolve quantas mudaram.
  */
 export async function restaurarPreferenciasDoBanco(): Promise<number> {
   const doBanco = await invoke<Record<string, string>>("ler_preferencias_conta").catch(() => ({}) as Record<string, string>);
@@ -124,6 +143,14 @@ export async function restaurarPreferenciasDoBanco(): Promise<number> {
       n++;
     } catch {
       // valor estragado: mantém o deste computador
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(doBanco, SENTINELA)) {
+    for (const chave of Object.keys(await listarPreferencias())) {
+      if (vaiNaSincronizacao(chave) && !Object.prototype.hasOwnProperty.call(doBanco, chave)) {
+        await removerPreferencia(chave);
+        n++;
+      }
     }
   }
   return n;
