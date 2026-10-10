@@ -86,16 +86,19 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: Dairus ${{ github.ref_name }}
           releaseBody: ${{ env.NOTAS }}
-          releaseDraft: false
+          # Rascunho até o fim: só vira pública depois do .sha256 e da reserva no Supabase.
+          releaseDraft: true
           prerelease: false
 
       # SHA-256 do instalador: o app confere antes de instalar (o arquivo .sha256 vai junto na release).
+      # A release ainda é rascunho aqui, então ninguém recebe a versão sem o .sha256.
       - name: Assinatura SHA-256 do instalador
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           instalador=$(find src-tauri/target/release/bundle/nsis -name "*-setup.exe" | head -n 1)
+          [ -n "$instalador" ] || { echo "::error::Instalador (*-setup.exe) não encontrado em src-tauri/target/release/bundle/nsis."; exit 1; }
           nome=$(basename "$instalador")
           sha256sum "$instalador" | awk -v n="$nome" '{print $1 "  " n}' > "$nome.sha256"
           gh release upload "$GITHUB_REF_NAME" "$nome.sha256" --clobber
@@ -115,3 +118,11 @@ jobs:
           tamanho=$(stat -c%s "$INSTALADOR")
           node -e 'const fs=require("fs");fs.writeFileSync("latest.json",JSON.stringify({versao:process.env.GITHUB_REF_NAME.replace(/^v/,""),titulo:"Dairus "+process.env.GITHUB_REF_NAME,notas:fs.readFileSync("notas.md","utf8"),publicada_em:new Date().toISOString(),instalador:"https://wcxfjmifikmnydfpepiq.supabase.co/storage/v1/object/public/atualizacoes/"+process.env.NOME_INSTALADOR,tamanho_bytes:Number(process.argv[1]),sha256:process.env.SHA_INSTALADOR}))' "$tamanho"
           curl -sf -X POST "$base/latest.json" -H "Authorization: Bearer $CHAVE" -H "x-upsert: true" -H "Content-Type: application/json" -H "Cache-Control: max-age=60" --data-binary "@latest.json"
+
+      # Último passo: só agora a release deixa de ser rascunho e o app instalado passa a enxergá-la.
+      # Se qualquer passo acima falhar, ela continua rascunho (nada chega aos usuários).
+      - name: Publicar a release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false
