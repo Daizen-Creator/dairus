@@ -1,18 +1,13 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PREFERENCIAS_DA_CONTA, preferenciasParaOBanco, vaiNaSincronizacao } from "./preferenciasConta";
 
-/** Todo o código-fonte do app (sem os testes), para conferir os nomes das preferências. */
-function codigoDoApp(pasta = join(process.cwd(), "src")): string {
-  let texto = "";
-  for (const nome of readdirSync(pasta)) {
-    const caminho = join(pasta, nome);
-    if (statSync(caminho).isDirectory()) texto += codigoDoApp(caminho);
-    else if (/\.tsx?$/.test(nome) && !/\.test\.tsx?$/.test(nome) && !caminho.endsWith("preferenciasConta.ts")) texto += readFileSync(caminho, "utf-8");
-  }
-  return texto;
-}
+/** Todo o código-fonte do app (sem os testes e sem a própria lista), para conferir os nomes das preferências. */
+const FONTES = import.meta.glob(["../**/*.{ts,tsx}", "!../**/*.test.{ts,tsx}"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+const codigoDoApp = () =>
+  Object.entries(FONTES)
+    .filter(([caminho]) => !caminho.endsWith("/preferenciasConta.ts"))
+    .map(([, texto]) => texto)
+    .join("\n");
 
 describe("preferências da conta na sincronização (lista permitida)", () => {
   it("leva só as escolhas e os dados da pessoa", () => {
