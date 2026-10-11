@@ -12,7 +12,7 @@ import { despesasPorCategoriaNoMes } from "../../services/agregacoes";
 import { formatarCentavos, formatarDataISOParaBR } from "../../services/formato";
 import { gerarIcs, type EventoCalendario } from "../../services/calendarioIcs";
 import { planejamento } from "../../services/planejamento";
-import { preverSaldo, type Previsao } from "../../services/previsao";
+import { parcelasParaPrevisao, preverSaldo, type Previsao } from "../../services/previsao";
 import type { Agendamento, Conta, Lancamento } from "../../types/accounting";
 import type { Bem } from "../../types/extras";
 import { comprasDoCartao } from "../contas/CartoesPage";
@@ -34,8 +34,7 @@ export async function calcularPrevisao(hoje: string, dias = 90): Promise<Previsa
   const comprasCartao = new Map(
     contas.filter((c) => c.subtipo === "CARTAO_CREDITO").map((c) => [c.id, comprasDoCartao(c, lancamentos, porId).map((x) => ({ data: x.data, valor: x.valor }))]),
   );
-  const parcelas = emprestimos.flatMap((e) => e.tabela.filter((p) => !e.pagas.includes(p.numero)).map((p) => ({ data: p.vencimento, valor: p.parcela, descricao: `Parcela ${e.nome}` })));
-  return preverSaldo({ hoje, dias, contas, lancamentos, agendamentos, parcelas, comprasCartao });
+  return preverSaldo({ hoje, dias, contas, lancamentos, agendamentos, parcelas: parcelasParaPrevisao(emprestimos), comprasCartao });
 }
 
 export function AbaPrevisao({ hoje }: { hoje: string }) {

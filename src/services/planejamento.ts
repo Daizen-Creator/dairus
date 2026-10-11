@@ -25,6 +25,8 @@ export interface Emprestimo {
   parcelas: number;
   primeiro_vencimento: string;
   conta_passivo_id: string;
+  /** Dia (AAAA-MM-DD, Brasília) em que o empréstimo foi cadastrado no app. */
+  cadastrado_em: string;
   saldo_devedor_centavos: number;
   pagas: number[];
   tabela: ParcelaTabela[];
