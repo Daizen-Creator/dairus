@@ -111,19 +111,24 @@ export const MARCA_PREFERENCIAS_SINCRONIZADAS = "sync_prefs_ok";
 /** Mesmo limite do Rust (preferencias_conta.rs): valor maior é descartado lá. */
 const MAX_VALOR_BYTES = 256 * 1024;
 
+/** O valor passa do limite do banco (e por isso nunca vai para a nuvem)? */
+function grandeDemais(valor: unknown): boolean {
+  if (valor === null || valor === undefined) return false;
+  return new TextEncoder().encode(JSON.stringify(valor)).length > MAX_VALOR_BYTES;
+}
+
 /** Conjunto (chave → JSON) que vai para o banco. Valores nulos ficam de fora. */
 export function preferenciasParaOBanco(todas: Record<string, unknown>): Record<string, string> {
   const saida: Record<string, string> = {};
   let completo = true;
   for (const [chave, valor] of Object.entries(todas)) {
     if (valor === null || valor === undefined || !vaiNaSincronizacao(chave)) continue;
-    const json = JSON.stringify(valor);
-    if (new TextEncoder().encode(json).length > MAX_VALOR_BYTES) {
+    if (grandeDemais(valor)) {
       // Grande demais para o banco: fica de fora, e sem a marca o outro computador não apaga a dele.
       completo = false;
       continue;
     }
-    saida[chave] = json;
+    saida[chave] = JSON.stringify(valor);
   }
   if (completo) saida[SENTINELA] = JSON.stringify("1");
   return saida;
@@ -175,11 +180,13 @@ export async function restaurarPreferenciasDoBanco(): Promise<number> {
   const conjuntoCompleto = Object.prototype.hasOwnProperty.call(doBanco, SENTINELA);
   const jaSincronizou = (await lerPreferencia<boolean>(MARCA_PREFERENCIAS_SINCRONIZADAS).catch(() => null)) === true;
   if (conjuntoCompleto && jaSincronizou) {
-    for (const chave of Object.keys(await listarPreferencias())) {
-      if (vaiNaSincronizacao(chave) && !Object.prototype.hasOwnProperty.call(doBanco, chave)) {
-        await removerPreferencia(chave);
-        n++;
-      }
+    for (const [chave, valor] of Object.entries(await listarPreferencias())) {
+      if (!vaiNaSincronizacao(chave) || Object.prototype.hasOwnProperty.call(doBanco, chave)) continue;
+      // Grande demais para o banco: nunca foi para a nuvem, então não estar lá não quer dizer
+      // que foi apagada no outro computador. Fica.
+      if (grandeDemais(valor)) continue;
+      await removerPreferencia(chave);
+      n++;
     }
   }
   return n;

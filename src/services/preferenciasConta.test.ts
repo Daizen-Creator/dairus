@@ -110,6 +110,18 @@ describe("restaurar as preferências que vieram no banco", () => {
     expect(await lerPreferencia("chave_pix")).toBe("daniel@pix");
   });
 
+  it("não apaga preferência grande demais para o banco (ela nunca foi para a nuvem)", async () => {
+    local(MARCA_PREFERENCIAS_SINCRONIZADAS, true);
+    const grande = "x".repeat(300 * 1024);
+    local("notas_inicio", grande);
+    // O outro computador mandou o conjunto completo dele (com a marca), sem a nota grande daqui.
+    noBanco({ nome_usuario: '"Dani"', chave_pix: '"dani@pix"', [SENTINELA]: '"1"' });
+    await restaurarPreferenciasDoBanco();
+    expect(await lerPreferencia("notas_inicio")).toBe(grande);
+    // As pequenas que faltam continuam sendo apagadas.
+    expect(await lerPreferencia("foco_mes")).toBeNull();
+  });
+
   it("se não consegue ler o banco, não apaga nada", async () => {
     invocar.mockRejectedValue(new Error("falhou"));
     await restaurarPreferenciasDoBanco();
