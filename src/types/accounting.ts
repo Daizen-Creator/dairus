@@ -170,6 +170,8 @@ export interface Agendamento {
   reajuste_anual: number | null;
   mes_reajuste: number | null;
   pessoa: string | null;
+  /** Dia do mês de onde as repetições partem (31 → 28/02 → 31/03); o mesmo do motor. */
+  dia_original?: number | null;
 }
 
 export interface NovoAgendamentoInput {

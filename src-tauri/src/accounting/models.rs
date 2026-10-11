@@ -156,6 +156,9 @@ pub struct Agendamento {
     pub reajuste_anual: Option<f64>,
     pub mes_reajuste: Option<i32>,
     pub pessoa: Option<String>,
+    /// Dia do mês de onde as repetições mensais/anuais partem (31 → 28/02 → 31/03).
+    /// A previsão do app usa o mesmo dia que o motor para encadear as datas.
+    pub dia_original: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

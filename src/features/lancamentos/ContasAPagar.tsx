@@ -106,7 +106,7 @@ export function ContasAPagar({ agendamentos, contasPagaveis, onAlterado }: Conta
 
   /** Recorrente: pula esta ocorrência (não paga) e vai para a próxima data. */
   async function pular(a: Agendamento) {
-    const prox = a.recorrencia ? proximoVencimentoTS(a.vencimento, a.recorrencia) : null;
+    const prox = a.recorrencia ? proximoVencimentoTS(a.vencimento, a.recorrencia, a.dia_original) : null;
     if (!prox) return;
     try {
       await extras.atualizarAgendamento(a.id, a.descricao, a.valor_centavos, prox, a.etiqueta, a.recorrencia, extrasDe(a));

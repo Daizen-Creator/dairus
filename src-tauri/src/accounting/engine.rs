@@ -984,6 +984,8 @@ pub fn criar_agendamento(conn: &mut Connection, input: NovoAgendamentoInput) -> 
     registrar_auditoria(&tx, "CRIAR_AGENDAMENTO", "agendamento", &id)?;
     tx.commit()?;
 
+    // O gatilho da migração 0017 grava o dia do vencimento como âncora quando ela não vem informada.
+    let dia_ancora = input.vencimento.get(8..10).and_then(|d| d.parse::<i32>().ok());
     Ok(Agendamento {
         id,
         descricao: input.descricao.trim().to_string(),
@@ -1000,13 +1002,14 @@ pub fn criar_agendamento(conn: &mut Connection, input: NovoAgendamentoInput) -> 
         reajuste_anual: input.reajuste_anual,
         mes_reajuste: input.mes_reajuste,
         pessoa,
+        dia_original: dia_ancora,
     })
 }
 
 pub fn listar_agendamentos(conn: &Connection) -> Resultado<Vec<Agendamento>> {
     let mut stmt = conn.prepare(
         "SELECT id, descricao, valor_centavos, vencimento, categoria_despesa_id, etiqueta, lancamento_id, pago_em, recorrencia,
-                tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa
+                tipo, automatico, conta_id, reajuste_anual, mes_reajuste, pessoa, dia_original
          FROM agendamentos ORDER BY (pago_em IS NOT NULL), vencimento, criado_em",
     )?;
     let linhas = stmt
@@ -1027,6 +1030,7 @@ pub fn listar_agendamentos(conn: &Connection) -> Resultado<Vec<Agendamento>> {
                 reajuste_anual: row.get(12)?,
                 mes_reajuste: row.get(13)?,
                 pessoa: row.get(14)?,
+                dia_original: row.get(15)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;

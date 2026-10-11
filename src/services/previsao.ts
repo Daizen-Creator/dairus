@@ -7,6 +7,7 @@
 //  - a renda média, quando não há receita agendada.
 
 import type { Agendamento, Conta, Lancamento } from "../types/accounting";
+import type { Emprestimo } from "./planejamento";
 import { proximoVencimentoTS } from "./recorrencia";
 
 export interface Evento {
@@ -61,6 +62,27 @@ export function vencimentoDaFaturaFechada(hoje: string, diaFechamento: number, d
   return vencimentoDaCompra(fechamento.toISOString().slice(0, 10), diaFechamento, diaVencimento);
 }
 
+/**
+ * Parcelas de empréstimo que a previsão deve considerar.
+ *
+ * Regra das atrasadas: as parcelas são pagas em ordem (o app sempre paga a próxima em aberto),
+ * então uma parcela não paga com vencimento no passado só é ATRASO de verdade se venceu depois
+ * que o empréstimo foi cadastrado no app. As que venceram antes do cadastro são de uma dívida que
+ * já existia (quem registra um financiamento em andamento informa a 1ª parcela lá atrás): o app
+ * não sabe se foram pagas fora dele e não as joga para amanhã.
+ *  - paga: fica de fora;
+ *  - venceu antes do cadastro e não foi paga: histórico, fica de fora;
+ *  - venceu do cadastro até hoje e não foi paga: atrasada (a previsão a coloca amanhã);
+ *  - vence depois de hoje: entra na data dela.
+ */
+export function parcelasParaPrevisao(emprestimos: Emprestimo[]): Array<{ data: string; valor: number; descricao: string }> {
+  return emprestimos.flatMap((e) =>
+    e.tabela
+      .filter((p) => !e.pagas.includes(p.numero) && !(e.cadastrado_em && p.vencimento < e.cadastrado_em))
+      .map((p) => ({ data: p.vencimento, valor: p.parcela, descricao: `Parcela ${p.numero}/${e.parcelas} ${e.nome}` })),
+  );
+}
+
 export interface EntradaPrevisao {
   hoje: string;
   dias: number;
@@ -90,8 +112,8 @@ export function preverSaldo(e: EntradaPrevisao): Previsao {
       eventos.push({ data: venc, valor: a.tipo === "RECEBER" ? a.valor_centavos : -a.valor_centavos, descricao: a.descricao });
       if (!a.recorrencia) break;
       // Repetições que já ficaram para trás não são eventos futuros: pula até a primeira que ainda vai vencer.
-      let prox = proximoVencimentoTS(original, a.recorrencia);
-      for (let j = 0; prox && prox <= hoje && j < 400; j++) prox = proximoVencimentoTS(prox, a.recorrencia);
+      let prox = proximoVencimentoTS(original, a.recorrencia, a.dia_original);
+      for (let j = 0; prox && prox <= hoje && j < 400; j++) prox = proximoVencimentoTS(prox, a.recorrencia, a.dia_original);
       if (!prox) break;
       original = prox;
       venc = prox;
@@ -126,7 +148,7 @@ export function preverSaldo(e: EntradaPrevisao): Previsao {
     }
   }
 
-  // Parcelas de empréstimo (já filtradas as pagas). A atrasada ainda precisa ser paga: entra amanhã.
+  // Parcelas de empréstimo (já filtradas por `parcelasParaPrevisao`). A atrasada ainda precisa ser paga: entra amanhã.
   for (const p of e.parcelas ?? []) if (p.data <= fim) eventos.push({ data: p.data <= hoje ? amanha : p.data, valor: -p.valor, descricao: p.descricao });
 
   // Gasto do dia a dia: despesas dos últimos 90 dias que não vieram de contas agendadas.

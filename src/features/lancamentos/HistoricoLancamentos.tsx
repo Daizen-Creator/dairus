@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
+import { estornarEmLote, resumoDoLote } from "./estornoEmLote";
 import { Bookmark, ChevronDown, ChevronRight, Copy, Download, FileText, FilterX, Paperclip, Pencil, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
@@ -246,15 +247,14 @@ export function HistoricoLancamentos({ lancamentos, contas, onAlterado, onDuplic
   }
 
   async function estornarLote() {
-    let feitos = 0;
+    // Segue mesmo se algum for recusado (compra com reembolso, divisão recebida...) e resume no fim.
+    const porId = new Map(lancamentos.map((l) => [l.id, l.descricao]));
     try {
-      for (const id of selecionados) {
-        await contabilidade.estornarLancamento(id);
-        feitos++;
-      }
-      toast.success(`${feitos} lançamento(s) estornado(s).`);
-    } catch (e) {
-      toast.error(`${String(e)} — ${feitos} já tinham sido estornados.`);
+      const r = await estornarEmLote(selecionados, (id) => contabilidade.estornarLancamento(id), (id) => porId.get(id) ?? "Lançamento");
+      const resumo = resumoDoLote(r);
+      if (resumo.tipo === "sucesso") toast.success(resumo.texto);
+      else if (resumo.tipo === "aviso") toast.warning(resumo.texto, { duration: 12_000 });
+      else toast.error(resumo.texto, { duration: 12_000 });
     } finally {
       setSelecionados(new Set());
       setConfirmarLote(false);

@@ -229,6 +229,9 @@ pub struct Emprestimo {
     pub parcelas: i64,
     pub primeiro_vencimento: String,
     pub conta_passivo_id: String,
+    /// Dia (horário de Brasília) em que o empréstimo foi cadastrado no app. Parcelas que venceram
+    /// antes disso são de uma dívida que já existia: a previsão não as trata como atrasadas.
+    pub cadastrado_em: String,
     pub saldo_devedor_centavos: i64,
     pub pagas: Vec<i64>,
     pub tabela: Vec<ParcelaTabela>,
@@ -302,16 +305,21 @@ pub fn criar_emprestimo(state: State<AppState>, input: EmprestimoInput) -> Res<S
 
 pub fn listar(conn: &Connection) -> Res<Vec<Emprestimo>> {
     let mut stmt = conn
-        .prepare("SELECT id, nome, sistema, principal_centavos, taxa_mensal, parcelas, primeiro_vencimento, conta_passivo_id FROM emprestimos ORDER BY criado_em")
+        .prepare(
+            "SELECT id, nome, sistema, principal_centavos, taxa_mensal, parcelas, primeiro_vencimento, conta_passivo_id,
+                    COALESCE(date(criado_em, '-3 hours'), substr(criado_em, 1, 10))
+             FROM emprestimos ORDER BY criado_em",
+        )
         .map_err(e)?;
-    let linhas: Vec<(String, String, String, i64, f64, i64, String, String)> = stmt
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)))
+    #[allow(clippy::type_complexity)]
+    let linhas: Vec<(String, String, String, i64, f64, i64, String, String, String)> = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?)))
         .map_err(e)?
         .collect::<rusqlite::Result<_>>()
         .map_err(e)?;
     linhas
         .into_iter()
-        .map(|(id, nome, sistema, principal, taxa, n, primeiro, conta)| {
+        .map(|(id, nome, sistema, principal, taxa, n, primeiro, conta, cadastrado_em)| {
             let mut s = conn.prepare("SELECT numero FROM emprestimo_parcelas WHERE emprestimo_id = ?1 ORDER BY numero").map_err(e)?;
             let pagas = s.query_map([&id], |r| r.get(0)).map_err(e)?.collect::<rusqlite::Result<Vec<i64>>>().map_err(e)?;
             Ok(Emprestimo {
@@ -325,6 +333,7 @@ pub fn listar(conn: &Connection) -> Res<Vec<Emprestimo>> {
                 parcelas: n,
                 primeiro_vencimento: primeiro,
                 conta_passivo_id: conta,
+                cadastrado_em,
                 pagas,
             })
         })
@@ -659,6 +668,10 @@ mod testes {
         let lanc = pagar_parcela(&mut conn, &id, "ativo-dinheiro", "2026-11-10").unwrap();
         let emp = listar(&conn).unwrap().pop().unwrap();
         assert_eq!(emp.pagas, vec![1]);
+        assert_eq!(emp.cadastrado_em.len(), 10, "data AAAA-MM-DD");
+        // Cadastrado às 22h de Brasília (01h UTC do dia seguinte): conta o dia de Brasília.
+        conn.execute("UPDATE emprestimos SET criado_em = '2026-10-02T01:00:00.000Z'", []).unwrap();
+        assert_eq!(listar(&conn).unwrap()[0].cadastrado_em, "2026-10-01");
         assert_eq!(emp.saldo_devedor_centavos, emp.tabela[0].saldo_depois);
         assert_eq!(engine::saldo_conta(&conn, JUROS).unwrap(), 20_000);
         assert_eq!(lanc.partidas.len(), 3);

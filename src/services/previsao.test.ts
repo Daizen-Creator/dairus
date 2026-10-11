@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { preverSaldo, vencimentoDaCompra, vencimentoDaFaturaFechada } from "./previsao";
+import { parcelasParaPrevisao, preverSaldo, vencimentoDaCompra, vencimentoDaFaturaFechada } from "./previsao";
+import type { Emprestimo } from "./planejamento";
 import { gerarIcs } from "./calendarioIcs";
 import { proximoVencimentoTS } from "./recorrencia";
 import { agendamento, conta, CONTAS, lancamento } from "../testes/dados";
@@ -103,6 +104,58 @@ describe("previsão: o que já venceu e não foi pago", () => {
   });
 });
 
+// Empréstimo de teste: parcelas de R$ 100,00 todo dia 10, a partir de `primeiro` (AAAA-MM).
+function emprestimo(primeiro: string, n: number, cadastrado_em: string, pagas: number[] = []): Emprestimo {
+  const [a, m] = primeiro.split("-").map(Number);
+  const tabela = Array.from({ length: n }, (_, i) => {
+    const d = new Date(Date.UTC(a, m - 1 + i, 10)).toISOString().slice(0, 10);
+    return { numero: i + 1, vencimento: d, parcela: 10_000, juros: 1_000, amortizacao: 9_000, saldo_depois: 0 };
+  });
+  return {
+    id: "e1", nome: "Carro", sistema: "PRICE", principal_centavos: n * 9_000, taxa_mensal: 0.01, parcelas: n,
+    primeiro_vencimento: tabela[0].vencimento, conta_passivo_id: "emp-1", cadastrado_em, saldo_devedor_centavos: 0, pagas, tabela,
+  };
+}
+
+describe("previsão: parcelas de empréstimo atrasadas", () => {
+  const prever = (e: Emprestimo, hoje = "2026-10-02") =>
+    preverSaldo({ hoje, dias: 60, contas: [BANCO], lancamentos: [], agendamentos: [], parcelas: parcelasParaPrevisao([e]) });
+
+  it("dívida que já existia: 24 parcelas vencidas antes do cadastro não vão para amanhã", () => {
+    // 1ª parcela em 10/10/2024; cadastrado em 01/10/2026, nenhuma paga. As 24 primeiras (até 10/09/2026) são histórico.
+    const p = prever(emprestimo("2024-10", 36, "2026-10-01"));
+    expect(p.eventos.map((e) => [e.data, e.valor, e.descricao])).toEqual([
+      ["2026-10-10", -10_000, "Parcela 25/36 Carro"],
+      ["2026-11-10", -10_000, "Parcela 26/36 Carro"],
+    ]);
+    expect(p.serie.find((x) => x.data === "2026-10-03")!.saldo).toBe(1_000_000);
+  });
+
+  it("a parcela seguinte à última paga, vencida depois do cadastro, está atrasada e entra amanhã", () => {
+    // Cadastrado em 01/06/2026, 1ª em 10/06; pagou jun, jul e ago. A de 10/09 está atrasada.
+    const p = prever(emprestimo("2026-06", 12, "2026-06-01", [1, 2, 3]));
+    expect(p.eventos.map((e) => [e.data, e.descricao])).toEqual([
+      ["2026-10-03", "Parcela 4/12 Carro"],
+      ["2026-10-10", "Parcela 5/12 Carro"],
+      ["2026-11-10", "Parcela 6/12 Carro"],
+    ]);
+  });
+
+  it("dívida antiga cadastrada no meio: só o que venceu depois do cadastro é atraso", () => {
+    // 1ª em 10/01/2025, cadastrado em 15/08/2026: a de 10/08 é histórico, a de 10/09 está atrasada.
+    const parcelas = parcelasParaPrevisao([emprestimo("2025-01", 30, "2026-08-15")]);
+    expect(parcelas[0]).toMatchObject({ data: "2026-09-10", descricao: "Parcela 21/30 Carro" });
+    const p = prever(emprestimo("2025-01", 30, "2026-08-15"));
+    expect(p.eventos.filter((e) => e.data === "2026-10-03")).toHaveLength(1);
+  });
+
+  it("parcela que vence no próprio dia do cadastro conta; parcelas pagas ficam de fora", () => {
+    const e = emprestimo("2026-09", 3, "2026-09-10", [1]);
+    expect(parcelasParaPrevisao([e]).map((x) => x.data)).toEqual(["2026-10-10", "2026-11-10"]);
+    expect(parcelasParaPrevisao([emprestimo("2026-09", 3, "2026-09-10")]).map((x) => x.data)).toEqual(["2026-09-10", "2026-10-10", "2026-11-10"]);
+  });
+});
+
 describe("calendário e recorrência", () => {
   it("calcula a próxima recorrência", () => {
     expect(proximoVencimentoTS("2026-01-31", "MENSAL")).toBe("2026-02-28");
@@ -116,5 +169,24 @@ describe("calendário e recorrência", () => {
     expect(ics).toContain("SUMMARY:Aluguel\\, R$ 1.500\\,00");
     expect(ics).toContain("TRIGGER:-P1D");
     expect(ics.endsWith("END:VCALENDAR\r\n")).toBe(true);
+  });
+});
+
+describe("previsão com o dia original da conta mensal", () => {
+  it("encadeia 31/01 → 28/02 → 31/03, igual ao motor, em vez de ficar presa no 28", () => {
+    expect(proximoVencimentoTS("2026-01-31", "MENSAL")).toBe("2026-02-28");
+    // Sem o dia original, 28/02 → 28/03 (o problema antigo); com ele, volta ao dia 31.
+    expect(proximoVencimentoTS("2026-02-28", "MENSAL")).toBe("2026-03-28");
+    expect(proximoVencimentoTS("2026-02-28", "MENSAL", 31)).toBe("2026-03-31");
+    expect(proximoVencimentoTS("2026-03-31", "MENSAL", 31)).toBe("2026-04-30");
+    expect(proximoVencimentoTS("2028-01-31", "ANUAL", 31)).toBe("2029-01-31");
+    expect(proximoVencimentoTS("2026-10-10", "SEMANAL", 31)).toBe("2026-10-17");
+  });
+
+  it("a previsão mostra a conta do dia 31 em 31/03 (não em 28/03)", () => {
+    const conta31 = agendamento({ id: "a", descricao: "Aluguel", vencimento: "2026-02-28", recorrencia: "MENSAL", dia_original: 31 });
+    const p = preverSaldo({ hoje: "2026-02-10", dias: 60, contas: [conta({ id: "banco", nome: "Banco", tipo: "ATIVO", subtipo: "BANCO", saldo_atual_centavos: 1_000_000 })], lancamentos: [], agendamentos: [conta31] });
+    const datas = p.eventos.filter((e) => e.descricao === "Aluguel").map((e) => e.data);
+    expect(datas).toEqual(["2026-02-28", "2026-03-31"]);
   });
 });
