@@ -20,7 +20,7 @@ jobs:
     name: Telas (Vitest), TypeScript e build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -35,7 +35,7 @@ jobs:
     name: Motor (clippy e cargo test) no Linux
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Bibliotecas do Tauri no Linux
         run: |
           sudo apt-get update
@@ -67,7 +67,7 @@ jobs:
       # O .cargo/config.toml aponta a pasta de build para o D: do computador do dono.
       CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/target
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
