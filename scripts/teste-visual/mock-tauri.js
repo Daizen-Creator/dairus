@@ -182,6 +182,9 @@
     // Sincronização: cópia do banco + impressão tiradas juntas, e a versão do esquema do app.
     copia_e_impressao_sync: () => ({ copia: [83, 81, 76, 105, 116, 101], impressao: "abc", esquema: 16 }),
     versao_esquema_app: () => 16,
+    // Mudança local que veio só da atualização do app (migrações): no teste, nunca.
+    mudanca_so_da_atualizacao: () => false,
+    limpar_marca_atualizacao: () => null,
     "plugin:app|version": () => "0.2.2",
     "plugin:notification|is_permission_granted": () => true,
     "plugin:autostart|is_enabled": () => false,

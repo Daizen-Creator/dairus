@@ -7,7 +7,7 @@
 // depois de baixar a versão da nuvem ou restaurar um backup.
 
 import { invoke } from "@tauri-apps/api/core";
-import { listarPreferencias, removerPreferencia, salvarPreferencia } from "./armazenamento";
+import { lerPreferencia, listarPreferencias, removerPreferencia, salvarPreferencia } from "./armazenamento";
 import { registrarNoLog } from "./sistema";
 
 /**
@@ -101,6 +101,13 @@ export function vaiNaSincronizacao(chave: string): boolean {
  * backup antigo, sem a tabela preenchida, não pode apagar preferências).
  */
 export const SENTINELA = "_preferencias_v1";
+/**
+ * Marca LOCAL (deste computador, não sincronizada): ele já concluiu uma sincronização com as
+ * preferências no banco. Antes disso, as que só existem aqui ainda não subiram para a nuvem;
+ * se a restauração apagasse o que falta no banco, elas se perderiam. Então, sem esta marca,
+ * a restauração só mescla (traz o que veio e não apaga nada).
+ */
+export const MARCA_PREFERENCIAS_SINCRONIZADAS = "sync_prefs_ok";
 /** Mesmo limite do Rust (preferencias_conta.rs): valor maior é descartado lá. */
 const MAX_VALOR_BYTES = 256 * 1024;
 
@@ -148,8 +155,10 @@ export async function guardarPreferenciasSemParar(): Promise<string | null> {
 /**
  * Traz para este computador as preferências que vieram no banco (depois de baixar da
  * nuvem ou restaurar um backup). Não mexe nas do computador nem nos segredos.
- * Se o banco tem a marca `_preferencias_v1`, também apaga daqui as preferências da lista
- * que não estão nele (foram apagadas no outro computador). Devolve quantas mudaram.
+ * Só apaga daqui as preferências da lista que não estão no banco (foram apagadas no outro
+ * computador) quando o banco tem a marca `_preferencias_v1` (conjunto completo) E este
+ * computador já concluiu uma sincronização com preferências (`sync_prefs_ok`). Antes disso,
+ * só mescla. Devolve quantas mudaram.
  */
 export async function restaurarPreferenciasDoBanco(): Promise<number> {
   const doBanco = await invoke<Record<string, string>>("ler_preferencias_conta").catch(() => ({}) as Record<string, string>);
@@ -163,7 +172,9 @@ export async function restaurarPreferenciasDoBanco(): Promise<number> {
       // valor estragado: mantém o deste computador
     }
   }
-  if (Object.prototype.hasOwnProperty.call(doBanco, SENTINELA)) {
+  const conjuntoCompleto = Object.prototype.hasOwnProperty.call(doBanco, SENTINELA);
+  const jaSincronizou = (await lerPreferencia<boolean>(MARCA_PREFERENCIAS_SINCRONIZADAS).catch(() => null)) === true;
+  if (conjuntoCompleto && jaSincronizou) {
     for (const chave of Object.keys(await listarPreferencias())) {
       if (vaiNaSincronizacao(chave) && !Object.prototype.hasOwnProperty.call(doBanco, chave)) {
         await removerPreferencia(chave);

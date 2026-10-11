@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { definirContaDasPreferencias, lerPreferencia } from "./armazenamento";
 import { decidir, resolverConflito, sincronizar, traduzirErroSync, type EstadoLocal, type EstadoNuvem } from "./sincronizacao";
 
 // Nuvem falsa (Supabase Storage) e backend Rust simulado.
@@ -56,6 +57,11 @@ let editarDuranteODownload = false;
 /** Simula outro computador gravando na nuvem enquanto este prepara a cópia. */
 let outroPcGravaAoTirarCopia = false;
 let falhaPreferencias = false;
+/** Resposta de "mudanca_so_da_atualizacao" (os dados daqui só mudaram pela atualização do app). */
+let soAtualizacao: boolean | "erro" = false;
+/** Preferências na tabela do banco local, e as que vêm no banco da nuvem ao restaurar. */
+let preferenciasNoBanco: Record<string, string> = {};
+let preferenciasDaNuvem: Record<string, string> = {};
 
 beforeEach(() => {
   nuvem.arquivos.clear();
@@ -65,6 +71,9 @@ beforeEach(() => {
   nuvem.aposEnviar = null;
   outroPcGravaAoTirarCopia = false;
   falhaPreferencias = false;
+  soAtualizacao = false;
+  preferenciasNoBanco = {};
+  preferenciasDaNuvem = {};
   chamados = [];
   impressaoLocal = "local-1";
   impressaoDaCopia = null;
@@ -74,16 +83,26 @@ beforeEach(() => {
   invocar.mockImplementation(async (comando: string, args?: unknown) => {
     chamados.push([comando, args]);
     switch (comando) {
-      case "gravar_preferencias_conta":
+      case "gravar_preferencias_conta": {
         if (falhaPreferencias) throw "disco cheio";
+        const { itens } = args as { itens: Record<string, string> };
+        // Como no app: as preferências entram no banco e mudam a impressão.
+        if (JSON.stringify(itens) !== JSON.stringify(preferenciasNoBanco)) {
+          preferenciasNoBanco = { ...itens };
+          if (Object.keys(itens).some((c) => !c.startsWith("_"))) impressaoLocal = `${impressaoLocal}+prefs`;
+        }
         return 0;
+      }
       case "ler_preferencias_conta":
-        return {};
+        return preferenciasNoBanco;
+      case "mudanca_so_da_atualizacao":
+        if (soAtualizacao === "erro") throw "comando indisponível";
+        return soAtualizacao;
       case "impressao_dados":
         return impressaoLocal;
       case "copia_e_impressao_sync":
         if (outroPcGravaAoTirarCopia) gravarEstadoNuvem({ versao: 9, dispositivo_id: "pc-2", alterado_em: "2026-10-10T10:00:00Z" });
-        return { copia: Array.from(texto("banco-local")), impressao: impressaoDaCopia ?? impressaoLocal, esquema: 16 };
+        return { copia: Array.from(texto("banco-local")), impressao: impressaoDaCopia ?? impressaoLocal, esquema: 17 };
       case "gravar_backup_baixado":
         if (falhaGravarBackup) throw falhaGravarBackup;
         if (editarDuranteODownload) impressaoLocal = "local-editado";
@@ -92,12 +111,13 @@ beforeEach(() => {
         const { impressaoEsperada } = args as { impressaoEsperada: string | null };
         if (impressaoEsperada && impressaoEsperada !== impressaoLocal) throw "DADOS_MUDARAM: os dados deste computador mudaram";
         impressaoLocal = "da-nuvem";
+        preferenciasNoBanco = { ...preferenciasDaNuvem };
         return { nome: "antes-de-restaurar-x.db", tamanho_bytes: 1, criado_em: "" };
       }
       case "info_banco":
         return { lancamentos: 3 };
       case "versao_esquema_app":
-        return 16;
+        return 17;
       default:
         return null;
     }
@@ -206,11 +226,11 @@ describe("envio com controle de concorrência", () => {
 describe("versão do esquema na nuvem", () => {
   it("o envio grava no estado.json a versão do esquema do banco", async () => {
     await sincronizar();
-    expect(estadoNaNuvem().esquema).toBe(16);
+    expect(estadoNaNuvem().esquema).toBe(17);
   });
 
   it("nuvem com banco de versão mais nova: não baixa e pede para atualizar o app", async () => {
-    gravarEstadoNuvem({ versao: 2, esquema: 17 });
+    gravarEstadoNuvem({ versao: 2, esquema: 18 });
     nuvem.arquivos.set(ATUAL, texto("banco-novo"));
     guardarEstadoLocal({ versao_vista: 1, impressao: "local-1", sincronizado_em: "" });
     await expect(sincronizar()).rejects.toThrow(/Atualize o Dairus neste computador para sincronizar/);
@@ -228,7 +248,7 @@ describe("versão do esquema na nuvem", () => {
   });
 
   it("estado antigo (sem esquema) e esquema igual continuam sincronizando", async () => {
-    gravarEstadoNuvem({ versao: 2, esquema: 16 });
+    gravarEstadoNuvem({ versao: 2, esquema: 17 });
     nuvem.arquivos.set(ATUAL, texto("banco"));
     guardarEstadoLocal({ versao_vista: 1, impressao: "local-1", sincronizado_em: "" });
     expect((await sincronizar()).decisao).toBe("BAIXAR");
@@ -286,6 +306,85 @@ describe("conflito: manter os dados deste computador", () => {
     const r = await resolverConflito("LOCAL");
     expect(r.decisao).toBe("ENVIAR");
     expect(nuvem.uploads).toContain(ATUAL);
+  });
+});
+
+describe("atualizar o app (v0.2.5 -> v0.2.6) não é conflito", () => {
+  // Preferências por conta (como no app): chaves "u1:<nome>" no localStorage.
+  const prefLocal = (chave: string, valor: unknown) => localStorage.setItem(`u1:${chave}`, JSON.stringify(valor));
+  const estadoLocalDaConta = () => JSON.parse(localStorage.getItem("u1:sync_estado") ?? "null") as EstadoLocal | null;
+
+  beforeEach(() => {
+    localStorage.clear();
+    definirContaDasPreferencias("u1");
+    // Os dois PCs estavam sincronizados na v5 (na v0.2.5, sem preferências no banco).
+    prefLocal("sync_estado", { versao_vista: 5, impressao: "v025", sincronizado_em: "" });
+    // PC B: nome igual ao do A, e uma nota que só ele tem (no arquivo de preferências).
+    prefLocal("nome_usuario", "Daniel");
+    prefLocal("notas_inicio", "nota só do PC B");
+    // A atualizou primeiro e enviou a v6, com as preferências dele (conjunto completo).
+    gravarEstadoNuvem({ versao: 6, dispositivo_id: "pc-a", esquema: 17 });
+    nuvem.arquivos.set(ATUAL, texto("banco-do-pc-a"));
+    preferenciasDaNuvem = { nome_usuario: '"Dani"', foco_mes: '"Viagem"', _preferencias_v1: '"1"' };
+    // B abriu a versão nova: as migrações mudaram a impressão.
+    impressaoLocal = "v026-migrado";
+  });
+  afterEach(() => definirContaDasPreferencias(null));
+
+  it("B atualiza sem editar nada: baixa (não é conflito) e não perde as preferências que só ele tinha", async () => {
+    soAtualizacao = true;
+    const r = await sincronizar();
+    expect(r).toMatchObject({ decisao: "BAIXAR", aplicouRemoto: true });
+    // O que veio do A chegou, e a nota que só o B tinha continua aqui (mescla, sem apagar).
+    expect(await lerPreferencia("nome_usuario")).toBe("Dani");
+    expect(await lerPreferencia("foco_mes")).toBe("Viagem");
+    expect(await lerPreferencia("notas_inicio")).toBe("nota só do PC B");
+    expect(estadoLocalDaConta()?.versao_vista).toBe(6);
+    // Concluída: a partir de agora as remoções valem, e a marca da atualização foi apagada.
+    expect(await lerPreferencia("sync_prefs_ok")).toBe(true);
+    expect(chamados.some(([c]) => c === "limpar_marca_atualizacao")).toBe(true);
+
+    // Na rodada seguinte, a nota do B sobe para a nuvem.
+    soAtualizacao = false;
+    const r2 = await sincronizar();
+    expect(r2.decisao).toBe("ENVIAR");
+    expect(preferenciasNoBanco.notas_inicio).toBe('"nota só do PC B"');
+    expect(estadoNaNuvem().versao).toBe(7);
+  });
+
+  it("B tinha editado um lançamento antes de atualizar: conflito de verdade, nada é trocado", async () => {
+    soAtualizacao = false; // o Rust diz que a mudança não veio só da atualização
+    const r = await sincronizar();
+    expect(r.decisao).toBe("CONFLITO");
+    expect(chamados.some(([c]) => c === "restaurar_backup")).toBe(false);
+    expect(await lerPreferencia("notas_inicio")).toBe("nota só do PC B");
+    expect(await lerPreferencia("sync_prefs_ok")).toBeNull();
+  });
+
+  it("A (o primeiro a atualizar, nuvem sem mudança) envia", async () => {
+    gravarEstadoNuvem({ versao: 5 });
+    soAtualizacao = true;
+    const r = await sincronizar();
+    expect(r.decisao).toBe("ENVIAR");
+    expect(estadoNaNuvem().versao).toBe(6);
+  });
+
+  it("a regra: só atualização nunca é conflito; na dúvida (erro ao perguntar), conta como mudança", async () => {
+    const local = { versao_vista: 5, impressao: "x", sincronizado_em: "" };
+    expect(decidir({ local, remoto: remoto(6), impressaoAtual: "y", localVazio: false, soAtualizacao: true })).toBe("BAIXAR");
+    expect(decidir({ local, remoto: remoto(5), impressaoAtual: "y", localVazio: false, soAtualizacao: true })).toBe("ENVIAR");
+    expect(decidir({ local, remoto: remoto(6), impressaoAtual: "y", localVazio: false })).toBe("CONFLITO");
+    soAtualizacao = "erro";
+    expect((await sincronizar()).decisao).toBe("CONFLITO");
+  });
+
+  it("sem mudança aqui, nem pergunta ao Rust", async () => {
+    impressaoLocal = "v025";
+    soAtualizacao = "erro";
+    localStorage.removeItem("u1:nome_usuario");
+    localStorage.removeItem("u1:notas_inicio");
+    expect((await sincronizar()).decisao).toBe("BAIXAR");
+    expect(chamados.some(([c]) => c === "mudanca_so_da_atualizacao")).toBe(false);
   });
 });
 

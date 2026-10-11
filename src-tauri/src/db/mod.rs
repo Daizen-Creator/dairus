@@ -79,6 +79,31 @@ pub fn executar_migracoes(conn: &Connection) -> rusqlite::Result<()> {
     aplicar_migracoes(conn, MIGRATIONS)
 }
 
+/// Testes: aplica só as `n` primeiras migrações (simula o banco de uma versão anterior do app).
+#[cfg(test)]
+pub fn executar_migracoes_ate(conn: &Connection, n: usize) -> rusqlite::Result<()> {
+    aplicar_migracoes(conn, &MIGRATIONS[..n.min(MIGRATIONS.len())])
+}
+
+/// Há migrações deste app ainda não aplicadas neste banco (banco de versão anterior ou novo)?
+pub fn migracoes_pendentes(conn: &Connection) -> rusqlite::Result<bool> {
+    let tem_tabela: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations')",
+        [],
+        |r| r.get(0),
+    )?;
+    if !tem_tabela {
+        return Ok(true);
+    }
+    for (nome, _) in MIGRATIONS {
+        let aplicada: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE nome = ?1)", [nome], |r| r.get(0))?;
+        if !aplicada {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 fn aplicar_migracoes(conn: &Connection, migracoes: &[(&str, &str)]) -> rusqlite::Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (

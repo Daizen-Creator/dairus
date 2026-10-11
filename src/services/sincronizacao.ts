@@ -10,7 +10,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { lerPreferencia, salvarPreferencia } from "./armazenamento";
 import { extras } from "./extras";
-import { guardarPreferenciasSemParar } from "./preferenciasConta";
+import { MARCA_PREFERENCIAS_SINCRONIZADAS, guardarPreferenciasSemParar } from "./preferenciasConta";
 import { supabase } from "./supabase";
 
 const BUCKET = "backups";
@@ -69,13 +69,20 @@ export interface EstadoLocal {
 
 export type Decisao = "NADA" | "ENVIAR" | "BAIXAR" | "CONFLITO";
 
-/** Regra de decisão, separada para ser testada sem nuvem. */
-export function decidir(p: { local: EstadoLocal | null; remoto: EstadoNuvem | null; impressaoAtual: string; localVazio: boolean }): Decisao {
+/**
+ * Regra de decisão, separada para ser testada sem nuvem.
+ * `soAtualizacao`: os dados daqui só mudaram porque o app foi atualizado (migrações do banco e
+ * a primeira cópia das preferências para ele), não por edição da pessoa. Isso não é motivo de
+ * conflito: se a nuvem mudou, baixa (as preferências que só existem aqui são mescladas e sobem
+ * na próxima rodada); se não, envia.
+ */
+export function decidir(p: { local: EstadoLocal | null; remoto: EstadoNuvem | null; impressaoAtual: string; localVazio: boolean; soAtualizacao?: boolean }): Decisao {
   const { local, remoto, impressaoAtual, localVazio } = p;
   if (!remoto) return "ENVIAR";
   if (!local) return localVazio ? "BAIXAR" : "CONFLITO";
   const localMudou = local.impressao !== impressaoAtual;
   const remotoMudou = remoto.versao !== local.versao_vista;
+  if (localMudou && p.soAtualizacao) return remotoMudou ? "BAIXAR" : "ENVIAR";
   if (localMudou && remotoMudou) return "CONFLITO";
   if (localMudou) return "ENVIAR";
   if (remotoMudou) return "BAIXAR";
@@ -250,21 +257,41 @@ function sincronizarDeVerdade(): Promise<ResultadoSync> {
     const local = await lerEstadoLocal();
     const impressaoAtual = await impressaoDados();
     const localVazio = (await extras.infoBanco()).lancamentos === 0;
-    const decisao = decidir({ local, remoto, impressaoAtual, localVazio });
+    // Mudou aqui desde a última sincronização: foi só a atualização do app? (Na dúvida, não.)
+    const soAtualizacao =
+      !!local && local.impressao !== impressaoAtual
+        ? await invoke<boolean>("mudanca_so_da_atualizacao", { impressaoVista: local.impressao }).catch(() => false)
+        : false;
+    const decisao = decidir({ local, remoto, impressaoAtual, localVazio, soAtualizacao: soAtualizacao === true });
     if (decisao === "ENVIAR") {
       const envio = await enviar(base, remoto);
       // Outro computador gravou na nuvem depois da leitura: os dois lados mudaram.
       if (!envio.ok) return { decisao: "CONFLITO", remoto: envio.remoto, aplicouRemoto: false };
+      await concluida();
       return { decisao, remoto: envio.estado, aplicouRemoto: false };
     }
     if (decisao === "BAIXAR" && remoto) {
       // Os dados daqui mudaram entre a decisão e a troca: os dois lados mudaram, é conflito.
       if (!(await baixar(base, remoto, impressaoAtual))) return { decisao: "CONFLITO", remoto, aplicouRemoto: false };
+      await concluida();
       return { decisao, remoto, aplicouRemoto: true };
     }
-    if (decisao === "NADA" && local) await salvarEstadoLocal({ ...local, sincronizado_em: new Date().toISOString() });
+    if (decisao === "NADA" && local) {
+      await salvarEstadoLocal({ ...local, sincronizado_em: new Date().toISOString() });
+      await concluida();
+    }
     return { decisao, remoto, aplicouRemoto: false };
   })();
+}
+
+/**
+ * Depois de uma sincronização concluída: este computador já tem as preferências na nuvem
+ * (a partir de agora a restauração pode apagar as que foram apagadas no outro) e a marca
+ * da atualização do app não vale mais.
+ */
+async function concluida(): Promise<void> {
+  await salvarPreferencia(MARCA_PREFERENCIAS_SINCRONIZADAS, true).catch(() => {});
+  await invoke("limpar_marca_atualizacao").catch(() => {});
 }
 
 /**
@@ -293,6 +320,7 @@ export async function resolverConflito(lado: "NUVEM" | "LOCAL"): Promise<Resulta
   if (lado === "NUVEM") {
     if (!remoto) throw new Error("Não há dados na nuvem.");
     await baixar(base, remoto);
+    await concluida();
     return { decisao: "BAIXAR", remoto, aplicouRemoto: true };
   }
   // Antes de sobrescrever a nuvem, guarda a versão dela como backup local.
@@ -302,6 +330,7 @@ export async function resolverConflito(lado: "NUVEM" | "LOCAL"): Promise<Resulta
   if (!envio.ok) {
     throw new Error("Outro computador enviou dados para a nuvem enquanto você escolhia. Nada foi marcado como sincronizado: escolha de novo na próxima sincronização.");
   }
+  await concluida();
   return { decisao: "ENVIAR", remoto: envio.estado, aplicouRemoto: false };
 }
 

@@ -50,6 +50,13 @@ fn caminho_banco_conta(app: &AppHandle, id: &str) -> Res<PathBuf> {
     Ok(pasta.join("dairus.db"))
 }
 
+/// Marca da última atualização do app (ver `sincronizacao::MarcaAtualizacao`) da conta aberta.
+pub fn arquivo_marca_atualizacao(app: &AppHandle) -> Option<PathBuf> {
+    let id = USUARIO_ATUAL.lock().expect("mutex envenenado").clone()?;
+    let banco = caminho_banco_conta(app, &id).ok()?;
+    Some(banco.parent()?.join(crate::sincronizacao::ARQUIVO_MARCA))
+}
+
 /// Banco cifrado da conta (quando a criptografia está ligada).
 fn caminho_cripto(app: &AppHandle, id: &str) -> Res<PathBuf> {
     Ok(caminho_banco_conta(app, id)?.with_extension("db.cripto"))
@@ -203,7 +210,8 @@ pub fn abrir_conta(app: AppHandle, state: State<AppState>, usuario_id: String, i
         }
     }
     let conn = crate::db::abrir_conexao(&destino).map_err(e)?;
-    crate::db::executar_migracoes(&conn).map_err(e)?;
+    let marca = destino.parent().unwrap_or(Path::new(".")).join(crate::sincronizacao::ARQUIVO_MARCA);
+    crate::sincronizacao::migrar_registrando(&conn, &marca).map_err(e)?;
     crate::cripto::encerrar_sessao();
     *state.conn.lock().expect("mutex envenenado") = conn;
     *USUARIO_ATUAL.lock().expect("mutex envenenado") = Some(id);
@@ -219,7 +227,8 @@ fn abrir_cifrado(
     senha: &str,
 ) -> Res<()> {
     let conn = crate::cripto::banco_em_memoria(texto)?;
-    crate::db::executar_migracoes(&conn).map_err(e)?;
+    let marca = caminho_banco_conta(app, &id)?.with_file_name(crate::sincronizacao::ARQUIVO_MARCA);
+    crate::sincronizacao::migrar_registrando(&conn, &marca).map_err(e)?;
     crate::documentos::limpar_abertos(app);
     let arquivo = caminho_cripto(app, &id)?;
     let mut guarda = state.conn.lock().expect("mutex envenenado");
