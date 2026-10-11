@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { definirContaDasPreferencias, lerPreferencia } from "./armazenamento";
-import { PREFERENCIAS_DA_CONTA, SENTINELA, preferenciasParaOBanco, restaurarPreferenciasDoBanco, vaiNaSincronizacao } from "./preferenciasConta";
+import { MARCA_PREFERENCIAS_SINCRONIZADAS, PREFERENCIAS_DA_CONTA, SENTINELA, preferenciasParaOBanco, restaurarPreferenciasDoBanco, vaiNaSincronizacao } from "./preferenciasConta";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const invocar = vi.mocked(invoke);
@@ -27,7 +27,7 @@ describe("preferências da conta na sincronização (lista permitida)", () => {
       "meta_lembrete_ultimo", "meta_sobra_ultimo", "orcamento_auto_ultimo", "radar_auto_ultimo", "resumo_semanal_ultimo", "pdf_mensal_ultimo",
       "diagnostico_ia_ultimo", "verificacao_semanal_ultima", "tema_do_dia", "ocultar_saldos", "avisos_enviados", "gemini_uso",
       // do computador / sincronização / atualização
-      "dispositivo_id", "sync_estado", "sync_ultimo_erro", "sync_auto", "pin_hash", "pin_salt", "pasta_vigiada", "atualizacao_beta", "atualizacao_em_andamento",
+      "dispositivo_id", "sync_estado", "sync_ultimo_erro", "sync_auto", "sync_prefs_ok", "pin_hash", "pin_salt", "pasta_vigiada", "atualizacao_beta", "atualizacao_em_andamento",
       "widgets_inicio", "aparencia",
       // segredos e conversa com dados financeiros
       "gemini_chave", "brapi_token", "gemini_historico", "ia_conversas",
@@ -70,6 +70,7 @@ describe("restaurar as preferências que vieram no banco", () => {
 
   beforeEach(() => {
     invocar.mockReset();
+    localStorage.clear();
     definirContaDasPreferencias("u1");
     local("nome_usuario", "Daniel");
     local("foco_mes", "Guardar para a viagem");
@@ -78,7 +79,8 @@ describe("restaurar as preferências que vieram no banco", () => {
     local("gemini_historico", [{ pergunta: "quanto gastei?" }]);
   });
 
-  it("com a marca, apaga daqui o que foi apagado no outro computador (só da lista permitida)", async () => {
+  it("com a marca e já sincronizado antes, apaga daqui o que foi apagado no outro computador (só da lista permitida)", async () => {
+    local(MARCA_PREFERENCIAS_SINCRONIZADAS, true);
     noBanco({ nome_usuario: '"Dani"', chave_pix: '"dani@pix"', [SENTINELA]: '"1"' });
     await restaurarPreferenciasDoBanco();
     expect(await lerPreferencia("nome_usuario")).toBe("Dani");
@@ -90,12 +92,34 @@ describe("restaurar as preferências que vieram no banco", () => {
     expect(await lerPreferencia(SENTINELA)).toBeNull();
   });
 
+  it("primeira sincronização deste computador (sem sync_prefs_ok): só mescla, mesmo com a marca do banco", async () => {
+    noBanco({ nome_usuario: '"Dani"', [SENTINELA]: '"1"' });
+    await restaurarPreferenciasDoBanco();
+    expect(await lerPreferencia("nome_usuario")).toBe("Dani");
+    // Só este computador tinha: não sobe ainda para a nuvem, então não pode sumir.
+    expect(await lerPreferencia("foco_mes")).toBe("Guardar para a viagem");
+    expect(await lerPreferencia("chave_pix")).toBe("daniel@pix");
+  });
+
   it("sem a marca (backup antigo), não apaga nada: só traz o que veio", async () => {
+    local(MARCA_PREFERENCIAS_SINCRONIZADAS, true);
     noBanco({ nome_usuario: '"Dani"' });
     await restaurarPreferenciasDoBanco();
     expect(await lerPreferencia("nome_usuario")).toBe("Dani");
     expect(await lerPreferencia("foco_mes")).toBe("Guardar para a viagem");
     expect(await lerPreferencia("chave_pix")).toBe("daniel@pix");
+  });
+
+  it("não apaga preferência grande demais para o banco (ela nunca foi para a nuvem)", async () => {
+    local(MARCA_PREFERENCIAS_SINCRONIZADAS, true);
+    const grande = "x".repeat(300 * 1024);
+    local("notas_inicio", grande);
+    // O outro computador mandou o conjunto completo dele (com a marca), sem a nota grande daqui.
+    noBanco({ nome_usuario: '"Dani"', chave_pix: '"dani@pix"', [SENTINELA]: '"1"' });
+    await restaurarPreferenciasDoBanco();
+    expect(await lerPreferencia("notas_inicio")).toBe(grande);
+    // As pequenas que faltam continuam sendo apagadas.
+    expect(await lerPreferencia("foco_mes")).toBeNull();
   });
 
   it("se não consegue ler o banco, não apaga nada", async () => {

@@ -6,7 +6,7 @@ use std::path::Path;
 
 use rusqlite::types::ValueRef;
 use rusqlite::Connection;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
 use crate::commands::AppState;
@@ -26,6 +26,16 @@ fn misturar(h: &mut u64, bytes: &[u8]) {
 /// em ordem fixa. Muda se qualquer valor mudar; não serve como criptografia,
 /// só para detectar alteração.
 pub fn calcular_impressao(conn: &Connection) -> rusqlite::Result<String> {
+    calcular_impressao_ignorando(conn, &[])
+}
+
+/// Impressão sem a tabela das preferências da conta: usada para saber se, depois de
+/// atualizar o app, só as preferências mudaram (são copiadas do arquivo sozinhas).
+pub fn impressao_sem_preferencias(conn: &Connection) -> rusqlite::Result<String> {
+    calcular_impressao_ignorando(conn, &["preferencias_conta"])
+}
+
+fn calcular_impressao_ignorando(conn: &Connection, ignorar: &[&str]) -> rusqlite::Result<String> {
     let mut tabelas: Vec<String> = conn
         .prepare(
             "SELECT name FROM sqlite_master WHERE type = 'table'
@@ -33,6 +43,7 @@ pub fn calcular_impressao(conn: &Connection) -> rusqlite::Result<String> {
         )?
         .query_map([], |r| r.get(0))?
         .collect::<rusqlite::Result<_>>()?;
+    tabelas.retain(|t| !ignorar.contains(&t.as_str()));
     tabelas.sort();
 
     let mut h = FNV_INICIO;
@@ -140,6 +151,75 @@ pub fn versao_esquema_app() -> u32 {
     crate::db::versao_esquema_app()
 }
 
+/// Atualizar o app muda a impressão sem a pessoa mexer em nada: as migrações criam tabelas
+/// e colunas, e depois as preferências do arquivo são copiadas para o banco. Sem cuidado,
+/// dois computadores que atualizam veriam "mudou aqui" e "mudou na nuvem" e acusariam um
+/// CONFLITO falso. Por isso, ao abrir a conta com migrações pendentes, guarda-se a impressão
+/// de ANTES delas (a mesma que a última sincronização gravou, se nada mais mudou) e a de
+/// DEPOIS sem a tabela de preferências.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MarcaAtualizacao {
+    pub antes: String,
+    pub depois_sem_preferencias: String,
+}
+
+/// Nome do arquivo da marca, na pasta da conta (só tem impressões, nenhum dado).
+pub const ARQUIVO_MARCA: &str = "sync-atualizacao.json";
+
+fn ler_marca(arquivo: &Path) -> Option<MarcaAtualizacao> {
+    serde_json::from_slice(&std::fs::read(arquivo).ok()?).ok()
+}
+
+/// Aplica as migrações (como `executar_migracoes`) e, se havia alguma pendente, grava a marca.
+/// Se a marca não puder ser gravada, só registra no log: no pior caso a sincronização pergunta.
+pub fn migrar_registrando(conn: &Connection, arquivo_marca: &Path) -> rusqlite::Result<()> {
+    migrar_registrando_com(conn, arquivo_marca, crate::db::executar_migracoes)
+}
+
+fn migrar_registrando_com(conn: &Connection, arquivo_marca: &Path, migrar: impl FnOnce(&Connection) -> rusqlite::Result<()>) -> rusqlite::Result<()> {
+    if !crate::db::migracoes_pendentes(conn)? {
+        return migrar(conn);
+    }
+    let antes = calcular_impressao(conn)?;
+    let antes_sem_preferencias = impressao_sem_preferencias(conn)?;
+    migrar(conn)?;
+    let depois_sem_preferencias = impressao_sem_preferencias(conn)?;
+    // Duas atualizações seguidas sem sincronizar no meio (a marca só é apagada depois de uma
+    // sincronização): vale a impressão de antes da primeira, se nada além das preferências mudou.
+    let antes = match ler_marca(arquivo_marca) {
+        Some(m) if m.depois_sem_preferencias == antes_sem_preferencias => m.antes,
+        _ => antes,
+    };
+    let marca = MarcaAtualizacao { antes, depois_sem_preferencias };
+    let gravado = serde_json::to_vec(&marca).map_err(|e| e.to_string()).and_then(|b| std::fs::write(arquivo_marca, b).map_err(|e| e.to_string()));
+    if let Err(err) = gravado {
+        log::warn!("sincronização: não foi possível guardar a marca da atualização: {err}");
+    }
+    Ok(())
+}
+
+/// A única diferença entre os dados de agora e os da última sincronização (`impressao_vista`)
+/// veio da atualização do app (e das preferências copiadas para o banco depois dela)?
+pub fn so_mudou_por_atualizacao(conn: &Connection, arquivo_marca: &Path, impressao_vista: &str) -> bool {
+    let Some(marca) = ler_marca(arquivo_marca) else { return false };
+    marca.antes == impressao_vista && impressao_sem_preferencias(conn).is_ok_and(|i| i == marca.depois_sem_preferencias)
+}
+
+#[tauri::command]
+pub fn mudanca_so_da_atualizacao(app: AppHandle, state: State<AppState>, impressao_vista: String) -> bool {
+    let Some(arquivo) = crate::conta::arquivo_marca_atualizacao(&app) else { return false };
+    let conn = state.conn.lock().expect("mutex envenenado");
+    so_mudou_por_atualizacao(&conn, &arquivo, &impressao_vista)
+}
+
+/// Depois de uma sincronização concluída, a marca da atualização não vale mais.
+#[tauri::command]
+pub fn limpar_marca_atualizacao(app: AppHandle) {
+    if let Some(arquivo) = crate::conta::arquivo_marca_atualizacao(&app) {
+        let _ = std::fs::remove_file(arquivo);
+    }
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -159,6 +239,82 @@ mod testes {
         // A auditoria (só registra que algo aconteceu) não conta como mudança de dados.
         conn.execute("INSERT INTO auditoria (id, acao, entidade, entidade_id) VALUES ('x', 'Y', 'z', 'w')", []).unwrap();
         assert_eq!(b, calcular_impressao(&conn).unwrap());
+    }
+
+    fn pasta_temp() -> std::path::PathBuf {
+        let p = std::env::temp_dir().join(format!("dairus-marca-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    /// Banco como o da v0.2.5 (até a migração 0015), com uma alteração da pessoa.
+    fn banco_da_versao_anterior() -> Connection {
+        let conn = abrir_conexao(std::path::Path::new(":memory:")).unwrap();
+        crate::db::executar_migracoes_ate(&conn, 15).unwrap();
+        conn.execute("UPDATE contas_contabeis SET nome = 'Carteira' WHERE id = 'ativo-dinheiro'", []).unwrap();
+        conn
+    }
+
+    fn preferencias(conn: &mut Connection, nome: &str) {
+        let itens = [("nome_usuario".to_string(), format!("\"{nome}\"")), ("_preferencias_v1".to_string(), "\"1\"".to_string())];
+        crate::preferencias_conta::gravar_db(conn, itens.into_iter().collect()).unwrap();
+    }
+
+    #[test]
+    fn atualizar_o_app_sem_mexer_em_nada_nao_conta_como_mudanca() {
+        let pasta = pasta_temp();
+        let marca = pasta.join(ARQUIVO_MARCA);
+        let mut conn = banco_da_versao_anterior();
+        // A impressão que a v0.2.5 gravou na última sincronização.
+        let vista = calcular_impressao(&conn).unwrap();
+
+        migrar_registrando(&conn, &marca).unwrap();
+        assert!(marca.is_file());
+        assert_ne!(calcular_impressao(&conn).unwrap(), vista, "as migrações mudam a impressão");
+        assert!(so_mudou_por_atualizacao(&conn, &marca, &vista));
+        // A primeira cópia das preferências para o banco também não conta.
+        preferencias(&mut conn, "Daniel");
+        assert!(so_mudou_por_atualizacao(&conn, &marca, &vista));
+        // Abrir de novo (sem migração pendente) não mexe na marca.
+        migrar_registrando(&conn, &marca).unwrap();
+        assert!(so_mudou_por_atualizacao(&conn, &marca, &vista));
+
+        // Uma edição de verdade depois da atualização conta.
+        conn.execute("UPDATE contas_contabeis SET nome = 'Bolso' WHERE id = 'ativo-dinheiro'", []).unwrap();
+        assert!(!so_mudou_por_atualizacao(&conn, &marca, &vista));
+        std::fs::remove_dir_all(pasta).ok();
+    }
+
+    #[test]
+    fn edicao_antes_de_atualizar_continua_contando() {
+        let pasta = pasta_temp();
+        let marca = pasta.join(ARQUIVO_MARCA);
+        let conn = banco_da_versao_anterior();
+        let vista = calcular_impressao(&conn).unwrap();
+        // Editou na versão antiga depois da última sincronização, e só então atualizou.
+        conn.execute("UPDATE contas_contabeis SET nome = 'Bolso' WHERE id = 'ativo-dinheiro'", []).unwrap();
+        migrar_registrando(&conn, &marca).unwrap();
+        assert!(!so_mudou_por_atualizacao(&conn, &marca, &vista));
+        // Sem marca (nunca houve atualização) também não.
+        assert!(!so_mudou_por_atualizacao(&conn, &pasta.join("nao-existe.json"), &vista));
+        std::fs::remove_dir_all(pasta).ok();
+    }
+
+    #[test]
+    fn duas_atualizacoes_sem_sincronizar_no_meio_guardam_a_impressao_mais_antiga() {
+        let pasta = pasta_temp();
+        let marca = pasta.join(ARQUIVO_MARCA);
+        let mut conn = abrir_conexao(std::path::Path::new(":memory:")).unwrap();
+        crate::db::executar_migracoes_ate(&conn, 15).unwrap();
+        let vista = calcular_impressao(&conn).unwrap();
+        // Primeira atualização (só até a 0016) e as preferências copiadas.
+        migrar_registrando_com(&conn, &marca, |c| crate::db::executar_migracoes_ate(c, 16)).unwrap();
+        assert!(crate::db::migracoes_pendentes(&conn).unwrap());
+        preferencias(&mut conn, "Daniel");
+        // Segunda atualização (o resto).
+        migrar_registrando(&conn, &marca).unwrap();
+        assert!(so_mudou_por_atualizacao(&conn, &marca, &vista));
+        std::fs::remove_dir_all(pasta).ok();
     }
 
     #[test]
