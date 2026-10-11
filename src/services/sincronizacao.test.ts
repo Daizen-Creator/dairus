@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { definirContaDasPreferencias, lerPreferencia } from "./armazenamento";
-import { decidir, resolverConflito, sincronizar, traduzirErroSync, type EstadoLocal, type EstadoNuvem } from "./sincronizacao";
+import { arquivoDoBanco, decidir, resolverConflito, sincronizar, traduzirErroSync, type EstadoLocal, type EstadoNuvem } from "./sincronizacao";
 
 // Nuvem falsa (Supabase Storage) e backend Rust simulado.
 const nuvem = vi.hoisted(() => ({
@@ -28,14 +28,25 @@ vi.mock("./supabase", () => ({
           if (!bytes) return { data: null, error: { message: "Object not found" } };
           return { data: new Blob([bytes.slice()]), error: null };
         },
-        upload: async (caminho: string, blob: Blob, opcoes?: { cacheControl?: string }) => {
+        upload: async (caminho: string, blob: Blob, opcoes?: { cacheControl?: string; upsert?: boolean }) => {
           nuvem.opcoesUpload.push({ caminho, opcoes });
           const falha = nuvem.falhaUpload.get(caminho);
           if (falha) return { data: null, error: { message: falha } };
+          if (opcoes?.upsert === false && nuvem.arquivos.has(caminho)) return { data: null, error: { message: "The resource already exists" } };
           nuvem.uploads.push(caminho);
           nuvem.arquivos.set(caminho, new Uint8Array(await blob.arrayBuffer()));
           nuvem.aposEnviar?.(caminho);
           return { data: {}, error: null };
+        },
+        copy: async (de: string, para: string) => {
+          const bytes = nuvem.arquivos.get(de);
+          if (!bytes) return { data: null, error: { message: "Object not found" } };
+          nuvem.arquivos.set(para, bytes.slice());
+          return { data: {}, error: null };
+        },
+        remove: async (caminhos: string[]) => {
+          for (const c of caminhos) nuvem.arquivos.delete(c);
+          return { data: [], error: null };
         },
       }),
     },
@@ -64,6 +75,8 @@ let outroPcGravaAoTirarCopia = false;
 let falhaPreferencias = false;
 /** Resposta de "mudanca_so_da_atualizacao" (os dados daqui só mudaram pela atualização do app). */
 let soAtualizacao: boolean | "erro" = false;
+/** Conteúdo de cada banco baixado da nuvem (gravar_backup_baixado). */
+let baixados: string[] = [];
 /** Preferências na tabela do banco local, e as que vêm no banco da nuvem ao restaurar. */
 let preferenciasNoBanco: Record<string, string> = {};
 let preferenciasDaNuvem: Record<string, string> = {};
@@ -79,6 +92,7 @@ beforeEach(() => {
   outroPcGravaAoTirarCopia = false;
   falhaPreferencias = false;
   soAtualizacao = false;
+  baixados = [];
   preferenciasNoBanco = {};
   preferenciasDaNuvem = {};
   chamados = [];
@@ -112,6 +126,7 @@ beforeEach(() => {
         return { copia: Array.from(texto("banco-local")), impressao: impressaoDaCopia ?? impressaoLocal, esquema: 17 };
       case "gravar_backup_baixado":
         if (falhaGravarBackup) throw falhaGravarBackup;
+        baixados.push(new TextDecoder().decode(new Uint8Array((args as { conteudo: number[] }).conteudo)));
         if (editarDuranteODownload) impressaoLocal = "local-editado";
         return { nome: (args as { nome: string }).nome, tamanho_bytes: 1, criado_em: "" };
       case "restaurar_backup": {
@@ -216,8 +231,10 @@ describe("envio com controle de concorrência", () => {
     guardarEstadoLocal({ versao_vista: 7, impressao: "antiga", sincronizado_em: "" });
     const r = await sincronizar();
     expect(r.decisao).toBe("ENVIAR");
-    expect(nuvem.uploads).toEqual([ATUAL, ESTADO]);
-    expect(estadoNaNuvem().versao).toBe(8);
+    const estado = estadoNaNuvem();
+    expect(estado.arquivo).toMatch(/^banco-v8-[0-9a-f]{8}\.db$/);
+    expect(nuvem.uploads).toEqual([`u1/sync/${estado.arquivo}`, ATUAL, ESTADO]);
+    expect(estado.versao).toBe(8);
     expect(estadoLocal()?.versao_vista).toBe(8);
   });
 
@@ -392,6 +409,77 @@ describe("atualizar o app (v0.2.5 -> v0.2.6) não é conflito", () => {
     localStorage.removeItem("u1:notas_inicio");
     expect((await sincronizar()).decisao).toBe("BAIXAR");
     expect(chamados.some(([c]) => c === "mudanca_so_da_atualizacao")).toBe(false);
+  });
+});
+
+describe("banco com nome por versão (nenhum envio apaga o do outro computador)", () => {
+  const PASTA = "u1/sync/";
+  const arquivosDeBanco = () => [...nuvem.arquivos.keys()].filter((c) => /banco-v/.test(c)).map((c) => c.slice(PASTA.length)).sort();
+
+  it("outro computador grava enquanto este envia: a nuvem fica inteira com os dados dele, e \"usar a da nuvem\" traz os dados dele", async () => {
+    // A nuvem na v1 (formato novo), vista pelos dois.
+    nuvem.arquivos.set(`${PASTA}banco-v1-aaaaaaaa.db`, texto("banco-v1"));
+    nuvem.arquivos.set(ATUAL, texto("banco-v1"));
+    gravarEstadoNuvem({ versao: 1, arquivo: "banco-v1-aaaaaaaa.db" });
+    guardarEstadoLocal({ versao_vista: 1, impressao: "antiga", sincronizado_em: "" });
+    // Logo depois de este PC subir o banco dele, o PC B publica a v2 dele.
+    let feito = false;
+    nuvem.aposEnviar = (caminho) => {
+      if (feito || !/banco-v2-/.test(caminho)) return;
+      feito = true;
+      nuvem.arquivos.set(`${PASTA}banco-v2-bbbbbbbb.db`, texto("banco-do-pc-b"));
+      nuvem.arquivos.set(ATUAL, texto("banco-do-pc-b"));
+      gravarEstadoNuvem({ versao: 2, dispositivo_id: "pc-b", alterado_em: "2026-10-10T10:00:00Z", arquivo: "banco-v2-bbbbbbbb.db", anterior: "banco-v1-aaaaaaaa.db" });
+    };
+    const r = await sincronizar();
+    expect(r.decisao).toBe("CONFLITO");
+    // Nada deste PC sobrou na nuvem: o banco que ele subiu foi retirado, o atual.db é o do B.
+    expect(arquivosDeBanco()).toEqual(["banco-v1-aaaaaaaa.db", "banco-v2-bbbbbbbb.db"]);
+    expect(new TextDecoder().decode(nuvem.arquivos.get(ATUAL))).toBe("banco-do-pc-b");
+    expect(estadoNaNuvem()).toMatchObject({ versao: 2, dispositivo_id: "pc-b" });
+    expect(estadoLocal()?.versao_vista).toBe(1);
+
+    // A pessoa escolhe a versão da nuvem: vêm os dados do PC B (não os deste).
+    const r2 = await resolverConflito("NUVEM");
+    expect(r2.decisao).toBe("BAIXAR");
+    expect(baixados[baixados.length - 1]).toBe("banco-do-pc-b");
+  });
+
+  it("guarda o banco atual e o anterior; o de antes deles sai", async () => {
+    nuvem.arquivos.set(`${PASTA}banco-v1-aaaaaaaa.db`, texto("banco-v1"));
+    gravarEstadoNuvem({ versao: 1, arquivo: "banco-v1-aaaaaaaa.db" });
+    guardarEstadoLocal({ versao_vista: 1, impressao: "antiga", sincronizado_em: "" });
+    await sincronizar();
+    const v2 = estadoNaNuvem();
+    expect(v2).toMatchObject({ versao: 2, anterior: "banco-v1-aaaaaaaa.db" });
+    impressaoLocal = "editado";
+    await sincronizar();
+    const v3 = estadoNaNuvem();
+    expect(v3).toMatchObject({ versao: 3, anterior: v2.arquivo });
+    expect(arquivosDeBanco()).toEqual([v2.arquivo, v3.arquivo].sort());
+    // E baixa pelo nome que o estado aponta.
+    impressaoLocal = "outra";
+    guardarEstadoLocal({ versao_vista: 2, impressao: "outra", sincronizado_em: "" });
+    expect((await sincronizar()).decisao).toBe("BAIXAR");
+    expect(nuvem.opcoesDownload.some((d) => d.caminho === `${PASTA}${v3.arquivo}`)).toBe(true);
+  });
+
+  it("nuvem no formato antigo (só atual.db): guarda o banco dela com nome único antes de sobrescrever", async () => {
+    nuvem.arquivos.set(ATUAL, texto("banco-antigo"));
+    gravarEstadoNuvem({ versao: 4 });
+    guardarEstadoLocal({ versao_vista: 4, impressao: "antiga", sincronizado_em: "" });
+    expect((await sincronizar()).decisao).toBe("ENVIAR");
+    const estado = estadoNaNuvem();
+    expect(estado.anterior).toMatch(/^banco-v4-[0-9a-f]{8}\.db$/);
+    expect(new TextDecoder().decode(nuvem.arquivos.get(`${PASTA}${estado.anterior}`))).toBe("banco-antigo");
+    expect(new TextDecoder().decode(nuvem.arquivos.get(ATUAL))).toBe("banco-local");
+  });
+
+  it("recusa estado que aponta para um arquivo estranho", () => {
+    const base = { versao: 1, alterado_em: "", dispositivo_id: "x", dispositivo_nome: "PC" };
+    expect(arquivoDoBanco(base)).toBe("atual.db");
+    expect(arquivoDoBanco({ ...base, arquivo: "banco-v3-0123abcd.db" })).toBe("banco-v3-0123abcd.db");
+    expect(() => arquivoDoBanco({ ...base, arquivo: "../outra-conta/atual.db" })).toThrow(/inválido/);
   });
 });
 

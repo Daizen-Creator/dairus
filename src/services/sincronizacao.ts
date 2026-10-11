@@ -1,7 +1,9 @@
 // Sincronização automática entre computadores pela nuvem da conta (Supabase).
 //
-// Guarda na nuvem uma cópia do banco (<conta>/sync/atual.db) e um estado
-// (<conta>/sync/estado.json) com um número de versão. Cada computador lembra
+// Guarda na nuvem uma cópia do banco com nome único por envio (<conta>/sync/banco-vN-xxxx.db,
+// mais a do envio anterior, como um passo de volta) e um estado (<conta>/sync/estado.json) com
+// um número de versão e o nome do banco dessa versão. O atual.db continua sendo gravado para
+// o Dairus até a v0.2.5, que só lê esse arquivo. Cada computador lembra
 // a última versão que viu e a "impressão" dos dados naquele momento:
 //   - só este computador mudou  -> envia (versão + 1);
 //   - só a nuvem mudou          -> baixa e aplica (com cópia de segurança);
@@ -45,6 +47,25 @@ export interface EstadoNuvem {
   dispositivo_nome: string;
   /** Versão do esquema do banco enviado (número da última migração). Ausente nos envios até a v0.2.5. */
   esquema?: number;
+  /**
+   * Arquivo do banco desta versão, na pasta de sincronização (nome único por envio, nunca
+   * sobrescrito). Ausente nos envios antigos: aí o banco é o `atual.db`.
+   */
+  arquivo?: string;
+  /** Arquivo da versão anterior, guardado como um passo de volta. */
+  anterior?: string;
+}
+
+/** Cópia do banco que o Dairus até a v0.2.5 lê (continua sendo gravada para ele). */
+const ATUAL = "atual.db";
+/** Nome do banco de um envio: único, para um envio nunca apagar o de outro computador. */
+const VERSIONADO = /^banco-v\d+-[0-9a-f]{8}\.db$/;
+
+/** Arquivo do banco apontado por um estado da nuvem (com nome conferido). */
+export function arquivoDoBanco(e: EstadoNuvem): string {
+  if (e.arquivo === undefined || e.arquivo === ATUAL) return ATUAL;
+  if (!VERSIONADO.test(e.arquivo)) throw new Error("O estado da sincronização na nuvem aponta para um arquivo inválido.");
+  return e.arquivo;
 }
 
 export const MSG_ATUALIZE = "A nuvem tem dados de uma versão mais nova do Dairus. Atualize o Dairus neste computador para sincronizar.";
@@ -193,28 +214,61 @@ async function enviar(base: string, lido: EstadoNuvem | null): Promise<Envio> {
   }
   const antesDoBanco = await mudouDesdeALeitura();
   if (antesDoBanco) return antesDoBanco;
-  const { error: e1 } = await supabase.storage
-    .from(BUCKET)
-    .upload(`${base}/atual.db`, new Blob([copia], { type: BINARIO }), SEM_CACHE);
+  const versao = (lido?.versao ?? 0) + 1;
+  // O banco vai com nome único: se outro computador gravar ao mesmo tempo, nenhum dos dois
+  // apaga o banco do outro, e o estado.json (gravado por último) decide qual vale.
+  const arquivo = `banco-v${versao}-${crypto.randomUUID().slice(0, 8)}.db`;
+  const corpo = () => new Blob([copia], { type: BINARIO });
+  const { error: e1 } = await supabase.storage.from(BUCKET).upload(`${base}/${arquivo}`, corpo(), { ...SEM_CACHE, upsert: false });
   if (e1) throw new Error(e1.message);
+  const antesDoEstado = await mudouDesdeALeitura();
+  if (antesDoEstado) {
+    // Ninguém aponta para o banco que acabou de subir: pode sair. A nuvem fica como estava.
+    await apagarDaNuvem(base, arquivo);
+    return antesDoEstado;
+  }
+  // A nuvem ainda está no formato antigo (só atual.db): guarda o banco dela com nome único
+  // antes de sobrescrever o atual.db, para continuar havendo um passo de volta.
+  let anterior = lido?.arquivo;
+  if (lido && anterior === undefined) {
+    const nome = `banco-v${lido.versao}-${crypto.randomUUID().slice(0, 8)}.db`;
+    const { error } = await supabase.storage.from(BUCKET).copy(`${base}/${ATUAL}`, `${base}/${nome}`);
+    if (!error) anterior = nome;
+  }
+  // Cópia para o Dairus até a v0.2.5, que só lê o atual.db (antes do estado, que é o que "publica").
+  const { error: e2 } = await supabase.storage.from(BUCKET).upload(`${base}/${ATUAL}`, corpo(), SEM_CACHE);
+  if (e2) throw new Error(e2.message);
   const estado: EstadoNuvem = {
-    versao: (lido?.versao ?? 0) + 1,
+    versao,
     alterado_em: new Date().toISOString(),
     dispositivo_id: await idDoDispositivo(),
     dispositivo_nome: nomeDoDispositivo(),
     esquema: tirada.esquema,
+    arquivo,
+    ...(anterior ? { anterior } : {}),
   };
-  const antesDoEstado = await mudouDesdeALeitura();
-  if (antesDoEstado) return antesDoEstado;
-  const { error: e2 } = await supabase.storage
+  const { error: e3 } = await supabase.storage
     .from(BUCKET)
     .upload(`${base}/estado.json`, new Blob([JSON.stringify(estado)], { type: BINARIO }), SEM_CACHE);
-  if (e2) throw new Error(e2.message);
+  if (e3) throw new Error(e3.message);
   // Confere: se outro computador gravou ao mesmo tempo, não marca como sincronizado.
+  // (O banco enviado fica na nuvem: o estado do outro pode apontar para ele como "anterior".)
   const conferido = await lerEstadoNuvem(base);
   if (assinatura(conferido) !== assinatura(estado)) return { ok: false, remoto: conferido };
   await salvarEstadoLocal({ ...vista(estado), impressao, sincronizado_em: estado.alterado_em, enviado_daqui: true });
+  // Ficam na nuvem o banco atual e o anterior; o de antes deles sai.
+  const velho = lido?.anterior;
+  if (velho && velho !== arquivo && velho !== lido?.arquivo && VERSIONADO.test(velho)) await apagarDaNuvem(base, velho);
   return { ok: true, estado };
+}
+
+/** Apaga um arquivo da pasta de sincronização, sem parar se não der (sobra um arquivo, nada se perde). */
+async function apagarDaNuvem(base: string, arquivo: string): Promise<void> {
+  try {
+    await supabase.storage.from(BUCKET).remove([`${base}/${arquivo}`]);
+  } catch {
+    // fica para trás; não atrapalha a sincronização
+  }
 }
 
 /**
@@ -224,7 +278,7 @@ async function enviar(base: string, lido: EstadoNuvem | null): Promise<Envio> {
  * substituído e devolve false (é um conflito).
  */
 async function baixar(base: string, remoto: EstadoNuvem, impressaoEsperada?: string): Promise<boolean> {
-  const { data, error } = await baixarSemCache(`${base}/atual.db`);
+  const { data, error } = await baixarSemCache(`${base}/${arquivoDoBanco(remoto)}`);
   if (error || !data) throw new Error(error?.message ?? "Falha ao baixar a cópia da nuvem.");
   const carimbo = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
   const info = await extras.gravarBackupBaixado(`sincronizado-${carimbo}.db`, new Uint8Array(await data.arrayBuffer()));
@@ -330,9 +384,9 @@ async function concluida(): Promise<void> {
  * Se não conseguir baixar ou gravar, lança erro e o envio é cancelado. Só segue sem cópia
  * quando a nuvem não tem o arquivo (não há o que perder).
  */
-async function guardarCopiaDaNuvem(base: string): Promise<void> {
+async function guardarCopiaDaNuvem(base: string, remoto: EstadoNuvem): Promise<void> {
   const cancelado = "Nada foi enviado: não foi possível guardar antes uma cópia dos dados da nuvem neste computador";
-  const { data, error } = await baixarSemCache(`${base}/atual.db`);
+  const { data, error } = await baixarSemCache(`${base}/${arquivoDoBanco(remoto)}`);
   if (error && naoExiste(error.message)) return;
   if (error || !data) throw new Error(`${cancelado} (${traduzirErroSync(error?.message ?? "arquivo vazio")}). Tente de novo.`);
   const carimbo = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
@@ -356,7 +410,7 @@ export async function resolverConflito(lado: "NUVEM" | "LOCAL"): Promise<Resulta
   }
   // Antes de sobrescrever a nuvem, guarda a versão dela como backup local.
   // Sem essa cópia, nada é enviado: a versão da nuvem se perderia.
-  if (remoto) await guardarCopiaDaNuvem(base);
+  if (remoto) await guardarCopiaDaNuvem(base, remoto);
   const envio = await enviar(base, remoto);
   if (!envio.ok) {
     throw new Error("Outro computador enviou dados para a nuvem enquanto você escolhia. Nada foi marcado como sincronizado: escolha de novo na próxima sincronização.");
