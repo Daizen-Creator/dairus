@@ -229,7 +229,7 @@ async function enviar(base: string, lido: EstadoNuvem | null): Promise<Envio> {
   }
   // A nuvem ainda está no formato antigo (só atual.db): guarda o banco dela com nome único
   // antes de sobrescrever o atual.db, para continuar havendo um passo de volta.
-  let anterior = lido?.arquivo;
+  let anterior = lido?.arquivo === ATUAL ? undefined : lido?.arquivo;
   if (lido && anterior === undefined) {
     const nome = `banco-v${lido.versao}-${crypto.randomUUID().slice(0, 8)}.db`;
     const { error } = await supabase.storage.from(BUCKET).copy(`${base}/${ATUAL}`, `${base}/${nome}`);
