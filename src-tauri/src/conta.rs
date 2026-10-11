@@ -68,24 +68,74 @@ fn contar_lancamentos(caminho: &Path) -> i64 {
         .unwrap_or(0)
 }
 
+/// Marca, na pasta da conta, de que ela começou a importar o banco de antes do login e
+/// ainda não terminou (cópia + arquivamento). Enquanto existir, o banco antigo é dessa
+/// conta: não é oferecido a nenhuma outra, e a importação é retomada ao abrir a conta.
+const IMPORTACAO_PENDENTE: &str = "importacao-legado-pendente";
+
+/// Contas deste computador (ids) que reivindicaram o banco de antes do login: começaram a
+/// importá-lo e ainda não terminaram.
+fn contas_que_reivindicaram(dados: &Path) -> Vec<String> {
+    let Ok(pastas) = std::fs::read_dir(dados.join("contas")) else { return Vec::new() };
+    pastas
+        .filter_map(|ent| ent.ok())
+        .map(|ent| ent.path())
+        .filter(|pasta| pasta.join(IMPORTACAO_PENDENTE).is_file())
+        .filter_map(|pasta| pasta.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .collect()
+}
+
 /// Lançamentos do banco de antes do login que ainda estão no lugar de origem
-/// (0 quando não há banco antigo ou quando uma conta já o importou e arquivou).
+/// (0 quando não há banco antigo, quando uma conta já o importou e arquivou, ou quando
+/// uma conta começou a importá-lo e ainda vai terminar).
 fn lancamentos_no_legado(dados: &Path) -> i64 {
     let legado = dados.join("dairus.db");
-    if legado.is_file() { contar_lancamentos(&legado) } else { 0 }
+    if legado.is_file() && contas_que_reivindicaram(dados).is_empty() { contar_lancamentos(&legado) } else { 0 }
 }
 
 /// Copia o banco de antes do login (`legado`) para o banco da conta (`destino`).
 /// A API de backup do SQLite copia de forma consistente (inclui o que está no WAL).
-/// Se falhar no meio, não deixa um banco pela metade na conta.
+/// Copia para um arquivo temporário e só então renomeia: se falhar (ou o app fechar) no
+/// meio, não fica um banco pela metade na conta.
 fn copiar_legado_para_conta(legado: &Path, destino: &Path) -> Res<()> {
+    let temporario = destino.with_extension("db.importando");
+    let _ = std::fs::remove_file(&temporario);
     let origem = Connection::open_with_flags(legado, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(e)?;
-    if let Err(erro) = origem.backup(rusqlite::MAIN_DB, destino, None) {
-        drop(origem);
-        let _ = std::fs::remove_file(destino);
-        return Err(erro.to_string());
+    let copiado = origem.backup(rusqlite::MAIN_DB, &temporario, None).map_err(e);
+    drop(origem);
+    if let Err(erro) = copiado.and_then(|_| std::fs::rename(&temporario, destino).map_err(e)) {
+        let _ = std::fs::remove_file(&temporario);
+        return Err(erro);
     }
     Ok(())
+}
+
+/// Importa o banco de antes do login para a conta de forma RETOMÁVEL: marca a pendência na
+/// pasta da conta, copia (se ainda não copiou) e arquiva o antigo. Devolve `true` quando o
+/// banco foi copiado e arquivado: aí quem chama tira a marca (depois de levar também as
+/// preferências). Se o app fechar no meio, a próxima abertura desta conta continua de onde
+/// parou, e nenhuma outra conta recebe a oferta desses dados nesse intervalo.
+fn importar_legado_retomavel(legado: &Path, destino: &Path, backups: &Path, pasta_conta: &Path, carimbo: &str) -> Res<bool> {
+    let pendente = pasta_conta.join(IMPORTACAO_PENDENTE);
+    std::fs::write(&pendente, b"").map_err(e)?;
+    if !destino.is_file() && legado.is_file() {
+        if let Err(erro) = copiar_legado_para_conta(legado, destino) {
+            // Nada foi importado: o banco antigo continua disponível (sem dono).
+            let _ = std::fs::remove_file(&pendente);
+            return Err(erro);
+        }
+    }
+    if legado.is_file() {
+        match arquivar_banco_legado(legado, backups, pasta_conta, carimbo) {
+            Ok(arquivo) => log::info!("banco de antes do login importado e arquivado em {}", arquivo.display()),
+            Err(erro) => {
+                // A marca fica: tenta de novo na próxima abertura, e ninguém mais recebe a oferta.
+                log::warn!("banco de antes do login importado, mas não arquivado (tenta de novo ao abrir): {erro}");
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
 }
 
 /// ARQUIVA o banco de antes do login como backup da conta que o importou: uma cópia
@@ -190,23 +240,31 @@ pub fn abrir_conta(app: AppHandle, state: State<AppState>, usuario_id: String, i
     }
     crate::documentos::limpar_abertos(&app);
     let destino = caminho_banco_conta(&app, &id)?;
-    if importar_legado && !destino.is_file() {
+    let pasta_conta = destino.parent().unwrap_or(Path::new(".")).to_path_buf();
+    // Importação começada e não terminada (o app fechou no meio): continua agora.
+    let retomar = pasta_conta.join(IMPORTACAO_PENDENTE).is_file();
+    if retomar || (importar_legado && !destino.is_file()) {
         let legado = caminho_banco_legado(&app)?;
         let carimbo = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-        let pasta_conta = destino.parent().unwrap_or(Path::new(".")).to_path_buf();
-        if legado.is_file() {
-            copiar_legado_para_conta(&legado, &destino)?;
-            let backups = app.path().document_dir().map(|d| d.join("Dairus").join(&id).join("Backups")).unwrap_or_else(|_| pasta_conta.join("legado"));
-            match arquivar_banco_legado(&legado, &backups, &pasta_conta, &carimbo) {
-                Ok(arquivo) => log::info!("banco de antes do login importado e arquivado em {}", arquivo.display()),
-                Err(erro) => log::warn!("banco de antes do login importado, mas não arquivado: {erro}"),
+        let dados = app.path().app_data_dir().map_err(e)?;
+        // Outra conta já começou a importar o banco antigo (e as preferências antigas): são dela.
+        let de_outra = contas_que_reivindicaram(&dados).iter().any(|outra| outra != &id);
+        if !de_outra {
+            let concluido = if legado.is_file() {
+                let backups = app.path().document_dir().map(|d| d.join("Dairus").join(&id).join("Backups")).unwrap_or_else(|_| pasta_conta.join("legado"));
+                importar_legado_retomavel(&legado, &destino, &backups, &pasta_conta, &carimbo)?
+            } else {
+                true
+            };
+            // As preferências antigas (podem ter chaves de API) saem do arquivo comum a todas as contas.
+            match migrar_preferencias_legadas(&app, &id, &pasta_conta.join("legado"), &carimbo) {
+                Ok(n) if n > 0 => log::info!("{n} preferência(s) de antes do login levadas para a conta"),
+                Ok(_) => {}
+                Err(erro) => log::warn!("não foi possível levar as preferências de antes do login: {erro}"),
             }
-        }
-        // As preferências antigas (podem ter chaves de API) saem do arquivo comum a todas as contas.
-        match migrar_preferencias_legadas(&app, &id, &pasta_conta.join("legado"), &carimbo) {
-            Ok(n) if n > 0 => log::info!("{n} preferência(s) de antes do login levadas para a conta"),
-            Ok(_) => {}
-            Err(erro) => log::warn!("não foi possível levar as preferências de antes do login: {erro}"),
+            if concluido {
+                let _ = std::fs::remove_file(pasta_conta.join(IMPORTACAO_PENDENTE));
+            }
         }
     }
     let conn = crate::db::abrir_conexao(&destino).map_err(e)?;
@@ -652,6 +710,68 @@ mod testes {
         assert_eq!(lancamentos_no_legado(&dados), 0);
         let _ = std::fs::remove_dir_all(&dados);
         let _ = std::fs::remove_dir_all(&docs);
+    }
+
+    #[test]
+    fn app_fechou_entre_a_copia_e_o_arquivamento_a_conta_retoma_e_ninguem_mais_recebe_a_oferta() {
+        let dados = pasta_temp("legado-retoma");
+        let legado = dados.join("dairus.db");
+        banco_antigo(&legado, 2);
+        let pasta_a = dados.join("contas").join("aaaaaaaa-0000-4000-8000-000000000001");
+        std::fs::create_dir_all(&pasta_a).unwrap();
+        let destino = pasta_a.join("dairus.db");
+        let backups = dados.join("Backups-A");
+
+        // Começou: marcou a pendência e copiou, mas o app fechou antes de arquivar.
+        std::fs::write(pasta_a.join(IMPORTACAO_PENDENTE), b"").unwrap();
+        copiar_legado_para_conta(&legado, &destino).unwrap();
+        assert!(legado.is_file());
+        // O banco antigo é da conta A: não aparece para outra conta.
+        assert_eq!(contas_que_reivindicaram(&dados), vec!["aaaaaaaa-0000-4000-8000-000000000001".to_string()]);
+        assert_eq!(lancamentos_no_legado(&dados), 0);
+
+        // A conta A abre de novo: termina o arquivamento sem copiar outra vez.
+        assert!(importar_legado_retomavel(&legado, &destino, &backups, &pasta_a, "20260101-120000").unwrap());
+        assert!(!legado.exists());
+        assert_eq!(contar_lancamentos(&destino), 2);
+        let arquivados: Vec<_> = std::fs::read_dir(&backups).unwrap().flatten().collect();
+        assert_eq!(arquivados.len(), 1);
+        let _ = std::fs::remove_dir_all(&dados);
+    }
+
+    #[test]
+    fn app_fechou_no_meio_da_copia_a_conta_copia_de_novo_sem_banco_pela_metade() {
+        let dados = pasta_temp("legado-meio");
+        let legado = dados.join("dairus.db");
+        banco_antigo(&legado, 4);
+        let pasta_a = dados.join("contas").join("aaaaaaaa-0000-4000-8000-000000000001");
+        std::fs::create_dir_all(&pasta_a).unwrap();
+        let destino = pasta_a.join("dairus.db");
+        // Sobrou só o temporário pela metade (o banco da conta nunca é escrito direto).
+        std::fs::write(pasta_a.join(IMPORTACAO_PENDENTE), b"").unwrap();
+        std::fs::write(destino.with_extension("db.importando"), b"metade").unwrap();
+        assert!(!destino.exists());
+
+        assert!(importar_legado_retomavel(&legado, &destino, &dados.join("Backups"), &pasta_a, "20260101-120000").unwrap());
+        assert_eq!(contar_lancamentos(&destino), 4);
+        assert!(!destino.with_extension("db.importando").exists());
+        assert!(!legado.exists());
+        let _ = std::fs::remove_dir_all(&dados);
+    }
+
+    #[test]
+    fn copia_que_falha_libera_o_banco_antigo() {
+        let dados = pasta_temp("legado-libera");
+        let legado = dados.join("dairus.db");
+        std::fs::write(&legado, b"isto nao e um banco sqlite").unwrap();
+        let pasta_a = dados.join("contas").join("aaaaaaaa-0000-4000-8000-000000000001");
+        std::fs::create_dir_all(&pasta_a).unwrap();
+        let destino = pasta_a.join("dairus.db");
+        assert!(importar_legado_retomavel(&legado, &destino, &dados.join("Backups"), &pasta_a, "x").is_err());
+        assert!(!destino.exists());
+        assert!(legado.exists());
+        assert!(contas_que_reivindicaram(&dados).is_empty(), "sem dono: pode ser oferecido de novo");
+        let _ = std::fs::remove_dir_all(&dados);
     }
 
     #[test]
