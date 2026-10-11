@@ -3,7 +3,7 @@
 Cada versão publicada no GitHub usa a seção correspondente daqui como lista de
 mudanças (é o texto que aparece no aviso "O que mudou" dentro do app).
 
-## Próxima versão
+## 0.2.6
 
 - Suas preferências vão junto no backup e na sincronização entre computadores: nome, perfil de renda (salário, VA, dia do pagamento), FGTS, chave Pix, bloco de notas e foco do mês, perguntas salvas da IA, metas de economia e patrimônio, modelos de lançamento, configurações dos widgets e outras escolhas suas. Ficam de fora o que é só deste computador (PIN, pastas), a conversa com a IA e as chaves secretas (Gemini, brapi).
 - Widgets também na coluna do lado do Início: no "Editar layout", o botão de painel lateral manda o widget para lá (acima de Metas e Vencimentos), com setas para ordenar e botão para voltar à grade.
