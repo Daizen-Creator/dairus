@@ -14,6 +14,8 @@ const nuvem = vi.hoisted(() => ({
   opcoesUpload: [] as Array<{ caminho: string; opcoes?: { cacheControl?: string } }>,
   /** Chamado depois de cada upload (simula outro computador gravando ao mesmo tempo). */
   aposEnviar: null as null | ((caminho: string) => void),
+  /** Data de criação de cada arquivo (padrão: agora). */
+  criadoEm: new Map<string, string>(),
 }));
 vi.mock("./supabase", () => ({
   supabase: {
@@ -48,6 +50,12 @@ vi.mock("./supabase", () => ({
           for (const c of caminhos) nuvem.arquivos.delete(c);
           return { data: [], error: null };
         },
+        list: async (pasta: string) => ({
+          data: [...nuvem.arquivos.keys()]
+            .filter((c) => c.startsWith(`${pasta}/`) && !c.slice(pasta.length + 1).includes("/"))
+            .map((c) => ({ name: c.slice(pasta.length + 1), created_at: nuvem.criadoEm.get(c) ?? new Date().toISOString() })),
+          error: null,
+        }),
       }),
     },
   },
@@ -89,6 +97,7 @@ beforeEach(() => {
   nuvem.opcoesDownload.length = 0;
   nuvem.opcoesUpload.length = 0;
   nuvem.aposEnviar = null;
+  nuvem.criadoEm.clear();
   outroPcGravaAoTirarCopia = false;
   falhaPreferencias = false;
   soAtualizacao = false;
@@ -289,6 +298,16 @@ describe("preferências que não foram para o banco", () => {
     expect(aviso.mensagem).toMatch(/preferências da conta.*disco cheio/);
   });
 
+  it("se a cópia das preferências falhou nesta rodada, não grava a marca que libera apagar preferências", async () => {
+    falhaPreferencias = true;
+    await sincronizar();
+    expect(localStorage.getItem("sync_prefs_ok")).toBeNull();
+    falhaPreferencias = false;
+    impressaoLocal = "editado";
+    await sincronizar();
+    expect(JSON.parse(localStorage.getItem("sync_prefs_ok") ?? "null")).toBe(true);
+  });
+
   it("sem falha, a sincronização limpa o erro anterior", async () => {
     localStorage.setItem("sync_ultimo_erro", JSON.stringify({ mensagem: "erro velho", em: "2020-01-01T00:00:00Z" }));
     await sincronizar();
@@ -462,6 +481,23 @@ describe("banco com nome por versão (nenhum envio apaga o do outro computador)"
     guardarEstadoLocal({ versao_vista: 2, impressao: "outra", sincronizado_em: "" });
     expect((await sincronizar()).decisao).toBe("BAIXAR");
     expect(nuvem.opcoesDownload.some((d) => d.caminho === `${PASTA}${v3.arquivo}`)).toBe(true);
+  });
+
+  it("envio apaga os bancos com nome único que sobraram (mais de um dia) e não toca nos recentes", async () => {
+    const velho = `${PASTA}banco-v3-aaaaaaaa.db`;
+    const recente = `${PASTA}banco-v8-bbbbbbbb.db`;
+    nuvem.arquivos.set(velho, texto("sobra"));
+    nuvem.arquivos.set(recente, texto("envio em andamento de outro PC"));
+    nuvem.criadoEm.set(velho, "2020-01-01T00:00:00Z");
+    gravarEstadoNuvem({ versao: 1 });
+    nuvem.arquivos.set(ATUAL, texto("banco-antigo"));
+    guardarEstadoLocal({ versao_vista: 1, impressao: "antiga", sincronizado_em: "" });
+    expect((await sincronizar()).decisao).toBe("ENVIAR");
+    const estado = estadoNaNuvem();
+    expect(nuvem.arquivos.has(velho)).toBe(false);
+    expect(nuvem.arquivos.has(recente)).toBe(true);
+    expect(nuvem.arquivos.has(`${PASTA}${estado.arquivo}`)).toBe(true);
+    expect(nuvem.arquivos.has(`${PASTA}${estado.anterior}`)).toBe(true);
   });
 
   it("nuvem no formato antigo (só atual.db): guarda o banco dela com nome único antes de sobrescrever", async () => {

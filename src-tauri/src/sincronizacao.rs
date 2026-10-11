@@ -2,6 +2,7 @@
 //! dados (para saber se algo mudou desde a última sincronização) e uma cópia
 //! consistente do banco para enviar à nuvem.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use rusqlite::types::ValueRef;
@@ -161,6 +162,11 @@ pub fn versao_esquema_app() -> u32 {
 pub struct MarcaAtualizacao {
     pub antes: String,
     pub depois_sem_preferencias: String,
+    /// Resumo das preferências da conta (as que vão no banco) como estavam na primeira abertura
+    /// depois da atualização, antes de qualquer edição. Sem ele, ou se a tabela já não bate com
+    /// ele, a pessoa mexeu nas preferências e isso conta como mudança.
+    #[serde(default)]
+    pub preferencias: Option<String>,
 }
 
 /// Nome do arquivo da marca, na pasta da conta (só tem impressões, nenhum dado).
@@ -177,20 +183,36 @@ pub fn migrar_registrando(conn: &Connection, arquivo_marca: &Path) -> rusqlite::
 }
 
 fn migrar_registrando_com(conn: &Connection, arquivo_marca: &Path, migrar: impl FnOnce(&Connection) -> rusqlite::Result<()>) -> rusqlite::Result<()> {
-    if !crate::db::migracoes_pendentes(conn)? {
-        return migrar(conn);
+    // A marca é só um auxílio da sincronização: se não der para calculá-la, a conta abre do mesmo
+    // jeito (no pior caso a sincronização pergunta).
+    match crate::db::migracoes_pendentes(conn) {
+        Ok(true) => {}
+        Ok(false) => return migrar(conn),
+        Err(err) => {
+            log::warn!("sincronização: não foi possível ver as migrações pendentes: {err}");
+            return migrar(conn);
+        }
     }
-    let antes = calcular_impressao(conn)?;
-    let antes_sem_preferencias = impressao_sem_preferencias(conn)?;
+    let previa = calcular_impressao(conn).and_then(|antes| Ok((antes, impressao_sem_preferencias(conn)?)));
+    if let Err(err) = &previa {
+        log::warn!("sincronização: não foi possível calcular a impressão antes da atualização: {err}");
+    }
     migrar(conn)?;
-    let depois_sem_preferencias = impressao_sem_preferencias(conn)?;
+    let Ok((antes, antes_sem_preferencias)) = previa else { return Ok(()) };
+    let depois_sem_preferencias = match impressao_sem_preferencias(conn) {
+        Ok(i) => i,
+        Err(err) => {
+            log::warn!("sincronização: não foi possível calcular a impressão depois da atualização: {err}");
+            return Ok(());
+        }
+    };
     // Duas atualizações seguidas sem sincronizar no meio (a marca só é apagada depois de uma
     // sincronização): vale a impressão de antes da primeira, se nada além das preferências mudou.
-    let antes = match ler_marca(arquivo_marca) {
-        Some(m) if m.depois_sem_preferencias == antes_sem_preferencias => m.antes,
-        _ => antes,
+    let (antes, preferencias) = match ler_marca(arquivo_marca) {
+        Some(m) if m.depois_sem_preferencias == antes_sem_preferencias => (m.antes, m.preferencias),
+        _ => (antes, None),
     };
-    let marca = MarcaAtualizacao { antes, depois_sem_preferencias };
+    let marca = MarcaAtualizacao { antes, depois_sem_preferencias, preferencias };
     let gravado = serde_json::to_vec(&marca).map_err(|e| e.to_string()).and_then(|b| std::fs::write(arquivo_marca, b).map_err(|e| e.to_string()));
     if let Err(err) = gravado {
         log::warn!("sincronização: não foi possível guardar a marca da atualização: {err}");
@@ -198,11 +220,35 @@ fn migrar_registrando_com(conn: &Connection, arquivo_marca: &Path, migrar: impl 
     Ok(())
 }
 
+/// Na primeira abertura depois da atualização (antes de a pessoa mexer em qualquer coisa), o
+/// front manda o conjunto de preferências que vai para o banco. Fica na marca como ponto de
+/// partida: depois, uma preferência editada passa a contar como mudança, em vez de ser trocada
+/// sem perguntar pela da nuvem. Só grava uma vez por marca. Devolve se gravou.
+pub fn registrar_preferencias_da_atualizacao_em(arquivo_marca: &Path, itens: HashMap<String, String>) -> bool {
+    let Some(mut marca) = ler_marca(arquivo_marca) else { return false };
+    if marca.preferencias.is_some() {
+        return false;
+    }
+    marca.preferencias = Some(crate::preferencias_conta::impressao_do_conjunto(&crate::preferencias_conta::filtrar_itens(itens)));
+    serde_json::to_vec(&marca).ok().is_some_and(|b| std::fs::write(arquivo_marca, b).is_ok())
+}
+
+#[tauri::command]
+pub fn registrar_preferencias_da_atualizacao(app: AppHandle, itens: HashMap<String, String>) -> bool {
+    let Some(arquivo) = crate::conta::arquivo_marca_atualizacao(&app) else { return false };
+    registrar_preferencias_da_atualizacao_em(&arquivo, itens)
+}
+
 /// A única diferença entre os dados de agora e os da última sincronização (`impressao_vista`)
-/// veio da atualização do app (e das preferências copiadas para o banco depois dela)?
+/// veio da atualização do app (e das preferências copiadas para o banco depois dela)? As
+/// preferências só são ignoradas se continuam como na primeira abertura depois da atualização.
 pub fn so_mudou_por_atualizacao(conn: &Connection, arquivo_marca: &Path, impressao_vista: &str) -> bool {
     let Some(marca) = ler_marca(arquivo_marca) else { return false };
-    marca.antes == impressao_vista && impressao_sem_preferencias(conn).is_ok_and(|i| i == marca.depois_sem_preferencias)
+    let preferencias_iguais = match &marca.preferencias {
+        Some(esperada) => crate::preferencias_conta::ler_db(conn).is_ok_and(|t| &crate::preferencias_conta::impressao_do_conjunto(&t) == esperada),
+        None => false,
+    };
+    marca.antes == impressao_vista && preferencias_iguais && impressao_sem_preferencias(conn).is_ok_and(|i| i == marca.depois_sem_preferencias)
 }
 
 #[tauri::command]
@@ -255,9 +301,17 @@ mod testes {
         conn
     }
 
+    fn conjunto(nome: &str) -> HashMap<String, String> {
+        [("nome_usuario".to_string(), format!("\"{nome}\"")), ("_preferencias_v1".to_string(), "\"1\"".to_string())].into_iter().collect()
+    }
+
     fn preferencias(conn: &mut Connection, nome: &str) {
-        let itens = [("nome_usuario".to_string(), format!("\"{nome}\"")), ("_preferencias_v1".to_string(), "\"1\"".to_string())];
-        crate::preferencias_conta::gravar_db(conn, itens.into_iter().collect()).unwrap();
+        crate::preferencias_conta::gravar_db(conn, conjunto(nome)).unwrap();
+    }
+
+    /// O que o front faz na primeira abertura depois de atualizar: registra o ponto de partida.
+    fn abrir_depois_de_atualizar(marca: &Path, nome: &str) {
+        assert!(registrar_preferencias_da_atualizacao_em(marca, conjunto(nome)));
     }
 
     #[test]
@@ -271,7 +325,7 @@ mod testes {
         migrar_registrando(&conn, &marca).unwrap();
         assert!(marca.is_file());
         assert_ne!(calcular_impressao(&conn).unwrap(), vista, "as migrações mudam a impressão");
-        assert!(so_mudou_por_atualizacao(&conn, &marca, &vista));
+        abrir_depois_de_atualizar(&marca, "Daniel");
         // A primeira cópia das preferências para o banco também não conta.
         preferencias(&mut conn, "Daniel");
         assert!(so_mudou_por_atualizacao(&conn, &marca, &vista));
@@ -282,6 +336,50 @@ mod testes {
         // Uma edição de verdade depois da atualização conta.
         conn.execute("UPDATE contas_contabeis SET nome = 'Bolso' WHERE id = 'ativo-dinheiro'", []).unwrap();
         assert!(!so_mudou_por_atualizacao(&conn, &marca, &vista));
+        std::fs::remove_dir_all(pasta).ok();
+    }
+
+    #[test]
+    fn preferencia_editada_depois_da_atualizacao_conta_como_mudanca() {
+        let pasta = pasta_temp();
+        let marca = pasta.join(ARQUIVO_MARCA);
+        let mut conn = banco_da_versao_anterior();
+        let vista = calcular_impressao(&conn).unwrap();
+        migrar_registrando(&conn, &marca).unwrap();
+        abrir_depois_de_atualizar(&marca, "Daniel");
+        // O ponto de partida só vale uma vez por marca.
+        assert!(!registrar_preferencias_da_atualizacao_em(&marca, conjunto("Outro")));
+        // Passaram dias; a pessoa mudou o nome; a sincronização copiou o arquivo para o banco.
+        preferencias(&mut conn, "Dani");
+        assert!(!so_mudou_por_atualizacao(&conn, &marca, &vista), "editar uma preferência é mudança: vira pergunta, não troca silenciosa");
+        // Voltando ao valor de antes, volta a ser só a atualização.
+        preferencias(&mut conn, "Daniel");
+        assert!(so_mudou_por_atualizacao(&conn, &marca, &vista));
+        std::fs::remove_dir_all(pasta).ok();
+    }
+
+    #[test]
+    fn sem_o_ponto_de_partida_das_preferencias_pergunta_na_duvida() {
+        let pasta = pasta_temp();
+        let marca = pasta.join(ARQUIVO_MARCA);
+        let mut conn = banco_da_versao_anterior();
+        let vista = calcular_impressao(&conn).unwrap();
+        migrar_registrando(&conn, &marca).unwrap();
+        preferencias(&mut conn, "Daniel");
+        assert!(!so_mudou_por_atualizacao(&conn, &marca, &vista));
+        // Sem marca, não há o que registrar.
+        assert!(!registrar_preferencias_da_atualizacao_em(&pasta.join("nao-existe.json"), conjunto("Daniel")));
+        std::fs::remove_dir_all(pasta).ok();
+    }
+
+    #[test]
+    fn conta_abre_mesmo_se_a_marca_nao_puder_ser_gravada() {
+        let pasta = pasta_temp();
+        // A pasta da marca não existe: gravar a marca falha, e a conta abre do mesmo jeito.
+        let marca = pasta.join("nao-existe").join(ARQUIVO_MARCA);
+        let conn = banco_da_versao_anterior();
+        migrar_registrando(&conn, &marca).unwrap();
+        assert!(!crate::db::migracoes_pendentes(&conn).unwrap());
         std::fs::remove_dir_all(pasta).ok();
     }
 
@@ -310,8 +408,9 @@ mod testes {
         // Primeira atualização (só até a 0016) e as preferências copiadas.
         migrar_registrando_com(&conn, &marca, |c| crate::db::executar_migracoes_ate(c, 16)).unwrap();
         assert!(crate::db::migracoes_pendentes(&conn).unwrap());
+        abrir_depois_de_atualizar(&marca, "Daniel");
         preferencias(&mut conn, "Daniel");
-        // Segunda atualização (o resto).
+        // Segunda atualização (o resto): o ponto de partida das preferências continua valendo.
         migrar_registrando(&conn, &marca).unwrap();
         assert!(so_mudou_por_atualizacao(&conn, &marca, &vista));
         std::fs::remove_dir_all(pasta).ok();

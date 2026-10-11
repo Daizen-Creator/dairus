@@ -25,16 +25,37 @@ pub fn ler_db(conn: &Connection) -> Res<HashMap<String, String>> {
     linhas.collect::<rusqlite::Result<HashMap<_, _>>>().map_err(|e| e.to_string())
 }
 
+/// O que `gravar_db` aceita do conjunto recebido (chaves inválidas, valores que não são JSON ou
+/// grandes demais ficam de fora).
+pub fn filtrar_itens(itens: HashMap<String, String>) -> HashMap<String, String> {
+    itens
+        .into_iter()
+        .filter(|(c, v)| chave_valida(c) && v.len() <= MAX_VALOR && serde_json::from_str::<serde_json::Value>(v).is_ok())
+        .collect()
+}
+
+/// Resumo do conjunto de preferências (independe da ordem). Serve para saber se a tabela ainda
+/// tem o que foi visto num certo momento.
+pub fn impressao_do_conjunto(itens: &HashMap<String, String>) -> String {
+    let mut ordenados: Vec<(&String, &String)> = itens.iter().collect();
+    ordenados.sort();
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for (c, v) in ordenados {
+        for b in c.bytes().chain(std::iter::once(0xff)).chain(v.bytes()).chain(std::iter::once(0xfe)) {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+    format!("{h:016x}-{}", itens.len())
+}
+
 /// Deixa a tabela igual ao conjunto recebido: grava o que mudou, apaga o que saiu.
 /// Valores grandes demais ou chaves inválidas são ignorados. Devolve quantas linhas mudaram.
 pub fn gravar_db(conn: &mut Connection, itens: HashMap<String, String>) -> Res<usize> {
     if itens.len() > MAX_CHAVES {
         return Err("Preferências demais para guardar.".into());
     }
-    let itens: HashMap<String, String> = itens
-        .into_iter()
-        .filter(|(c, v)| chave_valida(c) && v.len() <= MAX_VALOR && serde_json::from_str::<serde_json::Value>(v).is_ok())
-        .collect();
+    let itens = filtrar_itens(itens);
     let atuais = ler_db(conn)?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let mut mudou = 0;

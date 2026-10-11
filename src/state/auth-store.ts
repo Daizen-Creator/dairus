@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session } from "@supabase/supabase-js";
 import { definirContaDasPreferencias, importarPreferenciasLegadas } from "../services/armazenamento";
+import { registrarPreferenciasDaAtualizacao } from "../services/preferenciasConta";
 import { googleAtivado, supabase, URL_RETORNO_LOGIN } from "../services/supabase";
 
 export interface SituacaoConta {
@@ -120,6 +121,7 @@ export const useAuthStore = create<EstadoAuth>((set, get) => ({
     await invoke("abrir_conta", { usuarioId: id, importarLegado: importarDadosLocais });
     definirContaDasPreferencias(id);
     if (importarDadosLocais) await importarPreferenciasLegadas();
+    await registrarPreferenciasDaAtualizacao();
     set({ contaAberta: true });
   },
 
@@ -128,6 +130,7 @@ export const useAuthStore = create<EstadoAuth>((set, get) => ({
     if (!id) throw new Error("Sem sessão.");
     await invoke("abrir_conta_com_senha", { usuarioId: id, senha });
     definirContaDasPreferencias(id);
+    await registrarPreferenciasDaAtualizacao();
     set({ contaAberta: true });
   },
 

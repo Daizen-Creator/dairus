@@ -256,10 +256,30 @@ async function enviar(base: string, lido: EstadoNuvem | null): Promise<Envio> {
   const conferido = await lerEstadoNuvem(base);
   if (assinatura(conferido) !== assinatura(estado)) return { ok: false, remoto: conferido };
   await salvarEstadoLocal({ ...vista(estado), impressao, sincronizado_em: estado.alterado_em, enviado_daqui: true });
-  // Ficam na nuvem o banco atual e o anterior; o de antes deles sai.
+  // Ficam na nuvem o banco atual e o anterior; o de antes deles sai, e também as sobras de
+  // envios que não chegaram a ser gravados no estado.json (app fechado no meio, erro, corrida).
   const velho = lido?.anterior;
   if (velho && velho !== arquivo && velho !== lido?.arquivo && VERSIONADO.test(velho)) await apagarDaNuvem(base, velho);
+  await limparSobras(base, estado);
   return { ok: true, estado };
+}
+
+/** Bancos com nome único que o estado não aponta e que já têm mais de um dia (não são de um envio em curso). */
+const IDADE_MINIMA_SOBRA_MS = 24 * 60 * 60 * 1000;
+
+async function limparSobras(base: string, estado: EstadoNuvem): Promise<void> {
+  try {
+    const { data } = await supabase.storage.from(BUCKET).list(base, { limit: 100 });
+    const agora = Date.now();
+    const sobras = (data ?? []).filter((f) => {
+      if (!VERSIONADO.test(f.name) || f.name === estado.arquivo || f.name === estado.anterior) return false;
+      const criado = Date.parse(f.created_at ?? "");
+      return Number.isFinite(criado) && agora - criado > IDADE_MINIMA_SOBRA_MS;
+    });
+    if (sobras.length > 0) await supabase.storage.from(BUCKET).remove(sobras.map((f) => `${base}/${f.name}`));
+  } catch {
+    // limpeza é só higiene: se não der, sobra espaço, nada se perde
+  }
 }
 
 /** Apaga um arquivo da pasta de sincronização, sem parar se não der (sobra um arquivo, nada se perde). */
@@ -333,7 +353,7 @@ function sincronizarDeVerdade(): Promise<ResultadoSync> {
     const base = await pasta();
     // As preferências da conta vão no banco: copia antes de comparar, para a mudança contar.
     // Se falhar, segue com os lançamentos e registra o aviso (log e tela).
-    await guardarPreferenciasSemParar();
+    const prefsCopiadas = (await guardarPreferenciasSemParar()) === null;
     const remoto = await lerEstadoNuvem(base);
     // Nuvem com banco de versão mais nova: não baixa nem envia (pede para atualizar o app).
     await conferirEsquema(remoto);
@@ -350,32 +370,34 @@ function sincronizarDeVerdade(): Promise<ResultadoSync> {
       const envio = await enviar(base, remoto);
       // Outro computador gravou na nuvem depois da leitura: os dois lados mudaram.
       if (!envio.ok) return { decisao: "CONFLITO", remoto: envio.remoto, aplicouRemoto: false };
-      await concluida();
+      await concluida(prefsCopiadas);
       return { decisao, remoto: envio.estado, aplicouRemoto: false };
     }
     if (decisao === "BAIXAR" && remoto) {
       // Os dados daqui mudaram entre a decisão e a troca: os dois lados mudaram, é conflito.
       if (!(await baixar(base, remoto, impressaoAtual))) return { decisao: "CONFLITO", remoto, aplicouRemoto: false };
-      await concluida();
+      await concluida(prefsCopiadas);
       return { decisao, remoto, aplicouRemoto: true };
     }
     if (decisao === "NADA" && local) {
       // Estado antigo (só com a versão): passa a lembrar também qual gravação foi vista.
       const gravacao = local.alterado_em_visto === undefined && remoto ? vista(remoto) : {};
       await salvarEstadoLocal({ ...local, ...gravacao, sincronizado_em: new Date().toISOString() });
-      await concluida();
+      await concluida(prefsCopiadas);
     }
     return { decisao, remoto, aplicouRemoto: false };
   })();
 }
 
 /**
- * Depois de uma sincronização concluída: este computador já tem as preferências na nuvem
- * (a partir de agora a restauração pode apagar as que foram apagadas no outro) e a marca
- * da atualização do app não vale mais.
+ * Depois de uma sincronização concluída: a marca da atualização do app não vale mais e, se as
+ * preferências foram copiadas para o banco nesta rodada (`prefsCopiadas`), este computador já
+ * as tem na nuvem (a partir de agora a restauração pode apagar as que foram apagadas no outro).
+ * Sem a cópia, a marca não é gravada: apagar com base num banco sem as preferências daqui
+ * perderia as que só existem aqui.
  */
-async function concluida(): Promise<void> {
-  await salvarPreferencia(MARCA_PREFERENCIAS_SINCRONIZADAS, true).catch(() => {});
+async function concluida(prefsCopiadas: boolean): Promise<void> {
+  if (prefsCopiadas) await salvarPreferencia(MARCA_PREFERENCIAS_SINCRONIZADAS, true).catch(() => {});
   await invoke("limpar_marca_atualizacao").catch(() => {});
 }
 
@@ -400,12 +422,13 @@ async function guardarCopiaDaNuvem(base: string, remoto: EstadoNuvem): Promise<v
 /** Resolve um conflito: "NUVEM" troca os dados deste computador pelos da nuvem; "LOCAL" sobrescreve a nuvem. */
 export async function resolverConflito(lado: "NUVEM" | "LOCAL"): Promise<ResultadoSync> {
   const base = await pasta();
+  const prefsCopiadas = (await guardarPreferenciasSemParar()) === null;
   const remoto = await lerEstadoNuvem(base);
   await conferirEsquema(remoto);
   if (lado === "NUVEM") {
     if (!remoto) throw new Error("Não há dados na nuvem.");
     await baixar(base, remoto);
-    await concluida();
+    await concluida(prefsCopiadas);
     return { decisao: "BAIXAR", remoto, aplicouRemoto: true };
   }
   // Antes de sobrescrever a nuvem, guarda a versão dela como backup local.
@@ -415,7 +438,7 @@ export async function resolverConflito(lado: "NUVEM" | "LOCAL"): Promise<Resulta
   if (!envio.ok) {
     throw new Error("Outro computador enviou dados para a nuvem enquanto você escolhia. Nada foi marcado como sincronizado: escolha de novo na próxima sincronização.");
   }
-  await concluida();
+  await concluida(prefsCopiadas);
   return { decisao: "ENVIAR", remoto: envio.estado, aplicouRemoto: false };
 }
 

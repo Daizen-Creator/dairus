@@ -199,6 +199,7 @@ pub fn run() {
             sincronizacao::versao_esquema_app,
             sincronizacao::mudanca_so_da_atualizacao,
             sincronizacao::limpar_marca_atualizacao,
+            sincronizacao::registrar_preferencias_da_atualizacao,
             sistema::pasta_de_logs,
             sistema::ler_log,
             extras::salvar_exportacao_binaria,

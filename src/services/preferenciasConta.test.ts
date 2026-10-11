@@ -1,7 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { definirContaDasPreferencias, lerPreferencia } from "./armazenamento";
-import { MARCA_PREFERENCIAS_SINCRONIZADAS, PREFERENCIAS_DA_CONTA, SENTINELA, preferenciasParaOBanco, restaurarPreferenciasDoBanco, vaiNaSincronizacao } from "./preferenciasConta";
+import {
+  MARCA_PREFERENCIAS_SINCRONIZADAS,
+  PREFERENCIAS_DA_CONTA,
+  PREFERENCIAS_SUBSTITUIDAS,
+  SENTINELA,
+  preferenciasParaOBanco,
+  registrarPreferenciasDaAtualizacao,
+  restaurarPreferenciasDoBanco,
+  vaiNaSincronizacao,
+} from "./preferenciasConta";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const invocar = vi.mocked(invoke);
@@ -99,6 +108,26 @@ describe("restaurar as preferências que vieram no banco", () => {
     // Só este computador tinha: não sobe ainda para a nuvem, então não pode sumir.
     expect(await lerPreferencia("foco_mes")).toBe("Guardar para a viagem");
     expect(await lerPreferencia("chave_pix")).toBe("daniel@pix");
+    // O valor daqui que a nuvem trocou fica guardado (nunca esteve na nuvem).
+    expect(await lerPreferencia(PREFERENCIAS_SUBSTITUIDAS)).toEqual({ nome_usuario: "Daniel" });
+  });
+
+  it("depois de sincronizado, a troca pelo valor da nuvem é normal e não guarda nada", async () => {
+    local(MARCA_PREFERENCIAS_SINCRONIZADAS, true);
+    noBanco({ nome_usuario: '"Dani"', [SENTINELA]: '"1"' });
+    await restaurarPreferenciasDoBanco();
+    expect(await lerPreferencia(PREFERENCIAS_SUBSTITUIDAS)).toBeNull();
+  });
+
+  it("no começo da atualização, manda ao Rust só o que vai na sincronização", async () => {
+    invocar.mockResolvedValue(true);
+    await registrarPreferenciasDaAtualizacao();
+    expect(invocar).toHaveBeenCalledWith("registrar_preferencias_da_atualizacao", {
+      itens: { nome_usuario: '"Daniel"', foco_mes: '"Guardar para a viagem"', chave_pix: '"daniel@pix"', [SENTINELA]: '"1"' },
+    });
+    // Falha do comando não atrapalha a abertura da conta.
+    invocar.mockRejectedValue(new Error("falhou"));
+    await expect(registrarPreferenciasDaAtualizacao()).resolves.toBeUndefined();
   });
 
   it("sem a marca (backup antigo), não apaga nada: só traz o que veio", async () => {

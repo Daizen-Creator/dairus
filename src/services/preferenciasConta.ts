@@ -158,27 +158,57 @@ export async function guardarPreferenciasSemParar(): Promise<string | null> {
 }
 
 /**
+ * Primeira abertura da conta depois de atualizar o app: diz ao Rust como estão as preferências
+ * ANTES de qualquer edição. É o ponto de partida para a sincronização distinguir "só atualizei"
+ * de "mudei uma preferência depois de atualizar" (esta última vira pergunta, não troca silenciosa).
+ * O Rust só grava uma vez por atualização; sem atualização pendente, não faz nada.
+ */
+export async function registrarPreferenciasDaAtualizacao(): Promise<void> {
+  try {
+    const itens = preferenciasParaOBanco(await listarPreferencias());
+    await invoke("registrar_preferencias_da_atualizacao", { itens });
+  } catch {
+    // sem o ponto de partida a sincronização só pergunta mais (nunca perde dado)
+  }
+}
+
+/** Onde ficam, só neste computador, os valores daqui trocados pelos da nuvem na primeira mescla. */
+export const PREFERENCIAS_SUBSTITUIDAS = "preferencias_substituidas";
+
+/**
  * Traz para este computador as preferências que vieram no banco (depois de baixar da
  * nuvem ou restaurar um backup). Não mexe nas do computador nem nos segredos.
  * Só apaga daqui as preferências da lista que não estão no banco (foram apagadas no outro
  * computador) quando o banco tem a marca `_preferencias_v1` (conjunto completo) E este
  * computador já concluiu uma sincronização com preferências (`sync_prefs_ok`). Antes disso,
- * só mescla. Devolve quantas mudaram.
+ * só mescla; e o valor daqui que a nuvem trocou (nunca esteve na nuvem) fica guardado em
+ * `preferencias_substituidas`, para dar para recuperar. Devolve quantas mudaram.
  */
 export async function restaurarPreferenciasDoBanco(): Promise<number> {
   const doBanco = await invoke<Record<string, string>>("ler_preferencias_conta").catch(() => ({}) as Record<string, string>);
+  const jaSincronizou = (await lerPreferencia<boolean>(MARCA_PREFERENCIAS_SINCRONIZADAS).catch(() => null)) === true;
+  const daqui = jaSincronizou ? {} : await listarPreferencias();
+  const trocadas: Record<string, unknown> = {};
   let n = 0;
   for (const [chave, json] of Object.entries(doBanco)) {
     if (!vaiNaSincronizacao(chave)) continue;
     try {
-      await salvarPreferencia(chave, JSON.parse(json));
+      const valor = JSON.parse(json);
+      const atual = daqui[chave];
+      if (atual !== undefined && atual !== null && JSON.stringify(atual) !== JSON.stringify(valor) && !grandeDemais(atual)) trocadas[chave] = atual;
+      await salvarPreferencia(chave, valor);
       n++;
     } catch {
       // valor estragado: mantém o deste computador
     }
   }
+  if (Object.keys(trocadas).length > 0) {
+    // O que já estava guardado de uma mescla anterior tem prioridade (é o valor mais antigo daqui).
+    const anteriores = (await lerPreferencia<Record<string, unknown>>(PREFERENCIAS_SUBSTITUIDAS).catch(() => null)) ?? {};
+    await salvarPreferencia(PREFERENCIAS_SUBSTITUIDAS, { ...trocadas, ...anteriores }).catch(() => {});
+    await registrarNoLog("info", `preferências: ${Object.keys(trocadas).length} valor(es) deste computador foram trocados pelos da nuvem (guardados em ${PREFERENCIAS_SUBSTITUIDAS}).`).catch(() => {});
+  }
   const conjuntoCompleto = Object.prototype.hasOwnProperty.call(doBanco, SENTINELA);
-  const jaSincronizou = (await lerPreferencia<boolean>(MARCA_PREFERENCIAS_SINCRONIZADAS).catch(() => null)) === true;
   if (conjuntoCompleto && jaSincronizou) {
     for (const [chave, valor] of Object.entries(await listarPreferencias())) {
       if (!vaiNaSincronizacao(chave) || Object.prototype.hasOwnProperty.call(doBanco, chave)) continue;
