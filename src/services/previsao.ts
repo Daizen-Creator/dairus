@@ -112,8 +112,8 @@ export function preverSaldo(e: EntradaPrevisao): Previsao {
       eventos.push({ data: venc, valor: a.tipo === "RECEBER" ? a.valor_centavos : -a.valor_centavos, descricao: a.descricao });
       if (!a.recorrencia) break;
       // Repetições que já ficaram para trás não são eventos futuros: pula até a primeira que ainda vai vencer.
-      let prox = proximoVencimentoTS(original, a.recorrencia);
-      for (let j = 0; prox && prox <= hoje && j < 400; j++) prox = proximoVencimentoTS(prox, a.recorrencia);
+      let prox = proximoVencimentoTS(original, a.recorrencia, a.dia_original);
+      for (let j = 0; prox && prox <= hoje && j < 400; j++) prox = proximoVencimentoTS(prox, a.recorrencia, a.dia_original);
       if (!prox) break;
       original = prox;
       venc = prox;

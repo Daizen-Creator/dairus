@@ -171,3 +171,22 @@ describe("calendário e recorrência", () => {
     expect(ics.endsWith("END:VCALENDAR\r\n")).toBe(true);
   });
 });
+
+describe("previsão com o dia original da conta mensal", () => {
+  it("encadeia 31/01 → 28/02 → 31/03, igual ao motor, em vez de ficar presa no 28", () => {
+    expect(proximoVencimentoTS("2026-01-31", "MENSAL")).toBe("2026-02-28");
+    // Sem o dia original, 28/02 → 28/03 (o problema antigo); com ele, volta ao dia 31.
+    expect(proximoVencimentoTS("2026-02-28", "MENSAL")).toBe("2026-03-28");
+    expect(proximoVencimentoTS("2026-02-28", "MENSAL", 31)).toBe("2026-03-31");
+    expect(proximoVencimentoTS("2026-03-31", "MENSAL", 31)).toBe("2026-04-30");
+    expect(proximoVencimentoTS("2028-01-31", "ANUAL", 31)).toBe("2029-01-31");
+    expect(proximoVencimentoTS("2026-10-10", "SEMANAL", 31)).toBe("2026-10-17");
+  });
+
+  it("a previsão mostra a conta do dia 31 em 31/03 (não em 28/03)", () => {
+    const conta31 = agendamento({ id: "a", descricao: "Aluguel", vencimento: "2026-02-28", recorrencia: "MENSAL", dia_original: 31 });
+    const p = preverSaldo({ hoje: "2026-02-10", dias: 60, contas: [conta({ id: "banco", nome: "Banco", tipo: "ATIVO", subtipo: "BANCO", saldo_atual_centavos: 1_000_000 })], lancamentos: [], agendamentos: [conta31] });
+    const datas = p.eventos.filter((e) => e.descricao === "Aluguel").map((e) => e.data);
+    expect(datas).toEqual(["2026-02-28", "2026-03-31"]);
+  });
+});
