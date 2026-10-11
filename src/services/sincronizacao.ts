@@ -65,6 +65,14 @@ export interface EstadoLocal {
   versao_vista: number;
   impressao: string;
   sincronizado_em: string;
+  /**
+   * Qual gravação da nuvem foi vista (dois computadores podem gravar o mesmo número de versão).
+   * Ausentes nos estados gravados até a v0.2.6: aí só a versão é comparada.
+   */
+  alterado_em_visto?: string;
+  dispositivo_visto?: string;
+  /** A última sincronização daqui foi um envio (a gravação vista na nuvem é a deste computador). */
+  enviado_daqui?: boolean;
 }
 
 export type Decisao = "NADA" | "ENVIAR" | "BAIXAR" | "CONFLITO";
@@ -81,7 +89,15 @@ export function decidir(p: { local: EstadoLocal | null; remoto: EstadoNuvem | nu
   if (!remoto) return "ENVIAR";
   if (!local) return localVazio ? "BAIXAR" : "CONFLITO";
   const localMudou = local.impressao !== impressaoAtual;
-  const remotoMudou = remoto.versao !== local.versao_vista;
+  // Mesma versão, mas outra gravação: outro computador gravou por cima no mesmo instante.
+  const outraGravacao =
+    remoto.versao === local.versao_vista &&
+    local.alterado_em_visto !== undefined &&
+    (remoto.alterado_em !== local.alterado_em_visto || remoto.dispositivo_id !== local.dispositivo_visto);
+  // Se a gravação coberta era a deste computador, os dados que ele enviou não estão na nuvem:
+  // baixar descartaria esses dados daqui também. A pessoa escolhe.
+  if (outraGravacao && local.enviado_daqui) return "CONFLITO";
+  const remotoMudou = remoto.versao !== local.versao_vista || outraGravacao;
   if (localMudou && p.soAtualizacao) return remotoMudou ? "BAIXAR" : "ENVIAR";
   if (localMudou && remotoMudou) return "CONFLITO";
   if (localMudou) return "ENVIAR";
@@ -117,8 +133,19 @@ function nomeDoDispositivo(): string {
   return ua.includes("Windows") ? "Computador com Windows" : "Computador";
 }
 
+/**
+ * Baixa um arquivo da pasta de sincronização SEM cache: nem o do WebView (`no-store`) nem o
+ * da CDN (parâmetro `cacheNonce` único). Com cache, o outro computador poderia ler o estado
+ * antigo por até 1 hora e gravar por cima de uma versão que não viu.
+ */
+const baixarSemCache = (caminho: string) =>
+  supabase.storage.from(BUCKET).download(caminho, { cacheNonce: crypto.randomUUID() }, { cache: "no-store" });
+
+/** Opções de envio: binário e sem cache (a nuvem responde `Cache-Control: max-age=0`). */
+const SEM_CACHE = { upsert: true, contentType: BINARIO, cacheControl: "0" } as const;
+
 async function lerEstadoNuvem(base: string): Promise<EstadoNuvem | null> {
-  const { data, error } = await supabase.storage.from(BUCKET).download(`${base}/estado.json`);
+  const { data, error } = await baixarSemCache(`${base}/estado.json`);
   if (error || !data) {
     // Ainda não existe (primeira sincronização da conta).
     if (error && !naoExiste(error.message)) throw new Error(error.message);
@@ -168,7 +195,7 @@ async function enviar(base: string, lido: EstadoNuvem | null): Promise<Envio> {
   if (antesDoBanco) return antesDoBanco;
   const { error: e1 } = await supabase.storage
     .from(BUCKET)
-    .upload(`${base}/atual.db`, new Blob([copia], { type: BINARIO }), { upsert: true, contentType: BINARIO });
+    .upload(`${base}/atual.db`, new Blob([copia], { type: BINARIO }), SEM_CACHE);
   if (e1) throw new Error(e1.message);
   const estado: EstadoNuvem = {
     versao: (lido?.versao ?? 0) + 1,
@@ -181,12 +208,12 @@ async function enviar(base: string, lido: EstadoNuvem | null): Promise<Envio> {
   if (antesDoEstado) return antesDoEstado;
   const { error: e2 } = await supabase.storage
     .from(BUCKET)
-    .upload(`${base}/estado.json`, new Blob([JSON.stringify(estado)], { type: BINARIO }), { upsert: true, contentType: BINARIO });
+    .upload(`${base}/estado.json`, new Blob([JSON.stringify(estado)], { type: BINARIO }), SEM_CACHE);
   if (e2) throw new Error(e2.message);
   // Confere: se outro computador gravou ao mesmo tempo, não marca como sincronizado.
   const conferido = await lerEstadoNuvem(base);
   if (assinatura(conferido) !== assinatura(estado)) return { ok: false, remoto: conferido };
-  await salvarEstadoLocal({ versao_vista: estado.versao, impressao, sincronizado_em: estado.alterado_em });
+  await salvarEstadoLocal({ ...vista(estado), impressao, sincronizado_em: estado.alterado_em, enviado_daqui: true });
   return { ok: true, estado };
 }
 
@@ -197,7 +224,7 @@ async function enviar(base: string, lido: EstadoNuvem | null): Promise<Envio> {
  * substituído e devolve false (é um conflito).
  */
 async function baixar(base: string, remoto: EstadoNuvem, impressaoEsperada?: string): Promise<boolean> {
-  const { data, error } = await supabase.storage.from(BUCKET).download(`${base}/atual.db`);
+  const { data, error } = await baixarSemCache(`${base}/atual.db`);
   if (error || !data) throw new Error(error?.message ?? "Falha ao baixar a cópia da nuvem.");
   const carimbo = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
   const info = await extras.gravarBackupBaixado(`sincronizado-${carimbo}.db`, new Uint8Array(await data.arrayBuffer()));
@@ -213,11 +240,13 @@ async function baixar(base: string, remoto: EstadoNuvem, impressaoEsperada?: str
   }
   await extras.excluirBackup(info.nome).catch(() => {});
   await extras.aplicarRetencao((await lerPreferencia<number>("backup_retencao")) ?? 10).catch(() => 0);
-  await salvarEstadoLocal({ versao_vista: remoto.versao, impressao: await impressaoDados(), sincronizado_em: new Date().toISOString() });
+  await salvarEstadoLocal({ ...vista(remoto), impressao: await impressaoDados(), sincronizado_em: new Date().toISOString(), enviado_daqui: false });
   return true;
 }
 
 export const lerEstadoLocal = () => lerPreferencia<EstadoLocal>("sync_estado");
+/** O que o estado local guarda da gravação da nuvem que foi vista. */
+const vista = (e: EstadoNuvem) => ({ versao_vista: e.versao, alterado_em_visto: e.alterado_em, dispositivo_visto: e.dispositivo_id });
 const salvarEstadoLocal = (e: EstadoLocal) => salvarPreferencia("sync_estado", e);
 
 let emAndamento: Promise<ResultadoSync> | null = null;
@@ -277,7 +306,9 @@ function sincronizarDeVerdade(): Promise<ResultadoSync> {
       return { decisao, remoto, aplicouRemoto: true };
     }
     if (decisao === "NADA" && local) {
-      await salvarEstadoLocal({ ...local, sincronizado_em: new Date().toISOString() });
+      // Estado antigo (só com a versão): passa a lembrar também qual gravação foi vista.
+      const gravacao = local.alterado_em_visto === undefined && remoto ? vista(remoto) : {};
+      await salvarEstadoLocal({ ...local, ...gravacao, sincronizado_em: new Date().toISOString() });
       await concluida();
     }
     return { decisao, remoto, aplicouRemoto: false };
@@ -301,7 +332,7 @@ async function concluida(): Promise<void> {
  */
 async function guardarCopiaDaNuvem(base: string): Promise<void> {
   const cancelado = "Nada foi enviado: não foi possível guardar antes uma cópia dos dados da nuvem neste computador";
-  const { data, error } = await supabase.storage.from(BUCKET).download(`${base}/atual.db`);
+  const { data, error } = await baixarSemCache(`${base}/atual.db`);
   if (error && naoExiste(error.message)) return;
   if (error || !data) throw new Error(`${cancelado} (${traduzirErroSync(error?.message ?? "arquivo vazio")}). Tente de novo.`);
   const carimbo = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);

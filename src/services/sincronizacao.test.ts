@@ -9,6 +9,9 @@ const nuvem = vi.hoisted(() => ({
   falhaDownload: new Map<string, string>(),
   falhaUpload: new Map<string, string>(),
   uploads: [] as string[],
+  /** Opções de cada download e upload (cache). */
+  opcoesDownload: [] as Array<{ caminho: string; opcoes?: { cacheNonce?: string }; params?: { cache?: string } }>,
+  opcoesUpload: [] as Array<{ caminho: string; opcoes?: { cacheControl?: string } }>,
   /** Chamado depois de cada upload (simula outro computador gravando ao mesmo tempo). */
   aposEnviar: null as null | ((caminho: string) => void),
 }));
@@ -17,14 +20,16 @@ vi.mock("./supabase", () => ({
     auth: { getSession: async () => ({ data: { session: { user: { id: "u1" } } } }) },
     storage: {
       from: () => ({
-        download: async (caminho: string) => {
+        download: async (caminho: string, opcoes?: { cacheNonce?: string }, params?: { cache?: string }) => {
+          nuvem.opcoesDownload.push({ caminho, opcoes, params });
           const falha = nuvem.falhaDownload.get(caminho);
           if (falha) return { data: null, error: { message: falha } };
           const bytes = nuvem.arquivos.get(caminho);
           if (!bytes) return { data: null, error: { message: "Object not found" } };
           return { data: new Blob([bytes.slice()]), error: null };
         },
-        upload: async (caminho: string, blob: Blob) => {
+        upload: async (caminho: string, blob: Blob, opcoes?: { cacheControl?: string }) => {
+          nuvem.opcoesUpload.push({ caminho, opcoes });
           const falha = nuvem.falhaUpload.get(caminho);
           if (falha) return { data: null, error: { message: falha } };
           nuvem.uploads.push(caminho);
@@ -68,6 +73,8 @@ beforeEach(() => {
   nuvem.falhaDownload.clear();
   nuvem.falhaUpload.clear();
   nuvem.uploads.length = 0;
+  nuvem.opcoesDownload.length = 0;
+  nuvem.opcoesUpload.length = 0;
   nuvem.aposEnviar = null;
   outroPcGravaAoTirarCopia = false;
   falhaPreferencias = false;
@@ -385,6 +392,68 @@ describe("atualizar o app (v0.2.5 -> v0.2.6) não é conflito", () => {
     localStorage.removeItem("u1:notas_inicio");
     expect((await sincronizar()).decisao).toBe("BAIXAR");
     expect(chamados.some(([c]) => c === "mudanca_so_da_atualizacao")).toBe(false);
+  });
+});
+
+describe("sem cache na leitura e na gravação da nuvem", () => {
+  it("lê o estado e o banco sem cache e grava com Cache-Control 0", async () => {
+    gravarEstadoNuvem({ versao: 2 });
+    nuvem.arquivos.set(ATUAL, texto("banco-da-nuvem"));
+    guardarEstadoLocal({ versao_vista: 1, impressao: "local-1", sincronizado_em: "" });
+    await sincronizar();
+    expect(nuvem.opcoesDownload.length).toBeGreaterThan(1);
+    for (const d of nuvem.opcoesDownload) {
+      expect(d.params?.cache, d.caminho).toBe("no-store");
+      expect(d.opcoes?.cacheNonce, d.caminho).toBeTruthy();
+    }
+    // Cada leitura usa um parâmetro diferente (a CDN não devolve a resposta guardada).
+    const nonces = nuvem.opcoesDownload.map((d) => d.opcoes?.cacheNonce);
+    expect(new Set(nonces).size).toBe(nonces.length);
+
+    // Uma edição aqui: a próxima rodada envia.
+    impressaoLocal = "editado";
+    await sincronizar();
+    expect(nuvem.opcoesUpload.length).toBeGreaterThan(0);
+    for (const u of nuvem.opcoesUpload) expect(u.opcoes?.cacheControl, u.caminho).toBe("0");
+  });
+});
+
+describe("a gravação vista na nuvem, não só o número da versão", () => {
+  const estado = (e: Partial<EstadoNuvem>): EstadoNuvem => ({ versao: 5, alterado_em: "t1", dispositivo_id: "pc-a", dispositivo_nome: "PC", ...e });
+  const vista = (e: Partial<EstadoLocal> = {}): EstadoLocal => ({ versao_vista: 5, impressao: "i", sincronizado_em: "", alterado_em_visto: "t1", dispositivo_visto: "pc-a", ...e });
+
+  it("mesma gravação: nada; mesma versão gravada por outro computador: baixa", () => {
+    expect(decidir({ local: vista(), remoto: estado({}), impressaoAtual: "i", localVazio: false })).toBe("NADA");
+    expect(decidir({ local: vista(), remoto: estado({ alterado_em: "t2", dispositivo_id: "pc-b" }), impressaoAtual: "i", localVazio: false })).toBe("BAIXAR");
+    expect(decidir({ local: vista(), remoto: estado({ dispositivo_id: "pc-b" }), impressaoAtual: "i", localVazio: false })).toBe("BAIXAR");
+    // Mudou aqui também: conflito.
+    expect(decidir({ local: vista(), remoto: estado({ alterado_em: "t2" }), impressaoAtual: "j", localVazio: false })).toBe("CONFLITO");
+  });
+
+  it("se a gravação coberta era a deste computador, pergunta (baixar perderia o que ele enviou)", () => {
+    expect(decidir({ local: vista({ enviado_daqui: true }), remoto: estado({ alterado_em: "t2", dispositivo_id: "pc-b" }), impressaoAtual: "i", localVazio: false })).toBe("CONFLITO");
+  });
+
+  it("estado local antigo (sem esses campos) continua comparando só a versão", () => {
+    const antigo: EstadoLocal = { versao_vista: 5, impressao: "i", sincronizado_em: "" };
+    expect(decidir({ local: antigo, remoto: estado({ alterado_em: "qualquer", dispositivo_id: "outro" }), impressaoAtual: "i", localVazio: false })).toBe("NADA");
+  });
+
+  it("guarda a gravação vista ao enviar, ao baixar e ao completar um estado antigo", async () => {
+    gravarEstadoNuvem({ versao: 3, alterado_em: "t3", dispositivo_id: "pc-b" });
+    nuvem.arquivos.set(ATUAL, texto("banco"));
+    guardarEstadoLocal({ versao_vista: 2, impressao: "local-1", sincronizado_em: "" });
+    expect((await sincronizar()).decisao).toBe("BAIXAR");
+    expect(estadoLocal()).toMatchObject({ versao_vista: 3, alterado_em_visto: "t3", dispositivo_visto: "pc-b", enviado_daqui: false });
+
+    impressaoLocal = "editado";
+    expect((await sincronizar()).decisao).toBe("ENVIAR");
+    const enviado = estadoNaNuvem();
+    expect(estadoLocal()).toMatchObject({ versao_vista: 4, alterado_em_visto: enviado.alterado_em, dispositivo_visto: enviado.dispositivo_id, enviado_daqui: true });
+
+    guardarEstadoLocal({ versao_vista: 4, impressao: "editado", sincronizado_em: "" });
+    expect((await sincronizar()).decisao).toBe("NADA");
+    expect(estadoLocal()).toMatchObject({ alterado_em_visto: enviado.alterado_em, dispositivo_visto: enviado.dispositivo_id });
   });
 });
 
