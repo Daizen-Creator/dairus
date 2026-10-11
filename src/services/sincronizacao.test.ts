@@ -555,3 +555,14 @@ describe("erros da sincronização", () => {
     expect(traduzirErroSync(new Error("outro problema"))).toBe("outro problema");
   });
 });
+
+describe("app simulado (scripts/teste-visual)", () => {
+  it("devolve a versão de esquema real (número da última migração)", () => {
+    const migracoes = Object.keys(import.meta.glob("../../src-tauri/src/db/migrations/*.sql"));
+    const ultima = Math.max(...migracoes.map((c) => Number((c.split("/").pop() ?? "").slice(0, 4))));
+    expect(ultima).toBeGreaterThanOrEqual(17);
+    const mock = Object.values(import.meta.glob("../../scripts/teste-visual/mock-tauri.js", { query: "?raw", import: "default", eager: true }))[0] as string;
+    expect(mock).toContain(`versao_esquema_app: () => ${ultima},`);
+    expect(mock).toContain(`esquema: ${ultima} })`);
+  });
+});
